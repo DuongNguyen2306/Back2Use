@@ -1,10 +1,10 @@
-import { Tabs } from "expo-router";
+import { Stack } from "expo-router";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
-export default function TabsLayout() {
+export default function RootLayout() {
   return (
-    <Tabs initialRouteName="(app)/customer-dashboard" screenOptions={{ headerShown: false }}>
-      <Tabs.Screen name="index" options={{ href: null }} />
-      <Tabs.Screen name="(app)/customer-dashboard" options={{ title: "Customer" }} />
-    </Tabs>
+    <SafeAreaProvider>
+      <Stack screenOptions={{ headerShown: false }} />
+    </SafeAreaProvider>
   );
 }
