@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useAuth } from "../context/AuthProvider";
 
 export default function RegisterScreen() {
   const [email, setEmail] = useState("");
@@ -24,8 +25,9 @@ export default function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const { actions } = useAuth();
 
-  const handleSignUp = () => {
+  const handleSignUp = async () => {
     if (!email || !password || !confirmPassword) {
       Alert.alert("Error", "Please fill in all fields");
       return;
@@ -38,7 +40,8 @@ export default function RegisterScreen() {
       Alert.alert("Error", "Please agree to the terms and conditions");
       return;
     }
-    router.replace("/home");
+    await actions.signIn({ role: "customer" });
+    router.replace("/(protected)/customer");
   };
 
   const handleTermsPress = (type: "agreement" | "privacy") => {

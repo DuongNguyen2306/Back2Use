@@ -16,14 +16,16 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useAuth } from "../context/AuthProvider";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const { actions } = useAuth();
 
-  const handleSignIn = () => {
+  const handleSignIn = async () => {
     if (!email || !password) {
       Alert.alert("Error", "Please fill in all fields");
       return;
@@ -32,7 +34,31 @@ export default function LoginScreen() {
       Alert.alert("Error", "Please agree to the terms and conditions");
       return;
     }
-    router.replace("/home");
+    // Demo accounts routing by role
+    const normalized = email.trim().toLowerCase();
+    const isDemoPassword = password === "password123";
+    let role: "customer" | "business" | "admin" = "customer";
+    if (normalized === "staff@greencafe.com") role = "business";
+    if (normalized === "admin@back2use.com") role = "admin";
+
+    if (
+      normalized === "john.customer@example.com" ||
+      normalized === "staff@greencafe.com" ||
+      normalized === "admin@back2use.com"
+    ) {
+      if (!isDemoPassword) {
+        Alert.alert("Error", "Invalid demo credentials. Password is password123");
+        return;
+      }
+    }
+
+    await actions.signIn({ role });
+    const dest = role === "customer" ? "/(protected)/customer" : role === "business" ? "/(protected)/business" : "/(protected)/admin";
+    router.replace(dest);
+  };
+  const enterAsGuest = async () => {
+    await actions.enableBypass("customer");
+    router.replace("/(protected)/customer");
   };
 
   const handleTermsPress = (type: "agreement" | "privacy") => {
@@ -48,7 +74,7 @@ export default function LoginScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <Image source={require("../assets/images/logo.jpg")} style={styles.logo} resizeMode="contain" />
-            <Text style={styles.brandText}>PlantSHOP</Text>
+            <Text style={styles.brandText}>Back2Use</Text>
           </View>
 
           <View style={styles.formCard}>
@@ -120,12 +146,23 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
+            <View style={styles.demoPanel}>
+              <Text style={styles.demoTitle}>Demo Accounts:</Text>
+              <Text style={styles.demoLine}><Text style={styles.demoBold}>Customer:</Text> john.customer@example.com</Text>
+              <Text style={styles.demoLine}><Text style={styles.demoBold}>Staff:</Text> staff@greencafe.com</Text>
+              <Text style={styles.demoLine}><Text style={styles.demoBold}>Admin:</Text> admin@back2use.com</Text>
+              <Text style={styles.demoLine}><Text style={styles.demoBold}>Password:</Text> password123</Text>
+            </View>
+
             <View style={styles.footer}>
               <Text style={styles.footerText}>Don't have an account? </Text>
               <TouchableOpacity onPress={() => router.push("/register")}>
                 <Text style={styles.footerLink}>Create Account</Text>
               </TouchableOpacity>
             </View>
+            <TouchableOpacity onPress={enterAsGuest} style={{ alignSelf: "center", marginTop: 12 }}>
+              <Text style={{ color: "#0F4D3A", fontSize: 12, fontWeight: "600" }}>Enter as guest</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -162,6 +199,10 @@ const styles = StyleSheet.create({
   dividerText: { fontSize: 14, color: "#6B7280", textAlign: "center", marginBottom: 20 },
   socialContainer: { flexDirection: "row", justifyContent: "center", gap: 16, marginBottom: 32 },
   socialButton: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF" },
+  demoPanel: { padding: 12, backgroundColor: "#F3F4F6", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", marginBottom: 20 },
+  demoTitle: { fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 6 },
+  demoLine: { fontSize: 13, color: "#374151", marginBottom: 2 },
+  demoBold: { fontWeight: "700" },
   footer: { flexDirection: "row", justifyContent: "center", alignItems: "center" },
   footerText: { fontSize: 14, color: "#6B7280" },
   footerLink: { fontSize: 14, color: "#0F4D3A", fontWeight: "600" },

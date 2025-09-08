@@ -7,7 +7,7 @@ export default function HomeScreen() {
   return (
     <MobileLayout>
       <View style={styles.container}>
-        <Text style={styles.welcomeText}>Welcome to PlantSHOP!</Text>
+        <Text style={styles.welcomeText}>Welcome to Back2Use!</Text>
         <MobileOptimizedCustomerApp />
         <NativeQRScanner />
       </View>
