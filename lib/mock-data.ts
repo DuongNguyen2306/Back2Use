@@ -1,7 +1,34 @@
 export const mockUsers = [
-  { id: "1", email: "john.customer@example.com", name: "John Doe", role: "customer", phone: "+1234567890", createdAt: new Date("2024-01-15"), updatedAt: new Date("2024-01-15") },
-  { id: "2", email: "staff@greencafe.com", name: "Sarah Wilson", role: "business", phone: "+1234567891", createdAt: new Date("2024-01-10"), updatedAt: new Date("2024-01-10") },
-  { id: "3", email: "admin@back2use.com", name: "Admin User", role: "admin", phone: "+1234567892", createdAt: new Date("2024-01-01"), updatedAt: new Date("2024-01-01") },
+  {
+    id: "1",
+    email: "duong1@gmail.com",
+    name: "duong1",
+    role: "customer",
+    password: "123456",
+    phone: "+1234567890",
+    createdAt: new Date("2024-01-15"),
+    updatedAt: new Date("2024-01-15"),
+  },
+  {
+    id: "2",
+    email: "duong2@gmail.com",
+    name: "duong2",
+    role: "business",
+    password: "123456",
+    phone: "+1234567891",
+    createdAt: new Date("2024-01-10"),
+    updatedAt: new Date("2024-01-10"),
+  },
+  {
+    id: "3",
+    email: "duong3@gmail.com",
+    name: "duong3",
+    role: "admin",
+    password: "123456",
+    phone: "+1234567892",
+    createdAt: new Date("2024-01-01"),
+    updatedAt: new Date("2024-01-01"),
+  },
 ];
 
 export const mockStores = [

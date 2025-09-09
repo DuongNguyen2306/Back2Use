@@ -33,10 +33,8 @@ export default function CustomerHome() {
     Vibration.vibrate(Platform.OS === "ios" ? 30 : 50);
     setScanning(false);
 
-    // TODO: xử lý QR thực tế ở đây
-    // Ví dụ: điều hướng, check container, gọi API...
+    // TODO: xử lý QR thực tế ở đây (điều hướng, check container, gọi API…)
     console.log("QR:", data);
-    // Demo: hiện 1 toast native? Bạn có thể tự gắn.
   };
 
   return (
@@ -119,22 +117,24 @@ export default function CustomerHome() {
         {tab === "history" && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Recent Transactions</Text>
-            {mockTransactions.map((t) => (
-              <View key={t.id} style={styles.listRow}>
-                <Ionicons
-                  name={t.type === "borrow" ? "arrow-up" : "arrow-down"}
-                  size={18}
-                  color={t.type === "borrow" ? "#0F4D3A" : "#16a34a"}
-                />
-                <View style={{ marginLeft: 8, flex: 1 }}>
-                  <Text style={styles.listTitle}>{t.type === "borrow" ? "Borrow" : "Return"}</Text>
-                  <Text style={styles.muted}>
-                    {new Date(t.createdAt || (t as any).borrowedAt || Date.now()).toLocaleDateString()}
-                  </Text>
+            {mockTransactions.map((t) => {
+              // Ưu tiên returnedAt nếu có, không thì borrowedAt
+              const when = ("returnedAt" in t && t.returnedAt) ? t.returnedAt : t.borrowedAt;
+              return (
+                <View key={t.id} style={styles.listRow}>
+                  <Ionicons
+                    name={t.type === "borrow" ? "arrow-up" : "arrow-down"}
+                    size={18}
+                    color={t.type === "borrow" ? "#0F4D3A" : "#16a34a"}
+                  />
+                  <View style={{ marginLeft: 8, flex: 1 }}>
+                    <Text style={styles.listTitle}>{t.type === "borrow" ? "Borrow" : "Return"}</Text>
+                    <Text style={styles.muted}>{new Date(when).toLocaleDateString()}</Text>
+                  </View>
+                  <Text style={styles.badge}>{t.status}</Text>
                 </View>
-                <Text style={styles.badge}>{t.status}</Text>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 
@@ -254,4 +254,5 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.9)",
     borderRadius: 12,
   },
+  cameraHint: { color: "#fff", opacity: 0.9, fontSize: 12, marginTop: 12 },
 });

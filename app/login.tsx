@@ -1,4 +1,4 @@
-"use client";
+// "use client"; // (không cần trong Expo RN, bạn có thể xóa dòng này)
 
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -17,6 +17,7 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../context/AuthProvider";
+import { mockUsers } from "../lib/mock-data"; // ✅ dùng mockUsers (duong1/2/3)
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -34,28 +35,22 @@ export default function LoginScreen() {
       Alert.alert("Error", "Please agree to the terms and conditions");
       return;
     }
-    // Demo accounts routing by role
-    const normalized = email.trim().toLowerCase();
-    const isDemoPassword = password === "password123";
-    let role: "customer" | "business" | "admin" = "customer";
-    if (normalized === "staff@greencafe.com") role = "business";
-    if (normalized === "admin@back2use.com") role = "admin";
 
-    if (
-      normalized === "john.customer@example.com" ||
-      normalized === "staff@greencafe.com" ||
-      normalized === "admin@back2use.com"
-    ) {
-      if (!isDemoPassword) {
-        Alert.alert("Error", "Invalid demo credentials. Password is password123");
-        return;
-      }
+    // ✅ Kiểm tra mockUsers: duong1/duong2/duong3, mật khẩu 123456
+    const normalized = email.trim().toLowerCase();
+    const user = mockUsers.find(
+      (u) => u.email.toLowerCase() === normalized && (u as any).password === password
+    );
+
+    if (!user) {
+      Alert.alert("Error", "Invalid email or password");
+      return;
     }
 
-    await actions.signIn({ role });
-    const dest = role === "customer" ? "/(protected)/customer" : role === "business" ? "/(protected)/business" : "/(protected)/admin";
-    router.replace(dest);
+    await actions.signIn({ role: user.role as "customer" | "business" | "admin" });
+    router.replace(`/(protected)/${user.role}`);
   };
+
   const enterAsGuest = async () => {
     await actions.enableBypass("customer");
     router.replace("/(protected)/customer");
@@ -116,7 +111,10 @@ export default function LoginScreen() {
             </TouchableOpacity>
 
             <View style={styles.termsContainer}>
-              <TouchableOpacity style={[styles.checkbox, agreedToTerms && styles.checkedCheckbox]} onPress={() => setAgreedToTerms(!agreedToTerms)}>
+              <TouchableOpacity
+                style={[styles.checkbox, agreedToTerms && styles.checkedCheckbox]}
+                onPress={() => setAgreedToTerms(!agreedToTerms)}
+              >
                 {agreedToTerms && <Ionicons name="checkmark" size={16} color="#FFFFFF" />}
               </TouchableOpacity>
               <View style={styles.termsTextContainer}>
@@ -131,28 +129,15 @@ export default function LoginScreen() {
               </View>
             </View>
 
-            <TouchableOpacity style={[styles.signInButton, !agreedToTerms && styles.disabledButton]} onPress={handleSignIn} disabled={!agreedToTerms}>
+            <TouchableOpacity
+              style={[styles.signInButton, !agreedToTerms && styles.disabledButton]}
+              onPress={handleSignIn}
+              disabled={!agreedToTerms}
+            >
               <Text style={styles.signInButtonText}>Sign in</Text>
             </TouchableOpacity>
 
-            <Text style={styles.dividerText}>other way to sign in</Text>
-
-            <View style={styles.socialContainer}>
-              <TouchableOpacity style={styles.socialButton}>
-                <Ionicons name="logo-google" size={24} color="#4285F4" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.socialButton}>
-                <Ionicons name="logo-facebook" size={24} color="#1877F2" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.demoPanel}>
-              <Text style={styles.demoTitle}>Demo Accounts:</Text>
-              <Text style={styles.demoLine}><Text style={styles.demoBold}>Customer:</Text> john.customer@example.com</Text>
-              <Text style={styles.demoLine}><Text style={styles.demoBold}>Staff:</Text> staff@greencafe.com</Text>
-              <Text style={styles.demoLine}><Text style={styles.demoBold}>Admin:</Text> admin@back2use.com</Text>
-              <Text style={styles.demoLine}><Text style={styles.demoBold}>Password:</Text> password123</Text>
-            </View>
+            {/* ⚠️ ĐÃ XOÁ khu vực Demo Accounts ở đây */}
 
             <View style={styles.footer}>
               <Text style={styles.footerText}>Don't have an account? </Text>
@@ -160,6 +145,7 @@ export default function LoginScreen() {
                 <Text style={styles.footerLink}>Create Account</Text>
               </TouchableOpacity>
             </View>
+
             <TouchableOpacity onPress={enterAsGuest} style={{ alignSelf: "center", marginTop: 12 }}>
               <Text style={{ color: "#0F4D3A", fontSize: 12, fontWeight: "600" }}>Enter as guest</Text>
             </TouchableOpacity>
@@ -181,14 +167,44 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: "bold", color: "#111827", textAlign: "center", marginBottom: 32 },
   fieldContainer: { marginBottom: 20 },
   label: { fontSize: 16, fontWeight: "600", color: "#374151", marginBottom: 8 },
-  input: { height: 48, backgroundColor: "#F3F4F6", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", paddingHorizontal: 14, fontSize: 16, color: "#374151" },
+  input: {
+    height: 48,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 14,
+    fontSize: 16,
+    color: "#374151",
+  },
   passwordContainer: { position: "relative" },
-  passwordInput: { height: 48, backgroundColor: "#F3F4F6", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", paddingHorizontal: 14, paddingRight: 50, fontSize: 16, color: "#374151" },
+  passwordInput: {
+    height: 48,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 14,
+    paddingRight: 50,
+    fontSize: 16,
+    color: "#374151",
+  },
   eyeButton: { position: "absolute", right: 14, top: 14, padding: 4 },
   forgotPassword: { alignSelf: "flex-end", marginBottom: 24 },
   forgotPasswordText: { fontSize: 14, color: "#0F4D3A", fontWeight: "500" },
   termsContainer: { flexDirection: "row", alignItems: "flex-start", marginBottom: 24 },
-  checkbox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: "#E5E7EB", backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", marginRight: 12, marginTop: 2 },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+    marginTop: 2,
+  },
   checkedCheckbox: { backgroundColor: "#0F4D3A", borderColor: "#0F4D3A" },
   termsTextContainer: { flex: 1, flexDirection: "row", flexWrap: "wrap" },
   termsText: { fontSize: 14, color: "#6B7280", lineHeight: 20 },
@@ -198,14 +214,17 @@ const styles = StyleSheet.create({
   signInButtonText: { fontSize: 18, fontWeight: "bold", color: "#FFFFFF" },
   dividerText: { fontSize: 14, color: "#6B7280", textAlign: "center", marginBottom: 20 },
   socialContainer: { flexDirection: "row", justifyContent: "center", gap: 16, marginBottom: 32 },
-  socialButton: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF" },
-  demoPanel: { padding: 12, backgroundColor: "#F3F4F6", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", marginBottom: 20 },
-  demoTitle: { fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 6 },
-  demoLine: { fontSize: 13, color: "#374151", marginBottom: 2 },
-  demoBold: { fontWeight: "700" },
+  socialButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
   footer: { flexDirection: "row", justifyContent: "center", alignItems: "center" },
   footerText: { fontSize: 14, color: "#6B7280" },
   footerLink: { fontSize: 14, color: "#0F4D3A", fontWeight: "600" },
 });
-
-
