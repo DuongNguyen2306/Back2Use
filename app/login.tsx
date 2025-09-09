@@ -19,6 +19,9 @@ import {
 import { useAuth } from "../context/AuthProvider";
 import { mockUsers } from "../lib/mock-data"; // ✅ dùng mockUsers (duong1/2/3)
 
+type Role = "customer" | "business" | "admin";
+
+
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,7 +39,7 @@ export default function LoginScreen() {
       return;
     }
 
-    // ✅ Kiểm tra mockUsers: duong1/duong2/duong3, mật khẩu 123456
+    
     const normalized = email.trim().toLowerCase();
     const user = mockUsers.find(
       (u) => u.email.toLowerCase() === normalized && (u as any).password === password
@@ -47,8 +50,20 @@ export default function LoginScreen() {
       return;
     }
 
-    await actions.signIn({ role: user.role as "customer" | "business" | "admin" });
-    router.replace(`/(protected)/${user.role}`);
+    const role = user.role as Role;
+
+const destMap: Record<
+  Role,
+  "/(protected)/customer" | "/(protected)/business" | "/(protected)/admin"
+> = {
+  customer: "/(protected)/customer",
+  business: "/(protected)/business",
+  admin: "/(protected)/admin",
+} as const;
+
+await actions.signIn({ role });
+router.replace(destMap[role]); // ✅ hết lỗi TS2345
+
   };
 
   const enterAsGuest = async () => {
@@ -137,7 +152,7 @@ export default function LoginScreen() {
               <Text style={styles.signInButtonText}>Sign in</Text>
             </TouchableOpacity>
 
-            {/* ⚠️ ĐÃ XOÁ khu vực Demo Accounts ở đây */}
+            
 
             <View style={styles.footer}>
               <Text style={styles.footerText}>Don't have an account? </Text>

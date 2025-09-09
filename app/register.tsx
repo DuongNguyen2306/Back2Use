@@ -57,7 +57,7 @@ export default function RegisterScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <Image source={require("../assets/images/logo.jpg")} style={styles.logo} resizeMode="contain" />
-            <Text style={styles.brandText}>PlantSHOP</Text>
+            <Text style={styles.brandText}>Back2Use</Text>
           </View>
 
           <View style={styles.formCard}>
