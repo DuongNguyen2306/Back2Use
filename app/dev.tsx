@@ -1,6 +1,6 @@
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { useAuth } from "../context/AuthProvider";
 import { router } from "expo-router";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../context/AuthProvider";
 
 export default function DevSwitcher() {
   const { actions } = useAuth();

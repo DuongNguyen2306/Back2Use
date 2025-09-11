@@ -22,3 +22,35 @@ export function getTransactionSummary(transactions: any[]) {
 }
 
 
+export interface TransactionCalculation {
+  depositAmount: number;
+  lateFee: number;
+  totalAmount: number;
+  dueDate: Date;
+  isOverdue: boolean;
+  hoursOverdue: number;
+}
+
+export function calculateTransactionFees(
+  transaction: { depositAmount: number; dueDate?: Date },
+  policy: { lateFeePerHour: number },
+  currentDate: Date = new Date(),
+): TransactionCalculation {
+  const depositAmount = transaction.depositAmount;
+  let lateFee = 0;
+  let isOverdue = false;
+  let hoursOverdue = 0;
+
+  if (transaction.dueDate && currentDate > transaction.dueDate) {
+    isOverdue = true;
+    const overdueMs = currentDate.getTime() - transaction.dueDate.getTime();
+    hoursOverdue = Math.ceil(overdueMs / (1000 * 60 * 60));
+    lateFee = hoursOverdue * policy.lateFeePerHour;
+  }
+
+  const totalAmount = depositAmount + lateFee;
+
+  return { depositAmount, lateFee, totalAmount, dueDate: transaction.dueDate || new Date(), isOverdue, hoursOverdue };
+}
+
+

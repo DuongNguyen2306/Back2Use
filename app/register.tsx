@@ -1,11 +1,10 @@
-"use client";
-
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
   Alert,
   Image,
+  ImageBackground,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -14,7 +13,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { useAuth } from "../context/AuthProvider";
 
@@ -52,15 +51,23 @@ export default function RegisterScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.keyboardView}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.header}>
-            <Image source={require("../assets/images/logo.jpg")} style={styles.logo} resizeMode="contain" />
-            <Text style={styles.brandText}>Back2Use</Text>
-          </View>
+    <ImageBackground
+      source={{ uri: "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/splash-bg.jpg-0cgAaCzoZKCdOb8naNxHzXRdZGseCS.jpeg" }}
+      style={styles.bg}
+      resizeMode="cover"
+    >
+      <View style={styles.overlay} />
+      <SafeAreaView style={styles.container}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.keyboardView}>
+          <ScrollView contentContainerStyle={styles.scrollContent}>
+            <View style={styles.topHeader}>
+              <View style={styles.logoContainer}>
+                <Image source={require("../assets/images/logo.jpg")} style={styles.logo} resizeMode="contain" />
+                <Text style={styles.brandText}>Back2Use</Text>
+              </View>
+            </View>
 
-          <View style={styles.formCard}>
+            <View style={styles.formCard}>
             <Text style={styles.title}>Create new account</Text>
 
             <View style={styles.fieldContainer}>
@@ -134,10 +141,10 @@ export default function RegisterScreen() {
             <Text style={styles.dividerText}>other way to sign in</Text>
 
             <View style={styles.socialContainer}>
-              <TouchableOpacity style={styles.socialButton}>
+              <TouchableOpacity style={styles.socialButton} onPress={() => Alert.alert("Google Sign-In")}>
                 <Ionicons name="logo-google" size={24} color="#4285F4" />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.socialButton}>
+              <TouchableOpacity style={styles.socialButton} onPress={() => Alert.alert("Facebook Sign-In")}>
                 <Ionicons name="logo-facebook" size={24} color="#1877F2" />
               </TouchableOpacity>
             </View>
@@ -148,27 +155,31 @@ export default function RegisterScreen() {
                 <Text style={styles.footerLink}>Back to Sign In</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  bg: { flex: 1 },
+  overlay: { ...StyleSheet.absoluteFillObject as any, backgroundColor: "rgba(0,0,0,0.15)" },
+  container: { flex: 1, backgroundColor: "transparent" },
   keyboardView: { flex: 1 },
   scrollContent: { flexGrow: 1, padding: 20 },
-  header: { alignItems: "center", marginTop: 40, marginBottom: 32 },
-  logo: { width: 80, height: 80, marginBottom: 12 },
-  brandText: { fontSize: 24, fontWeight: "bold", color: "#0F4D3A" },
-  formCard: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 24, borderWidth: 1, borderColor: "#E5E7EB" },
+  topHeader: { paddingTop: 8, paddingBottom: 12, alignItems: "flex-start" },
+  logoContainer: { flexDirection: "row", alignItems: "center" },
+  logo: { width: 120, height: 120, borderRadius: 20, marginRight: 0 },
+  brandText: { fontSize: 28, fontWeight: "bold", color: "#FFFFFF", textShadowColor: "rgba(0,0,0,0.3)", textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3, includeFontPadding: false, marginLeft: -32, marginTop: 14 },
+  formCard: { backgroundColor: "rgba(255,255,255,0.7)", borderRadius: 20, padding: 24, borderWidth: 1, borderColor: "#E5E7EB", shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 6, marginTop: 8 },
   title: { fontSize: 24, fontWeight: "bold", color: "#111827", textAlign: "center", marginBottom: 32 },
   fieldContainer: { marginBottom: 20 },
   label: { fontSize: 16, fontWeight: "600", color: "#374151", marginBottom: 8 },
-  input: { height: 48, backgroundColor: "#F3F4F6", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", paddingHorizontal: 14, fontSize: 16, color: "#374151" },
+  input: { height: 48, backgroundColor: "rgba(255,255,255,0.55)", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", paddingHorizontal: 14, fontSize: 16, color: "#374151" },
   passwordContainer: { position: "relative" },
-  passwordInput: { height: 48, backgroundColor: "#F3F4F6", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", paddingHorizontal: 14, paddingRight: 50, fontSize: 16, color: "#374151" },
+  passwordInput: { height: 48, backgroundColor: "rgba(255,255,255,0.55)", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", paddingHorizontal: 14, paddingRight: 50, fontSize: 16, color: "#374151" },
   eyeButton: { position: "absolute", right: 14, top: 14, padding: 4 },
   termsContainer: { flexDirection: "row", alignItems: "flex-start", marginBottom: 24 },
   checkbox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: "#E5E7EB", backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", marginRight: 12, marginTop: 2 },
@@ -181,7 +192,7 @@ const styles = StyleSheet.create({
   signUpButtonText: { fontSize: 18, fontWeight: "bold", color: "#FFFFFF" },
   dividerText: { fontSize: 14, color: "#6B7280", textAlign: "center", marginBottom: 20 },
   socialContainer: { flexDirection: "row", justifyContent: "center", gap: 16, marginBottom: 32 },
-  socialButton: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF" },
+  socialButton: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.7)" },
   footer: { flexDirection: "row", justifyContent: "center", alignItems: "center" },
   footerText: { fontSize: 14, color: "#6B7280" },
   footerLink: { fontSize: 14, color: "#0F4D3A", fontWeight: "600" },
