@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   ImageBackground,
@@ -17,8 +18,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useAuth } from "../context/AuthProvider";
-import { mockUsers } from "../lib/mock-data"; // ✅ dùng mockUsers (duong1/2/3)
+import { useAuth } from "../../context/AuthProvider";
+import { authApi, LoginRequest } from "../../lib/api/apiconfig";
 
 type Role = "customer" | "business" | "admin";
 
@@ -28,6 +29,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const { actions } = useAuth();
 
   const handleSignIn = async () => {
@@ -40,31 +42,58 @@ export default function LoginScreen() {
       return;
     }
 
-    
-    const normalized = email.trim().toLowerCase();
-    const user = mockUsers.find(
-      (u) => u.email.toLowerCase() === normalized && (u as any).password === password
-    );
+    setIsLoading(true);
+    try {
+      const loginData: LoginRequest = {
+        email: email.trim(),
+        password,
+      };
 
-    if (!user) {
-      Alert.alert("Error", "Invalid email or password");
-      return;
+      const response = await authApi.login(loginData);
+      console.log("API Response:", JSON.stringify(response, null, 2));
+      
+      if (response.success) {
+        // Try different ways to get role from response
+        let role: Role = "customer"; // default role
+        
+        if (response.data?.role) {
+          role = response.data.role as Role;
+        } else if (response.user?.role) {
+          role = response.user.role as Role;
+        } else if (response.role) {
+          role = response.role as Role;
+        }
+        
+        console.log("Login successful, user role:", role);
+        
+        const destMap: Record<
+          Role,
+          "/(protected)/customer" | "/(protected)/business" | "/(protected)/admin"
+        > = {
+          customer: "/(protected)/customer",
+          business: "/(protected)/business",
+          admin: "/(protected)/admin",
+        } as const;
+
+        const destination = destMap[role];
+        console.log("Redirecting to:", destination);
+        
+        await actions.signIn({ role });
+        console.log("Auth state after signIn:", { role, destination });
+        
+        // Try both methods to ensure navigation works
+        setTimeout(() => {
+          router.replace(destination);
+        }, 100);
+      } else {
+        Alert.alert("Error", response.message || "Login failed");
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      Alert.alert("Error", "Login failed. Please check your credentials and try again.");
+    } finally {
+      setIsLoading(false);
     }
-
-    const role = user.role as Role;
-
-const destMap: Record<
-  Role,
-  "/(protected)/customer" | "/(protected)/business" | "/(protected)/admin"
-> = {
-  customer: "/(protected)/customer",
-  business: "/(protected)/business",
-  admin: "/(protected)/admin",
-} as const;
-
-await actions.signIn({ role });
-router.replace(destMap[role]); // ✅ hết lỗi TS2345
-
   };
 
   const enterAsGuest = async () => {
@@ -91,7 +120,7 @@ router.replace(destMap[role]); // ✅ hết lỗi TS2345
           <ScrollView contentContainerStyle={styles.scrollContent}>
             <View style={styles.topHeader}>
               <View style={styles.logoContainer}>
-                <Image source={require("../assets/images/logo.jpg")} style={styles.logo} resizeMode="contain" />
+                <Image source={require("../../assets/images/logo.jpg")} style={styles.logo} resizeMode="contain" />
                 <Text style={styles.brandText}>Back2Use</Text>
               </View>
             </View>
@@ -130,7 +159,7 @@ router.replace(destMap[role]); // ✅ hết lỗi TS2345
               </View>
             </View>
 
-            <TouchableOpacity style={styles.forgotPassword}>
+            <TouchableOpacity style={styles.forgotPassword} onPress={() => router.push("/auth/forgot-password")}>
               <Text style={styles.forgotPasswordText}>Forgot password?</Text>
             </TouchableOpacity>
 
@@ -154,11 +183,15 @@ router.replace(destMap[role]); // ✅ hết lỗi TS2345
             </View>
 
             <TouchableOpacity
-              style={[styles.signInButton, !agreedToTerms && styles.disabledButton]}
+              style={[styles.signInButton, (!agreedToTerms || isLoading) && styles.disabledButton]}
               onPress={handleSignIn}
-              disabled={!agreedToTerms}
+              disabled={!agreedToTerms || isLoading}
             >
-              <Text style={styles.signInButtonText}>Sign in</Text>
+              {isLoading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.signInButtonText}>Sign in</Text>
+              )}
             </TouchableOpacity>
             <Text style={styles.dividerText2}>other way to sign in</Text>
 
@@ -173,7 +206,7 @@ router.replace(destMap[role]); // ✅ hết lỗi TS2345
 
             <View style={styles.footer}>
               <Text style={styles.footerText}>Don't have an account? </Text>
-              <TouchableOpacity onPress={() => router.push("/register")}>
+              <TouchableOpacity onPress={() => router.push("/auth/register")}>
                 <Text style={styles.footerLink}>Create Account</Text>
               </TouchableOpacity>
             </View>

@@ -4,6 +4,13 @@ import { useAuth } from "../context/AuthProvider";
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const { state } = useAuth();
+  
+  console.log("AuthGate state:", {
+    isHydrated: state.isHydrated,
+    isAuthenticated: state.isAuthenticated,
+    role: state.role,
+    bypassAuth: state.bypassAuth
+  });
 
   if (!state.isHydrated) {
     return (
@@ -13,8 +20,13 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (state.bypassAuth || state.isAuthenticated) return children as any;
-  return <Redirect href="/login" />;
+  if (state.bypassAuth || state.isAuthenticated) {
+    console.log("AuthGate: Allowing access to protected content");
+    return children as any;
+  }
+  
+  console.log("AuthGate: Redirecting to login");
+  return <Redirect href="/auth/login" />;
 }
 
 

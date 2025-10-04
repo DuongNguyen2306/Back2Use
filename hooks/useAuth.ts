@@ -64,8 +64,11 @@ export function useAuthCore() {
       role: role ?? "customer",
       bypassAuth: false,
     };
+    console.log("signIn called with role:", role);
+    console.log("Setting auth state:", next);
     setState((prev) => ({ ...prev, ...next }));
     await persist(next);
+    console.log("Auth state persisted");
   }, [persist]);
 
   const signOut = useCallback(async () => {

@@ -22,7 +22,7 @@ export default function SplashScreen() {
         const dest = state.role === "customer" ? "/(protected)/customer" : state.role === "business" ? "/(protected)/business" : "/(protected)/admin";
         router.replace(dest);
       } else {
-        router.replace("/login");
+        router.replace("/auth/login");
       }
     }, 1500);
     return () => clearTimeout(timer);

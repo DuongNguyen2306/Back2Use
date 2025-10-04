@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   ImageBackground,
@@ -15,19 +16,22 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import { useAuth } from "../context/AuthProvider";
+import { useAuth } from "../../context/AuthProvider";
+import { authApi, RegisterRequest } from "../../lib/api/apiconfig";
 
 export default function RegisterScreen() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const { actions } = useAuth();
 
   const handleSignUp = async () => {
-    if (!email || !password || !confirmPassword) {
+    if (!name || !email || !password || !confirmPassword) {
       Alert.alert("Error", "Please fill in all fields");
       return;
     }
@@ -39,8 +43,38 @@ export default function RegisterScreen() {
       Alert.alert("Error", "Please agree to the terms and conditions");
       return;
     }
-    await actions.signIn({ role: "customer" });
-    router.replace("/(protected)/customer");
+
+    setIsLoading(true);
+    try {
+      const userData: RegisterRequest = {
+        name,
+        email,
+        password,
+        confirmPassword,
+      };
+
+      const response = await authApi.register(userData);
+      
+      if (response.success) {
+        Alert.alert(
+          "Success", 
+          "Account created successfully! Please login to continue.",
+          [
+            {
+              text: "OK",
+              onPress: () => router.replace("/auth/login")
+            }
+          ]
+        );
+      } else {
+        Alert.alert("Error", response.message || "Registration failed");
+      }
+    } catch (error) {
+      console.error("Registration error:", error);
+      Alert.alert("Error", "Registration failed. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleTermsPress = (type: "agreement" | "privacy") => {
@@ -62,13 +96,26 @@ export default function RegisterScreen() {
           <ScrollView contentContainerStyle={styles.scrollContent}>
             <View style={styles.topHeader}>
               <View style={styles.logoContainer}>
-                <Image source={require("../assets/images/logo.jpg")} style={styles.logo} resizeMode="contain" />
+                <Image source={require("../../assets/images/logo.jpg")} style={styles.logo} resizeMode="contain" />
                 <Text style={styles.brandText}>Back2Use</Text>
               </View>
             </View>
 
             <View style={styles.formCard}>
             <Text style={styles.title}>Create new account</Text>
+
+            <View style={styles.fieldContainer}>
+              <Text style={styles.label}>Full Name</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your full name"
+                placeholderTextColor="#6B7280"
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+                autoCorrect={false}
+              />
+            </View>
 
             <View style={styles.fieldContainer}>
               <Text style={styles.label}>Email Address</Text>
@@ -134,8 +181,16 @@ export default function RegisterScreen() {
               </View>
             </View>
 
-            <TouchableOpacity style={[styles.signUpButton, !agreedToTerms && styles.disabledButton]} onPress={handleSignUp} disabled={!agreedToTerms}>
-              <Text style={styles.signUpButtonText}>Sign up</Text>
+            <TouchableOpacity 
+              style={[styles.signUpButton, (!agreedToTerms || isLoading) && styles.disabledButton]} 
+              onPress={handleSignUp} 
+              disabled={!agreedToTerms || isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.signUpButtonText}>Sign up</Text>
+              )}
             </TouchableOpacity>
 
             <Text style={styles.dividerText}>other way to sign in</Text>
@@ -151,7 +206,7 @@ export default function RegisterScreen() {
 
             <View style={styles.footer}>
               <Text style={styles.footerText}>Already have an account? </Text>
-              <TouchableOpacity onPress={() => router.push("/login")}>
+              <TouchableOpacity onPress={() => router.push("/auth/login")}>
                 <Text style={styles.footerLink}>Back to Sign In</Text>
               </TouchableOpacity>
             </View>
@@ -164,7 +219,7 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  bg: { flex: 1 },
+    bg: { flex: 1 },
   overlay: { ...StyleSheet.absoluteFillObject as any, backgroundColor: "rgba(0,0,0,0.15)" },
   container: { flex: 1, backgroundColor: "transparent" },
   keyboardView: { flex: 1 },
