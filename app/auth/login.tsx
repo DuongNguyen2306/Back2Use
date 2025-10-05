@@ -4,22 +4,23 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  ImageBackground,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    ImageBackground,
+    KeyboardAvoidingView,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useAuth } from "../../context/AuthProvider";
 import { authApi, LoginRequest } from "../../lib/api/apiconfig";
+import { googleAuthService } from "../../lib/google-auth-service";
 
 type Role = "customer" | "business" | "admin";
 
@@ -107,6 +108,15 @@ export default function LoginScreen() {
       type === "agreement" ? "User Agreement" : "Privacy Policy",
       `${type === "agreement" ? "User Agreement" : "Privacy Policy"} content would be displayed here.`
     );
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      await googleAuthService.initiateGoogleLogin();
+    } catch (error) {
+      console.error('Google login error:', error);
+      Alert.alert('Error', 'Failed to login with Google. Please try again.');
+    }
   };
 
   return (
@@ -197,10 +207,10 @@ export default function LoginScreen() {
             <Text style={styles.dividerText2}>other way to sign in</Text>
 
             <View style={styles.socialContainer2}>
-              <TouchableOpacity style={styles.socialButton2} onPress={() => Alert.alert("Google Sign-In")}>
+              <TouchableOpacity style={styles.socialButton2} onPress={handleGoogleLogin}>
                 <Ionicons name="logo-google" size={24} color="#4285F4" />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.socialButton2} onPress={() => Alert.alert("Facebook Sign-In")}>
+              <TouchableOpacity style={styles.socialButton2} onPress={() => Alert.alert("Facebook Sign-In", "Facebook login will be available soon!")}>
                 <Ionicons name="logo-facebook" size={24} color="#1877F2" />
               </TouchableOpacity>
             </View>

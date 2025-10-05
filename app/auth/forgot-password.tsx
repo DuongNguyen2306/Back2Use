@@ -36,21 +36,39 @@ export default function ForgotPasswordScreen() {
 
     setIsLoading(true);
     try {
+      console.log("Sending forgot password request for email:", email.trim());
       const response = await authApi.forgotPassword(email.trim());
+      console.log("Forgot password response:", JSON.stringify(response, null, 2));
       
-      if (response.success) {
+      // Check for success - handle different response formats
+      const isSuccess = response.success || 
+                       (response.message && response.message.toLowerCase().includes("sent")) ||
+                       (response.statusCode && response.statusCode === 200) ||
+                       (response.statusCode && response.statusCode === 201);
+      
+      // Special case: if message contains "OTP" and "sent", treat as success even if success=false
+      const isOtpSent = response.message && 
+                        response.message.toLowerCase().includes("otp") && 
+                        response.message.toLowerCase().includes("sent");
+      
+      if (isSuccess || isOtpSent) {
         Alert.alert(
           "Success", 
-          "Password reset instructions have been sent to your email. Please check your inbox.",
+          "OTP for password reset sent to email",
           [
             {
               text: "OK",
-              onPress: () => router.replace("/auth/login")
+              onPress: () => router.push({
+                pathname: "/auth/verify-otp",
+                params: { email: email.trim(), type: "reset-password" }
+              })
             }
           ]
         );
       } else {
-        Alert.alert("Error", response.message || "Failed to send reset instructions");
+        // If response has a message but success is false, still show the message
+        const errorMessage = response.message || "Failed to send reset instructions";
+        Alert.alert("Error", errorMessage);
       }
     } catch (error) {
       console.error("Forgot password error:", error);

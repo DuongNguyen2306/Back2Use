@@ -82,6 +82,35 @@ export interface ResendOTPResponse {
   statusCode?: number;
 }
 
+export interface ResetPasswordRequest {
+  email: string;
+  otp: string;
+  newPassword: string;
+  confirmNewPassword: string;
+}
+
+export interface ResetPasswordResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface GoogleOAuthResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    accessToken?: string;
+    refreshToken?: string;
+    user?: {
+      _id?: string;
+      email?: string;
+      name?: string;
+      role?: string;
+      isActive?: boolean;
+      isBlocked?: boolean;
+    };
+  };
+}
+
 export interface ApiError {
   success: false;
   message: string;
@@ -176,6 +205,28 @@ export const authApi = {
     return apiCall<ResendOTPResponse>('/auth/resend-otp', {
       method: 'POST',
       body: JSON.stringify({ email }),
+    });
+  },
+
+  // Reset password with OTP
+  resetPassword: async (resetData: ResetPasswordRequest): Promise<ResetPasswordResponse> => {
+    return apiCall<ResetPasswordResponse>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(resetData),
+    });
+  },
+
+  // Google OAuth login (web)
+  googleLogin: async (): Promise<GoogleOAuthResponse> => {
+    return apiCall<GoogleOAuthResponse>('/auth/google', {
+      method: 'GET',
+    });
+  },
+
+  // Google OAuth redirect (web)
+  googleRedirect: async (): Promise<GoogleOAuthResponse> => {
+    return apiCall<GoogleOAuthResponse>('/auth/google-redirect', {
+      method: 'GET',
     });
   },
 };
