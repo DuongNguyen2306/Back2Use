@@ -446,15 +446,6 @@ function ProfileItem({ icon, title, onPress }: { icon: string; title: string; on
   );
 }
 
-function renderTab(active: string, setTab: (t: any) => void, key: any, label: string, icon: any) {
-  const isActive = active === key;
-  return (
-    <TouchableOpacity key={key} onPress={() => setTab(key)} style={[styles.tabBtn, isActive && styles.tabBtnActive]}>
-      <Ionicons name={icon} size={16} color={isActive ? "#fff" : "#0F4D3A"} />
-      <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
 
 function StatCard({ title, value, icon }: { title: string; value: string; icon: any }) {
   return (

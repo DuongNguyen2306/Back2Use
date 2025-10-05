@@ -2,19 +2,19 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  ImageBackground,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Image,
+    ImageBackground,
+    KeyboardAvoidingView,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { useAuth } from "../../context/AuthProvider";
 import { authApi, RegisterRequest } from "../../lib/api/apiconfig";
@@ -54,15 +54,24 @@ export default function RegisterScreen() {
       };
 
       const response = await authApi.register(userData);
+      console.log("Registration response:", JSON.stringify(response, null, 2));
       
-      if (response.success) {
+      // Check if registration was successful
+      const isSuccess = response.success || 
+                       (response.message && response.message.toLowerCase().includes("successfully")) ||
+                       (response.message && response.message.toLowerCase().includes("registered"));
+      
+      if (isSuccess) {
         Alert.alert(
           "Success", 
-          "Account created successfully! Please login to continue.",
+          "Account created successfully! Please check your email for verification code.",
           [
             {
               text: "OK",
-              onPress: () => router.replace("/auth/login")
+              onPress: () => router.replace({
+                pathname: "/auth/verify-otp",
+                params: { email: email.trim() }
+              })
             }
           ]
         );
@@ -206,7 +215,7 @@ export default function RegisterScreen() {
 
             <View style={styles.footer}>
               <Text style={styles.footerText}>Already have an account? </Text>
-              <TouchableOpacity onPress={() => router.push("/auth/login")}>
+              <TouchableOpacity onPress={() => router.replace("/auth/login")}>
                 <Text style={styles.footerLink}>Back to Sign In</Text>
               </TouchableOpacity>
             </View>

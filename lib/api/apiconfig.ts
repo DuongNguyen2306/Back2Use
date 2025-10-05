@@ -59,6 +59,29 @@ export interface ForgotPasswordResponse {
   message: string;
 }
 
+export interface VerifyOTPRequest {
+  otp: string;
+  email?: string;
+}
+
+export interface VerifyOTPResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    verified: boolean;
+  };
+}
+
+export interface ResendOTPRequest {
+  email: string;
+}
+
+export interface ResendOTPResponse {
+  success: boolean;
+  message: string;
+  statusCode?: number;
+}
+
 export interface ApiError {
   success: false;
   message: string;
@@ -135,6 +158,22 @@ export const authApi = {
   // Forgot password
   forgotPassword: async (email: string): Promise<ForgotPasswordResponse> => {
     return apiCall<ForgotPasswordResponse>(API_ENDPOINTS.AUTH.FORGOT_PASSWORD, {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  // Activate account with OTP
+  activateAccount: async (otpData: VerifyOTPRequest): Promise<VerifyOTPResponse> => {
+    return apiCall<VerifyOTPResponse>('/auth/active-account', {
+      method: 'POST',
+      body: JSON.stringify(otpData),
+    });
+  },
+
+  // Resend OTP
+  resendOTP: async (email: string): Promise<ResendOTPResponse> => {
+    return apiCall<ResendOTPResponse>('/auth/resend-otp', {
       method: 'POST',
       body: JSON.stringify({ email }),
     });
