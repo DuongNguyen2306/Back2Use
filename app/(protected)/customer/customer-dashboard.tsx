@@ -2,12 +2,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useMemo, useRef, useState } from "react";
 import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, Vibration, View } from "react-native";
-import { mockStores, mockTransactions } from "../../lib/mock-data";
-import { getTransactionSummary } from "../../lib/transaction-utils";
+import { useAuth } from "../../../context/AuthProvider";
+import { mockStores, mockTransactions } from "../../../lib/mock-data";
+import { getTransactionSummary } from "../../../lib/transaction-utils";
 
-export default function CustomerHome() {
-  const [tab, setTab] = useState<"home" | "stores" | "history" | "rewards">("home");
+export default function CustomerDashboard() {
+  const [tab, setTab] = useState<"home" | "wallet" | "stores" | "rewards" | "profile">("home");
   const summary = useMemo(() => getTransactionSummary(mockTransactions as any), []);
+  const { state } = useAuth();
 
   // --- Scanner state ---
   const [scanning, setScanning] = useState(false);
@@ -16,10 +18,12 @@ export default function CustomerHome() {
 
   const [customerProfile] = useState({
     name: "John Doe",
+    email: "john.doe@example.com",
     points: 1250,
     level: "Gold",
     activeBorrows: 3,
     totalSaved: 45.5,
+    walletBalance: 125.50,
   });
 
   const startScanning = async () => {
@@ -55,32 +59,57 @@ export default function CustomerHome() {
     Alert.alert("Redeem Reward", `Redeem ${reward} for ${customerProfile.points} points?`);
   };
 
+  const handleTabPress = (tabName: string) => {
+    setTab(tabName as any);
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.greeting}>Hello, {customerProfile.name}!</Text>
-          <Text style={styles.subGreeting}>
-            {customerProfile.level} Member • {customerProfile.points} points
-          </Text>
+        <View style={styles.userInfo}>
+          <View style={styles.avatarContainer}>
+            <Text style={styles.avatarText}>{customerProfile.name.charAt(0)}</Text>
+          </View>
+          <View>
+            <Text style={styles.greeting}>Welcome back</Text>
+            <Text style={styles.userName}>{customerProfile.name}</Text>
+          </View>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <TouchableOpacity style={styles.notificationButton} onPress={() => Alert.alert("Notifications", "No new notifications") }>
             <Ionicons name="notifications" size={20} color="#0F4D3A" />
+            <View style={styles.notificationBadge}>
+              <Text style={styles.notificationCount}>3</Text>
+            </View>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.profileButton}>
+          <TouchableOpacity style={styles.profileButton} onPress={() => handleTabPress("profile")}>
             <Ionicons name="person-circle" size={32} color="#0F4D3A" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Tabs */}
-      <View style={styles.tabRow}>
-        {renderTab(tab, setTab, "home", "Home", "qr-code")}
-        {renderTab(tab, setTab, "stores", "Stores", "location")}
-        {renderTab(tab, setTab, "history", "History", "time")}
-        {renderTab(tab, setTab, "rewards", "Rewards", "gift")}
+      {/* Wallet and Points Info */}
+      <View style={styles.statsContainer}>
+        <View style={styles.statCard}>
+          <View style={styles.statIcon}>
+            <Ionicons name="wallet-outline" size={16} color="#0F4D3A" />
+          </View>
+          <View>
+            <Text style={styles.statLabel}>Balance</Text>
+            <Text style={styles.statValue}>$25.50</Text>
+          </View>
+        </View>
+        <View style={styles.statCard}>
+          <View style={styles.statIcon}>
+            <Ionicons name="trophy-outline" size={16} color="#0F4D3A" />
+          </View>
+          <View>
+            <Text style={styles.statLabel}>Points</Text>
+            <Text style={styles.statValue}>{customerProfile.points.toLocaleString()}</Text>
+          </View>
+        </View>
       </View>
+
 
       {/* Camera overlay (only when scanning) */}
       {scanning && (
@@ -154,6 +183,64 @@ export default function CustomerHome() {
           </View>
         )}
 
+        {tab === "wallet" && (
+          <View style={{ gap: 12 }}>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Wallet Balance</Text>
+              <View style={styles.walletHeader}>
+                <View>
+                  <Text style={styles.walletAmount}>${customerProfile.walletBalance}</Text>
+                  <Text style={styles.walletLabel}>Available Balance</Text>
+                </View>
+                <TouchableOpacity style={styles.addFundsButton}>
+                  <Ionicons name="add" size={16} color="#fff" />
+                  <Text style={styles.addFundsText}>Add Funds</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Recent Transactions</Text>
+              {mockTransactions.slice(0, 5).map((t) => (
+                <View key={t.id} style={styles.transactionRow}>
+                  <View style={styles.transactionIcon}>
+                    <Ionicons 
+                      name={t.type === "borrow" ? "arrow-up" : "arrow-down"} 
+                      size={16} 
+                      color={t.type === "borrow" ? "#0F4D3A" : "#16a34a"} 
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.transactionTitle}>
+                      {t.type === "borrow" ? "Borrowed Container" : "Returned Container"}
+                    </Text>
+                    <Text style={styles.transactionDate}>
+                      {new Date(t.borrowedAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <Text style={[styles.transactionAmount, { color: t.type === "borrow" ? "#ef4444" : "#16a34a" }]}>
+                    {t.type === "borrow" ? "-" : "+"}${t.depositAmount}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Payment Methods</Text>
+              <View style={styles.paymentMethodRow}>
+                <Ionicons name="card" size={20} color="#0F4D3A" />
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.paymentMethodTitle}>Visa ****1234</Text>
+                  <Text style={styles.paymentMethodSubtitle}>Default payment method</Text>
+                </View>
+                <TouchableOpacity>
+                  <Ionicons name="chevron-forward" size={16} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
         {tab === "stores" && (
           <View style={{ gap: 12 }}>
             <View style={styles.card}>
@@ -183,53 +270,6 @@ export default function CustomerHome() {
                 <CategoryItem icon="storefront" name="Grocery" count={8} />
                 <CategoryItem icon="cafe" name="Cafes" count={15} />
                 <CategoryItem icon="bag" name="Retail" count={6} />
-              </View>
-            </View>
-          </View>
-        )}
-
-        {tab === "history" && (
-          <View style={{ gap: 12 }}>
-            <View style={styles.card}>
-              <View style={styles.historyHeader}>
-                <Text style={styles.cardTitle}>Recent Transactions</Text>
-                <TouchableOpacity style={styles.filterButton}>
-                  <Ionicons name="filter" size={16} color="#0F4D3A" />
-                  <Text style={styles.filterText}>Filter</Text>
-                </TouchableOpacity>
-              </View>
-
-              {mockTransactions.map((t) => {
-                const when = "returnedAt" in t && t.returnedAt ? t.returnedAt : t.borrowedAt;
-                return (
-                  <View key={t.id} style={styles.listRow}>
-                    <Ionicons
-                      name={t.type === "borrow" ? "arrow-up" : "arrow-down"}
-                      size={18}
-                      color={t.type === "borrow" ? "#0F4D3A" : "#16a34a"}
-                    />
-                    <View style={{ marginLeft: 8, flex: 1 }}>
-                      <Text style={styles.listTitle}>{t.type === "borrow" ? "Borrowed" : "Returned"}</Text>
-                      <Text style={styles.muted}>{new Date(when).toLocaleDateString()}</Text>
-                      <Text style={styles.transactionDetail}>Container ID: {t.id}</Text>
-                    </View>
-                    <View style={styles.statusContainer}>
-                      <Text style={[styles.badge, { backgroundColor: t.status === "active" ? "#0F4D3A" : "#16a34a" }]}>
-                        {t.status}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>This Month Summary</Text>
-              <View style={styles.summaryGrid}>
-                <SummaryItem label="Items Borrowed" value="15" />
-                <SummaryItem label="Items Returned" value="12" />
-                <SummaryItem label="Money Saved" value="$23.50" />
-                <SummaryItem label="Points Earned" value="180" />
               </View>
             </View>
           </View>
@@ -290,7 +330,50 @@ export default function CustomerHome() {
             </View>
           </View>
         )}
+
+        {tab === "profile" && (
+          <View style={{ gap: 12 }}>
+            <View style={styles.card}>
+              <View style={styles.profileHeader}>
+                <View style={styles.profileAvatar}>
+                  <Ionicons name="person" size={32} color="#0F4D3A" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 16 }}>
+                  <Text style={styles.profileName}>{customerProfile.name}</Text>
+                  <Text style={styles.profileEmail}>{customerProfile.email}</Text>
+                  <View style={styles.profileBadge}>
+                    <Text style={styles.profileBadgeText}>{customerProfile.level} Member</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Account Settings</Text>
+              <ProfileItem icon="person" title="Personal Information" onPress={() => Alert.alert("Profile", "Edit profile")} />
+              <ProfileItem icon="notifications" title="Notifications" onPress={() => Alert.alert("Notifications", "Notification settings")} />
+              <ProfileItem icon="shield-checkmark" title="Privacy & Security" onPress={() => Alert.alert("Privacy", "Privacy settings")} />
+              <ProfileItem icon="help-circle" title="Help & Support" onPress={() => Alert.alert("Help", "Get help")} />
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Statistics</Text>
+              <View style={styles.statsGrid}>
+                <StatItem label="Total Borrows" value="47" />
+                <StatItem label="Total Returns" value="44" />
+                <StatItem label="Money Saved" value="$89.50" />
+                <StatItem label="CO₂ Saved" value="23.5kg" />
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.logoutButton}>
+              <Ionicons name="log-out" size={20} color="#ef4444" />
+              <Text style={styles.logoutText}>Sign Out</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
+      
     </View>
   );
 }
@@ -305,11 +388,11 @@ function CategoryItem({ icon, name, count }: { icon: string; name: string; count
   );
 }
 
-function SummaryItem({ label, value }: { label: string; value: string }) {
+function StatItem({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.summaryItem}>
-      <Text style={styles.summaryValue}>{value}</Text>
-      <Text style={styles.summaryLabel}>{label}</Text>
+    <View style={styles.statItem}>
+      <Text style={styles.statItemValue}>{value}</Text>
+      <Text style={styles.statItemLabel}>{label}</Text>
     </View>
   );
 }
@@ -353,6 +436,16 @@ function AchievementItem({
   );
 }
 
+function ProfileItem({ icon, title, onPress }: { icon: string; title: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.profileItem} onPress={onPress}>
+      <Ionicons name={icon as any} size={20} color="#0F4D3A" />
+      <Text style={styles.profileItemTitle}>{title}</Text>
+      <Ionicons name="chevron-forward" size={16} color="#6B7280" />
+    </TouchableOpacity>
+  );
+}
+
 function renderTab(active: string, setTab: (t: any) => void, key: any, label: string, icon: any) {
   const isActive = active === key;
   return (
@@ -375,43 +468,88 @@ function StatCard({ title, value, icon }: { title: string; value: string; icon: 
   );
 }
 
-
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: "#fff" },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-  greeting: { fontSize: 20, fontWeight: "800", color: "#0F4D3A" },
-  subGreeting: { fontSize: 14, color: "#6B7280", marginTop: 2 },
-  profileButton: { padding: 4 },
-  notificationButton: { padding: 8, borderRadius: 8, backgroundColor: "#F9FAFB" },
-
-  tabRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
-  tabBtn: {
+  userInfo: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#fff",
+    gap: 12,
   },
-  tabBtnActive: { backgroundColor: "#0F4D3A", borderColor: "#0F4D3A" },
-  tabText: { color: "#0F4D3A", fontWeight: "700", fontSize: 12 },
-  tabTextActive: { color: "#fff" },
-
-  cardRow: { flexDirection: "row", gap: 12 },
+  avatarContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#0F4D3A",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  greeting: { fontSize: 12, color: "#6B7280", fontWeight: "500" },
+  userName: { fontSize: 18, fontWeight: "bold", color: "#111827" },
+  statsContainer: {
+    flexDirection: "row",
+    marginBottom: 16,
+    gap: 12,
+  },
   statCard: {
     flex: 1,
-    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0F9FF",
+    padding: 12,
     borderRadius: 12,
-    borderColor: "#E5E7EB",
-    borderWidth: 1,
-    backgroundColor: "#F9FAFB",
+    gap: 8,
   },
+  statIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#0F4D3A20",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statLabel: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  statValue: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#0F4D3A",
+  },
+  profileButton: { padding: 4 },
+  notificationButton: { 
+    padding: 8, 
+    borderRadius: 8, 
+    backgroundColor: "#F9FAFB",
+    position: "relative",
+  },
+  notificationBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    backgroundColor: "#EF4444",
+    borderRadius: 8,
+    width: 16,
+    height: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  notificationCount: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "bold",
+  },
+
+
+  cardRow: { flexDirection: "row", gap: 12 },
   statIconWrap: { padding: 8, backgroundColor: "#E5E7EB", borderRadius: 8, marginBottom: 8 },
-  statValue: { fontSize: 20, fontWeight: "800", color: "#111827" },
-  statLabel: { fontSize: 12, color: "#374151", marginTop: 2 },
   
   scanCard: {
     padding: 16,
@@ -485,30 +623,30 @@ const styles = StyleSheet.create({
   categoryName: { fontSize: 12, fontWeight: "600", color: "#111827", marginTop: 4 },
   categoryCount: { fontSize: 10, color: "#6B7280", marginTop: 2 },
 
-  historyHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  filterButton: {
+  // Wallet styles
+  walletHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 },
+  walletAmount: { fontSize: 28, fontWeight: "800", color: "#0F4D3A" },
+  walletLabel: { fontSize: 12, color: "#6B7280", marginTop: 2 },
+  addFundsButton: {
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: "#0F4D3A",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
     gap: 4,
-    padding: 6,
-    borderRadius: 6,
-    backgroundColor: "#F9FAFB",
   },
-  filterText: { fontSize: 12, fontWeight: "600", color: "#0F4D3A" },
-  transactionDetail: { fontSize: 11, color: "#6B7280", marginTop: 1 },
-  statusContainer: { alignItems: "flex-end" },
+  addFundsText: { color: "#fff", fontSize: 12, fontWeight: "600" },
 
-  summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 8 },
-  summaryItem: {
-    flex: 1,
-    minWidth: "45%",
-    alignItems: "center",
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: "#F9FAFB",
-  },
-  summaryValue: { fontSize: 18, fontWeight: "800", color: "#0F4D3A" },
-  summaryLabel: { fontSize: 11, color: "#6B7280", marginTop: 2, textAlign: "center" },
+  transactionRow: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
+  transactionIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
+  transactionTitle: { fontSize: 14, fontWeight: "600", color: "#111827" },
+  transactionDate: { fontSize: 12, color: "#6B7280", marginTop: 2 },
+  transactionAmount: { fontSize: 14, fontWeight: "700" },
+
+  paymentMethodRow: { flexDirection: "row", alignItems: "center", paddingVertical: 12 },
+  paymentMethodTitle: { fontSize: 14, fontWeight: "600", color: "#111827" },
+  paymentMethodSubtitle: { fontSize: 12, color: "#6B7280", marginTop: 2 },
 
   pointsHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 },
   pointsValue: { fontSize: 24, fontWeight: "800", color: "#0F4D3A" },
@@ -534,6 +672,42 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },
+
+  // Profile styles
+  profileHeader: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
+  profileAvatar: { width: 60, height: 60, borderRadius: 30, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
+  profileName: { fontSize: 18, fontWeight: "700", color: "#111827" },
+  profileEmail: { fontSize: 14, color: "#6B7280", marginTop: 2 },
+  profileBadge: { backgroundColor: "#0F4D3A", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, marginTop: 4, alignSelf: "flex-start" },
+  profileBadgeText: { color: "#fff", fontSize: 12, fontWeight: "600" },
+
+  profileItem: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
+  profileItemTitle: { flex: 1, fontSize: 14, fontWeight: "500", color: "#111827", marginLeft: 12 },
+
+  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 8 },
+  statItem: {
+    flex: 1,
+    minWidth: "45%",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: "#F9FAFB",
+  },
+  statItemValue: { fontSize: 18, fontWeight: "800", color: "#0F4D3A" },
+  statItemLabel: { fontSize: 11, color: "#6B7280", marginTop: 2, textAlign: "center" },
+
+  logoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    backgroundColor: "#FEF2F2",
+    gap: 8,
+  },
+  logoutText: { fontSize: 16, fontWeight: "600", color: "#ef4444" },
 
   // camera overlay
   cameraSheet: {

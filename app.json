@@ -5,48 +5,28 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "back2usemobile",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-
+    "scheme": "com.back2use",
     "ios": {
-      "supportsTablet": true,
-      "infoPlist": {
-        "NSCameraUsageDescription": "App needs camera to scan QR codes."
-      }
+      "supportsTablet": true
     },
-
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true,
-      "permissions": ["CAMERA", "INTERNET", "POST_NOTIFICATIONS"]
+      }
     },
-
     "web": {
       "bundler": "metro",
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
-
     "plugins": [
       "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
-        }
-      ],
-      "expo-barcode-scanner"
+      "expo-notifications"
     ],
-
-    "experiments": {
-      "typedRoutes": true
+    "extra": {
+      "apiBaseUrl": "http://192.168.0.197:8000"
     }
   }
 }

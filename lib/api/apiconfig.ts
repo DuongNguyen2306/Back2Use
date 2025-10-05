@@ -1,5 +1,5 @@
 // API Configuration for Back2Use
-const API_BASE_URL = 'https://back-2-use-be-production.up.railway.app';
+import { API_BASE_URL, API_ENDPOINTS, DEFAULT_HEADERS, REQUEST_TIMEOUT } from '../constants';
 
 // Types for API requests and responses
 export interface RegisterRequest {
@@ -25,16 +25,22 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
-  success: boolean;
+  statusCode: number;
   message: string;
   data?: {
-    id?: string;
-    name?: string;
-    email?: string;
-    role?: string;
-    token?: string;
+    accessToken?: string;
+    refreshToken?: string;
+    user?: {
+      _id?: string;
+      email?: string;
+      name?: string;
+      role?: string;
+      isActive?: boolean;
+      isBlocked?: boolean;
+    };
   };
-  // Alternative response structure
+  // Legacy support
+  success?: boolean;
   user?: {
     id?: string;
     name?: string;
@@ -66,9 +72,7 @@ async function apiCall<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   
-  const defaultHeaders = {
-    'Content-Type': 'application/json',
-  };
+  const defaultHeaders = DEFAULT_HEADERS;
 
   const config: RequestInit = {
     ...options,
@@ -79,7 +83,16 @@ async function apiCall<T>(
   };
 
   try {
-    const response = await fetch(url, config);
+    // Add timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+    
+    const response = await fetch(url, {
+      ...config,
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -89,7 +102,15 @@ async function apiCall<T>(
     return await response.json();
   } catch (error) {
     console.error('API call failed:', error);
-    throw error;
+    
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout. Please check your connection and try again.');
+      }
+      throw error;
+    }
+    
+    throw new Error('Network error. Please check your connection and try again.');
   }
 }
 
@@ -97,7 +118,7 @@ async function apiCall<T>(
 export const authApi = {
   // Register a new user
   register: async (userData: RegisterRequest): Promise<RegisterResponse> => {
-    return apiCall<RegisterResponse>('/auth/register', {
+    return apiCall<RegisterResponse>(API_ENDPOINTS.AUTH.REGISTER, {
       method: 'POST',
       body: JSON.stringify(userData),
     });
@@ -105,7 +126,7 @@ export const authApi = {
 
   // Login user
   login: async (loginData: LoginRequest): Promise<LoginResponse> => {
-    return apiCall<LoginResponse>('/auth/login', {
+    return apiCall<LoginResponse>(API_ENDPOINTS.AUTH.LOGIN, {
       method: 'POST',
       body: JSON.stringify(loginData),
     });
@@ -113,7 +134,7 @@ export const authApi = {
 
   // Forgot password
   forgotPassword: async (email: string): Promise<ForgotPasswordResponse> => {
-    return apiCall<ForgotPasswordResponse>('/auth/forgot-password', {
+    return apiCall<ForgotPasswordResponse>(API_ENDPOINTS.AUTH.FORGOT_PASSWORD, {
       method: 'POST',
       body: JSON.stringify({ email }),
     });

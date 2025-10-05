@@ -51,40 +51,41 @@ export default function LoginScreen() {
 
       const response = await authApi.login(loginData);
       console.log("API Response:", JSON.stringify(response, null, 2));
+      console.log("Response statusCode:", response.statusCode);
+      console.log("Response data:", response.data);
+      console.log("Response user:", response.data?.user);
+      console.log("Response role:", response.data?.user?.role);
       
-      if (response.success) {
-        // Try different ways to get role from response
+      // Check if login was successful (statusCode 200)
+      if (response.statusCode === 200) {
+        // Get role from the correct path: response.data.user.role
         let role: Role = "customer"; // default role
         
-        if (response.data?.role) {
-          role = response.data.role as Role;
-        } else if (response.user?.role) {
-          role = response.user.role as Role;
-        } else if (response.role) {
-          role = response.role as Role;
+        if (response.data?.user?.role) {
+          role = response.data.user.role as Role;
         }
         
         console.log("Login successful, user role:", role);
         
-        const destMap: Record<
-          Role,
-          "/(protected)/customer" | "/(protected)/business" | "/(protected)/admin"
-        > = {
-          customer: "/(protected)/customer",
-          business: "/(protected)/business",
-          admin: "/(protected)/admin",
-        } as const;
-
-        const destination = destMap[role];
-        console.log("Redirecting to:", destination);
-        
+        // Sign in first
         await actions.signIn({ role });
-        console.log("Auth state after signIn:", { role, destination });
+        console.log("Auth state after signIn completed");
         
-        // Try both methods to ensure navigation works
-        setTimeout(() => {
+        // Navigate immediately
+        const destination = "/(protected)/customer";
+        console.log("Navigating to:", destination);
+        
+        try {
           router.replace(destination);
-        }, 100);
+          console.log("Navigation command sent");
+        } catch (navError) {
+          console.error("Navigation error:", navError);
+          // Fallback navigation
+          setTimeout(() => {
+            console.log("Fallback navigation attempt");
+            router.push(destination);
+          }, 1000);
+        }
       } else {
         Alert.alert("Error", response.message || "Login failed");
       }
