@@ -15,18 +15,30 @@ export default function SplashScreen() {
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
     const timer = setTimeout(() => {
-      if (state.bypassAuth && state.role) {
-        const dest = state.role === "customer" ? "/(protected)/customer" : state.role === "business" ? "/(protected)/business" : "/(protected)/admin";
-        router.replace(dest);
-      } else if (state.isAuthenticated && state.role) {
-        const dest = state.role === "customer" ? "/(protected)/customer" : state.role === "business" ? "/(protected)/business" : "/(protected)/admin";
-        router.replace(dest);
+      console.log("🚀 SplashScreen: Checking auth state:", {
+        isHydrated: state.isHydrated,
+        isAuthenticated: state.isAuthenticated,
+        role: state.role,
+        bypassAuth: state.bypassAuth
+      });
+      
+      // Only redirect after hydration is complete
+      if (state.isHydrated) {
+        if (state.isAuthenticated && state.role) {
+          const dest = state.role === "customer" ? "/(protected)/customer" : state.role === "business" ? "/(protected)/business" : "/(protected)/admin";
+          console.log("🚀 SplashScreen: User authenticated, redirecting to:", dest);
+          router.replace(dest);
+        } else {
+          // No authentication found, go to welcome screen
+          console.log("🚀 SplashScreen: No authentication, redirecting to welcome");
+          router.replace("/welcome");
+        }
       } else {
-        router.replace("/auth/login");
+        console.log("🚀 SplashScreen: Not hydrated yet, waiting...");
       }
     }, 1500);
     return () => clearTimeout(timer);
-  }, [fadeAnim, state.bypassAuth, state.isAuthenticated, state.role]);
+  }, [fadeAnim, state.isAuthenticated, state.role, state.isHydrated]);
 
   return (
     <ImageBackground source={bg} style={styles.background} resizeMode="cover">

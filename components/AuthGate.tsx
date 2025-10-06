@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthProvider";
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const { state } = useAuth();
   
-  console.log("AuthGate state:", {
+  console.log("🔐 AuthGate state:", {
     isHydrated: state.isHydrated,
     isAuthenticated: state.isAuthenticated,
     role: state.role,
@@ -13,6 +13,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   });
 
   if (!state.isHydrated) {
+    console.log("🔐 AuthGate: Not hydrated yet, showing loading");
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator />
@@ -20,12 +21,12 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (state.bypassAuth || state.isAuthenticated) {
-    console.log("AuthGate: Allowing access to protected content");
+  if (state.isAuthenticated) {
+    console.log("🔐 AuthGate: ✅ User is authenticated, allowing access to protected content");
     return children as any;
   }
   
-  console.log("AuthGate: Redirecting to login");
+  console.log("🔐 AuthGate: ❌ User not authenticated, redirecting to login");
   return <Redirect href="/auth/login" />;
 }
 

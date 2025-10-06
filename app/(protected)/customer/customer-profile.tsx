@@ -1,8 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../../../context/AuthProvider";
 
 export default function CustomerProfile() {
+  const { actions } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     name: "John Doe",
@@ -22,6 +25,37 @@ export default function CustomerProfile() {
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSignOut = () => {
+    Alert.alert(
+      "Đăng xuất",
+      "Bạn có chắc chắn muốn đăng xuất không?",
+      [
+        {
+          text: "Hủy",
+          style: "cancel",
+        },
+        {
+          text: "Đăng xuất",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              console.log("🚪 Signing out user...");
+              await actions.signOut();
+              console.log("🚪 User signed out, redirecting to welcome");
+              // Use setTimeout to ensure navigation happens after state update
+              setTimeout(() => {
+                router.replace("/welcome");
+              }, 100);
+            } catch (error) {
+              console.error("Error signing out:", error);
+              Alert.alert("Lỗi", "Có lỗi xảy ra khi đăng xuất. Vui lòng thử lại.");
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -217,9 +251,9 @@ export default function CustomerProfile() {
         </View>
 
         {/* Sign Out Button */}
-        <TouchableOpacity style={styles.signOutButton} onPress={() => Alert.alert("Sign Out", "Are you sure you want to sign out?")}>
+        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
           <Ionicons name="log-out" size={20} color="#ef4444" />
-          <Text style={styles.signOutText}>Sign Out</Text>
+          <Text style={styles.signOutText}>Đăng xuất</Text>
         </TouchableOpacity>
       </ScrollView>
       

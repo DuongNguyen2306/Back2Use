@@ -130,10 +130,17 @@ export default function LoginScreen() {
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.keyboardView}>
           <ScrollView contentContainerStyle={styles.scrollContent}>
             <View style={styles.topHeader}>
+              <TouchableOpacity 
+                style={styles.backButton} 
+                onPress={() => router.push("/welcome")}
+              >
+                <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
               <View style={styles.logoContainer}>
                 <Image source={require("../../assets/images/logo.jpg")} style={styles.logo} resizeMode="contain" />
                 <Text style={styles.brandText}>Back2Use</Text>
               </View>
+              <View style={styles.placeholder} />
             </View>
 
             <View style={styles.formCard}>
@@ -239,8 +246,20 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "transparent" },
   keyboardView: { flex: 1 },
   scrollContent: { flexGrow: 1, padding: 20 },
-  topHeader: { paddingTop: 8, paddingBottom: 12, alignItems: "flex-start" },
+  topHeader: { 
+    paddingTop: 8, 
+    paddingBottom: 12, 
+    flexDirection: "row", 
+    alignItems: "center", 
+    justifyContent: "space-between" 
+  },
+  backButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
   logoContainer: { flexDirection: "row", alignItems: "center" },
+  placeholder: { width: 40 },
   logo: { width: 120, height: 120, borderRadius: 20, marginRight: 0 },
   brandText: { fontSize: 30, fontWeight: "bold", color: "#FFFFFF", textShadowColor: "rgba(0,0,0,0.3)", textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3, includeFontPadding: false, marginLeft: -32, marginTop: 14},
   formCard: { backgroundColor: "rgba(255,255,255,0.7)", borderRadius: 20, padding: 24, borderWidth: 1, borderColor: "#E5E7EB", shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 6, marginTop: 8 },

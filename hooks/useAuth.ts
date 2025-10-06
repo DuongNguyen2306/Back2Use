@@ -32,14 +32,38 @@ export function useAuthCore() {
           AsyncStorage.getItem(STORAGE_KEYS.ROLE),
           AsyncStorage.getItem(STORAGE_KEYS.AUTH),
         ]);
+        
+        console.log("Loading auth state from storage:", {
+          bypassStr,
+          roleStr,
+          authStr
+        });
+        
+        // Clear all auth data for security (force fresh start)
+        await Promise.all([
+          AsyncStorage.removeItem(STORAGE_KEYS.BYPASS),
+          AsyncStorage.removeItem(STORAGE_KEYS.ROLE),
+          AsyncStorage.removeItem(STORAGE_KEYS.AUTH),
+        ]);
+        
+        console.log("Cleared all auth data from storage");
+        
         setState((prev) => ({
           ...prev,
-          bypassAuth: bypassStr === "true",
-          role: (roleStr as Role | null) || null,
-          isAuthenticated: authStr === "true",
+          bypassAuth: false,
+          role: null,
+          isAuthenticated: false,
           isHydrated: true,
         }));
-      } catch {
+        
+        console.log("Set fresh auth state:", {
+          bypassAuth: false,
+          role: null,
+          isAuthenticated: false,
+          isHydrated: true
+        });
+      } catch (error) {
+        console.error("Error loading auth state:", error);
         setState((prev) => ({ ...prev, isHydrated: true }));
       }
     })();
@@ -75,6 +99,7 @@ export function useAuthCore() {
     const next: Partial<AuthState> = {
       isAuthenticated: false,
       role: null,
+      bypassAuth: false,
     };
     setState((prev) => ({ ...prev, ...next }));
     await persist(next);

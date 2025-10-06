@@ -13,7 +13,15 @@ export default function ProtectedLayout() {
       <View style={{ flex: 1 }}>
         <View style={{ position: "absolute", top: insets.top + 8, right: 8, left: 8, zIndex: 10, flexDirection: "row", justifyContent: "space-between" }} pointerEvents="box-none">
           <Pressable
-            onPress={async () => { await actions.signOut(); await actions.disableBypass(); router.replace("/login"); }}
+            onPress={async () => { 
+              console.log("🚪 Signing out from header...");
+              await actions.signOut(); 
+              await actions.disableBypass(); 
+              // Use setTimeout to ensure navigation happens after state update
+              setTimeout(() => {
+                router.replace("/welcome");
+              }, 100);
+            }}
             style={{ padding: 6 }}
             hitSlop={8}
           >
