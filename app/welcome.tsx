@@ -399,7 +399,6 @@ const styles = StyleSheet.create({
   },
   searchSection: {
     padding: 20,
-    marginTop: -20,
     marginTop: -5,
   },
   searchContainer: {

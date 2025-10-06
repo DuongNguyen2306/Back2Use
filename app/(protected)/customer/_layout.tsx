@@ -8,11 +8,11 @@ export default function CustomerLayout() {
   const [activeTab, setActiveTab] = useState("dashboard");
   
   const navigationItems = [
-    { id: "dashboard", label: "Home", icon: "qr-code", route: "/(protected)/customer" },
-    { id: "wallet", label: "Wallet", icon: "wallet", route: "/(protected)/customer/customer-wallet" },
-    { id: "stores", label: "Stores", icon: "location", route: "/(protected)/customer/stores" },
-    { id: "rewards", label: "Rewards", icon: "gift", route: "/(protected)/customer/rewards" },
-    { id: "profile", label: "Profile", icon: "person", route: "/(protected)/customer/customer-profile" },
+    { id: "dashboard", label: "Trang chủ", icon: "home", route: "/(protected)/customer" },
+    { id: "wallet", label: "Ví", icon: "wallet", route: "/(protected)/customer/customer-wallet" },
+    { id: "stores", label: "Cửa hàng", icon: "storefront", route: "/(protected)/customer/stores" },
+    { id: "rewards", label: "Thưởng", icon: "gift", route: "/(protected)/customer/rewards" },
+    { id: "profile", label: "Hồ sơ", icon: "person", route: "/(protected)/customer/customer-profile" },
   ];
 
   // Function to get active tab based on pathname
@@ -64,13 +64,11 @@ export default function CustomerLayout() {
                 <Ionicons
                   name={item.icon as any}
                   size={20}
-                  color={isActive ? "#FFFFFF" : "#0F4D3A"}
+                  color={isActive ? "#FFFFFF" : "#6B7280"}
                 />
                 <Text style={[styles.navText, isActive && styles.activeNavText]}>
                   {item.label}
                 </Text>
-                {/* Active indicator */}
-                {isActive && <View style={styles.activeIndicator} />}
               </View>
             </TouchableOpacity>
           );
@@ -83,7 +81,7 @@ export default function CustomerLayout() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#F8FAFC",
   },
   content: {
     flex: 1,
@@ -92,46 +90,38 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     backgroundColor: "#fff",
     borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    borderTopColor: "#E5E7EB",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     justifyContent: "space-around",
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
   },
   navItem: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    borderRadius: 8,
-    marginHorizontal: 2,
-    position: "relative",
+    paddingVertical: 10,
   },
   activeNavItem: {
-    backgroundColor: "#0F4D3A",
+    backgroundColor: "#10B981",
+    borderRadius: 16,
+    marginHorizontal: 6,
   },
   navItemContent: {
     alignItems: "center",
-    position: "relative",
   },
   navText: {
     fontSize: 10,
     fontWeight: "600",
-    color: "#0F4D3A",
+    color: "#6B7280",
     marginTop: 4,
     textAlign: "center",
   },
   activeNavText: {
     color: "#FFFFFF",
-  },
-  activeIndicator: {
-    position: "absolute",
-    top: -2,
-    left: "50%",
-    marginLeft: -4,
-    width: 8,
-    height: 3,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 2,
   },
 });

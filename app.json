@@ -8,13 +8,17 @@
     "userInterfaceStyle": "automatic",
     "scheme": "com.back2use",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app needs access to camera to scan QR codes for package borrowing."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": ["CAMERA"]
     },
     "web": {
       "bundler": "metro",
@@ -23,7 +27,8 @@
     },
     "plugins": [
       "expo-router",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-barcode-scanner"
     ],
     "extra": {
       "apiBaseUrl": "http://192.168.0.197:8000",
