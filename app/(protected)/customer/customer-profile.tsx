@@ -1,15 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useEffect, useState, useRef } from "react";
+import { ActivityIndicator, Alert, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../../../context/AuthProvider";
+import { getUserById, User } from "../../../lib/user-service";
 
 export default function CustomerProfile() {
-  const { actions } = useAuth();
+  const { state, actions } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
   const [formData, setFormData] = useState({
-    name: "John Doe",
-    email: "john.doe@example.com",
+    name: "",
+    email: "",
     phone: "+1 (555) 123-4567",
     address: "123 Main St, City, State 12345",
     dateOfBirth: "1990-01-15",
@@ -18,10 +21,44 @@ export default function CustomerProfile() {
     smsAlerts: false,
   });
 
+
   const handleSave = () => {
     Alert.alert("Success", "Profile updated successfully!");
     setIsEditing(false);
   };
+
+  // Load user data on component mount
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        setLoading(true);
+        // For now, we'll use a mock user ID. In real app, get from auth state
+        const mockUserId = "68e25774cc3e083c6f072b1b"; // From API example
+        const mockToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI20GUyNTc3NGNjM2UwODNjNmYwNzJiMWIiLCJyb2xlIjoiY3VzdG9tZXIiLCJpYXQi0jE3NTk3NDMzMzYsImV4cCI6MTc1OTgyOTczNn0.TlT1igZdgBwuqngjJrcj57XRKŁA";
+        
+        const userData = await getUserById(mockUserId, mockToken);
+        setUser(userData);
+        setFormData(prev => ({
+          ...prev,
+          name: userData.name,
+          email: userData.email,
+        }));
+      } catch (error) {
+        console.error('Error loading user data:', error);
+        Alert.alert("Error", "Failed to load user data. Using mock data.");
+        // Fallback to mock data
+        setFormData(prev => ({
+          ...prev,
+          name: "John Doe",
+          email: "john.doe@example.com",
+        }));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadUserData();
+  }, []);
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -58,19 +95,30 @@ export default function CustomerProfile() {
     );
   };
 
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#10B981" />
+        <Text style={styles.loadingText}>Đang tải thông tin...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => {}}>
-          <Ionicons name="arrow-back" size={24} color="#0F4D3A" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Profile Settings</Text>
+        <Text style={styles.headerTitle}>Hồ sơ cá nhân</Text>
         <TouchableOpacity style={styles.editButton} onPress={() => isEditing ? handleSave() : setIsEditing(true)}>
-          <Text style={styles.editButtonText}>{isEditing ? "Save" : "Edit"}</Text>
+          <Text style={styles.editButtonText}>{isEditing ? "Lưu" : "Chỉnh sửa"}</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Profile Header */}
         <View style={styles.profileCard}>
           <View style={styles.profileHeader}>
@@ -266,15 +314,25 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f8fafc",
   },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6B7280',
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: "#fff",
+    paddingTop: 50,
+    backgroundColor: "#ffffff",
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    borderBottomColor: "#E5E7EB",
   },
   backButton: {
     padding: 8,

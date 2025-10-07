@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useState, useRef } from "react";
+import { Alert, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function CustomerRewards() {
   const [activeTab, setActiveTab] = useState<"available" | "history" | "achievements">("available");
+  
   
   const customerPoints = 1250;
   const customerLevel = "Gold";
@@ -156,17 +157,19 @@ export default function CustomerRewards() {
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => {}}>
-          <Ionicons name="arrow-back" size={24} color="#0F4D3A" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Rewards</Text>
-        <TouchableOpacity style={styles.notificationButton} onPress={() => Alert.alert("Notifications", "No new notifications")}>
+        <Text style={styles.headerTitle}>Thưởng</Text>
+        <TouchableOpacity style={styles.notificationButton} onPress={() => Alert.alert("Thông báo", "Không có thông báo mới")}>
           <Ionicons name="notifications" size={20} color="#0F4D3A" />
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Points Summary */}
         <View style={styles.pointsCard}>
           <View style={styles.pointsHeader}>
@@ -348,9 +351,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: "#fff",
+    paddingTop: 50,
+    backgroundColor: "#ffffff",
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    borderBottomColor: "#E5E7EB",
   },
   backButton: {
     padding: 8,

@@ -13,6 +13,7 @@ export const API_ENDPOINTS = {
   },
   USER: {
     PROFILE: '/user/profile',
+    GET_BY_ID: '/users', // GET /users/{id}
     UPDATE_PROFILE: '/user/profile',
     CHANGE_PASSWORD: '/user/change-password',
   },

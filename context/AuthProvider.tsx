@@ -7,6 +7,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = useAuthCore();
+  
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

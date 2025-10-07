@@ -104,7 +104,10 @@ export class GoogleAuthService {
                 text: 'OK',
                 onPress: () => {
                   // Navigate to login page to complete the process
-                  router.replace('/auth/login');
+                  // Delay navigation to ensure app is ready
+                  setTimeout(() => {
+                    router.replace('/auth/login');
+                  }, 100);
                 }
               }
             ]
@@ -142,7 +145,10 @@ export class GoogleAuthService {
               onPress: () => {
                 // Navigate to main app or dashboard
                 console.log('User logged in successfully, navigating to:', `/(protected)/${role}`);
-                router.replace(`/(protected)/${role}`);
+                // Delay navigation to ensure app is ready
+                setTimeout(() => {
+                  router.replace(`/(protected)/${role}`);
+                }, 100);
               }
             }
           ]

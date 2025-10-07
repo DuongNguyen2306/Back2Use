@@ -17,6 +17,8 @@ import {
 } from "react-native";
 import { useAuth } from "../../../context/AuthProvider";
 import { mockPackagingItems, mockStores, mockTransactions } from "../../../lib/mock-data";
+import { TokenInfo } from "../../../components/TokenInfo";
+import { useTokenRefresh } from "../../../hooks/useTokenRefresh";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -25,6 +27,10 @@ export default function CustomerDashboard() {
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const scanLock = useRef(false);
+  const lastScrollY = useRef(0);
+
+  // Enable automatic token refresh
+  useTokenRefresh();
 
   // Mock user data
   const user = {
@@ -40,23 +46,7 @@ export default function CustomerDashboard() {
   const userTransactions = mockTransactions.filter((t) => t.customerId === "1");
   const activeBorrows = userTransactions.filter((t) => t.type === "borrow" && t.status === "completed" && !t.returnedAt);
 
-  const handleLogout = () => {
-    Alert.alert(
-      "Đăng xuất",
-      "Bạn có chắc chắn muốn đăng xuất không?",
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Đăng xuất",
-          style: "destructive",
-          onPress: async () => {
-            await actions.signOut();
-            router.replace("/welcome");
-          },
-        },
-      ]
-    );
-  };
+
 
   const startScanning = async () => {
     try {
@@ -100,50 +90,54 @@ export default function CustomerDashboard() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-      {/* Hero Section */}
-      <View style={[styles.heroSection, { paddingTop: 50 }]}>
-        <ImageBackground
-          source={{ uri: "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/splash-bg.jpg-0cgAaCzoZKCdOb8naNxHzXRdZGseCS.jpeg" }}
-          style={styles.heroBackground}
-          resizeMode="cover"
-        >
-          <View style={styles.heroOverlay} />
-          <View style={styles.heroContent}>
-            <View style={styles.heroHeader}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      
+      {/* Debug Token Info - Remove in production */}
+      <TokenInfo />
+      
+      {/* Header giống các trang khác */}
+      <View style={styles.header}>
         <View style={styles.userInfo}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{user.name.charAt(0)}</Text>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{user.name.charAt(0)}</Text>
           </View>
-                <View style={styles.userDetails}>
-                  <Text style={styles.greeting}>Chào bạn,</Text>
-                  <Text style={styles.userName}>{user.name.split(" ")[0]} 👋</Text>
+          <View style={styles.userDetails}>
+            <Text style={styles.greeting}>Chào bạn,</Text>
+            <Text style={styles.userName}>{user.name.split(" ")[0]} 👋</Text>
           </View>
         </View>
-              <View style={styles.headerActions}>
-                <TouchableOpacity style={styles.notificationButton}>
-                  <Ionicons name="notifications" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-                <TouchableOpacity style={styles.menuButton} onPress={handleLogout}>
-                  <Ionicons name="log-out" size={24} color="#FFFFFF" />
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.notificationButton}>
+            <Ionicons name="notifications" size={20} color="#0F4D3A" />
           </TouchableOpacity>
         </View>
       </View>
 
-            <View style={styles.welcomeCard}>
-              <View style={styles.welcomeContent}>
-                <View style={styles.welcomeIcon}>
-                  <Ionicons name="sparkles" size={20} color="#FFFFFF" />
+      <ScrollView 
+        style={styles.scrollView} 
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Hero Section với ImageBackground bo viền - có thể scroll */}
+        <View style={styles.heroSection}>
+          <ImageBackground
+            source={{ uri: "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/splash-bg.jpg-0cgAaCzoZKCdOb8naNxHzXRdZGseCS.jpeg" }}
+            style={styles.heroBackground}
+            resizeMode="cover"
+          >
+            <View style={styles.heroOverlay} />
+            <View style={styles.heroContent}>
+              <View style={styles.welcomeCard}>
+                <View style={styles.welcomeContent}>
+                  <View style={styles.welcomeIcon}>
+                    <Ionicons name="sparkles" size={20} color="#FFFFFF" />
+                  </View>
+                  <Text style={styles.welcomeText}>Chúc bạn một ngày tuyệt vời!</Text>
+                  <Ionicons name="arrow-forward" size={16} color="rgba(255,255,255,0.7)" />
                 </View>
-                <Text style={styles.welcomeText}>Chúc bạn một ngày tuyệt vời!</Text>
-                <Ionicons name="arrow-forward" size={16} color="rgba(255,255,255,0.7)" />
               </View>
             </View>
-          </View>
-        </ImageBackground>
-      </View>
-
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          </ImageBackground>
+        </View>
         {/* Stats Cards */}
         <View style={styles.statsSection}>
           <View style={styles.statsRow}>
@@ -337,8 +331,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingTop: 50,
+    backgroundColor: "#ffffff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   heroSection: {
-    height: screenHeight * 0.45,
+    height: screenHeight * 0.35,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   heroBackground: {
     flex: 1,
@@ -351,34 +371,23 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 24,
     paddingTop: 20,
-    justifyContent: 'space-between',
-  },
-  heroHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 0,
+    justifyContent: 'center',
   },
   userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#10B981',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    marginRight: 12,
   },
   avatarText: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
@@ -386,30 +395,25 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   greeting: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.9)',
-    marginBottom: 4,
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 2,
   },
   userName: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#111827',
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
   },
   notificationButton: {
-    padding: 12,
-    marginRight: 8,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 12,
-  },
-  menuButton: {
-    padding: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 12,
-  },
+    padding: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    marginLeft: -35,  },
   welcomeCard: {
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 20,
@@ -441,7 +445,6 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-    marginTop: -30,
   },
   statsSection: {
     padding: 24,
