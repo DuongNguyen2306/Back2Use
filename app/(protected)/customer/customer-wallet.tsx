@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Alert, Dimensions, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 const { width } = Dimensions.get('window');
@@ -201,14 +201,19 @@ export default function CustomerWallet() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="light-content" backgroundColor="#8B5CF6" />
       
-      {/* Header without back button */}
+      {/* Header with gradient background */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Ví của tôi</Text>
-        <TouchableOpacity style={styles.notificationButton} onPress={() => Alert.alert("Thông báo", "Không có thông báo mới")}>
-          <Ionicons name="notifications" size={20} color="#0F4D3A" />
-        </TouchableOpacity>
+        <View style={styles.headerContent}>
+          <TouchableOpacity style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Ví của tôi</Text>
+          <TouchableOpacity style={styles.notificationButton} onPress={() => Alert.alert("Thông báo", "Không có thông báo mới")}>
+            <Ionicons name="notifications" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView 
@@ -522,30 +527,36 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
   },
   header: {
+    backgroundColor: "#8B5CF6",
+    paddingTop: 60,
+    paddingBottom: 20,
+  },
+  headerContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    paddingTop: 50,
-    backgroundColor: "#ffffff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#111827",
+    color: "#FFFFFF",
   },
   notificationButton: {
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: "#f3f4f6",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   scrollContent: {
     padding: 20,

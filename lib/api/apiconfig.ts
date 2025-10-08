@@ -111,6 +111,27 @@ export interface GoogleOAuthResponse {
   };
 }
 
+export interface BusinessRegisterRequest {
+  storeName: string;
+  storeMail: string;
+  storeAddress: string;
+  storePhone: string;
+  taxCode: string;
+  foodLicenseFile?: any;
+  businessLicenseFile?: any;
+}
+
+export interface BusinessRegisterResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    id: string;
+    storeName: string;
+    storeMail: string;
+    status: string;
+  };
+}
+
 export interface ApiError {
   success: false;
   message: string;
@@ -227,6 +248,45 @@ export const authApi = {
   googleRedirect: async (): Promise<GoogleOAuthResponse> => {
     return apiCall<GoogleOAuthResponse>('/auth/google-redirect', {
       method: 'GET',
+    });
+  },
+};
+
+// Business API functions
+export const businessApi = {
+  // Register a new business
+  register: async (businessData: BusinessRegisterRequest): Promise<BusinessRegisterResponse> => {
+    // Create FormData for file upload
+    const formData = new FormData();
+    
+    // Add text fields
+    formData.append('storeName', businessData.storeName);
+    formData.append('storeMail', businessData.storeMail);
+    formData.append('storeAddress', businessData.storeAddress);
+    formData.append('storePhone', businessData.storePhone);
+    formData.append('taxCode', businessData.taxCode);
+    
+    // Add files if they exist
+    if (businessData.foodLicenseFile) {
+      formData.append('foodLicenseFile', {
+        uri: businessData.foodLicenseFile.uri,
+        type: businessData.foodLicenseFile.type || 'image/jpeg',
+        name: businessData.foodLicenseFile.name || 'food_license.jpg',
+      } as any);
+    }
+    
+    if (businessData.businessLicenseFile) {
+      formData.append('businessLicenseFile', {
+        uri: businessData.businessLicenseFile.uri,
+        type: businessData.businessLicenseFile.type || 'image/jpeg',
+        name: businessData.businessLicenseFile.name || 'business_license.jpg',
+      } as any);
+    }
+
+    return apiCall<BusinessRegisterResponse>('/businesses/form', {
+      method: 'POST',
+      body: formData,
+      // Don't set Content-Type header for FormData, let the browser set it
     });
   },
 };

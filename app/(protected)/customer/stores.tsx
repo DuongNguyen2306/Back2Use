@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRef, useState } from "react";
-import { Alert, Animated, Dimensions, ImageBackground, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, Animated, Dimensions, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { mockStores } from "../../../lib/mock-data";
 
 const { width } = Dimensions.get('window');
@@ -79,26 +79,23 @@ export default function CustomerStores() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="light-content" backgroundColor="#8B5CF6" />
       
-      {/* Header với gradient background */}
-      <ImageBackground
-        source={{ uri: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80' }}
-        style={styles.headerBackground}
-        imageStyle={styles.headerImageStyle}
-      >
-        <View style={styles.headerOverlay}>
-          <View style={styles.header}>
-            <View style={styles.headerContent}>
-              <Text style={styles.headerTitle}>Cửa hàng đối tác</Text>
-              <Text style={styles.headerSubtitle}>Tìm cửa hàng gần bạn</Text>
-            </View>
-            <TouchableOpacity style={styles.filterButton} onPress={() => Alert.alert("Bộ lọc", "Tùy chọn bộ lọc")}>
-              <Ionicons name="options-outline" size={22} color="#fff" />
-            </TouchableOpacity>
+      {/* Header with gradient background */}
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <TouchableOpacity style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.headerTitle}>Cửa hàng đối tác</Text>
+            <Text style={styles.headerSubtitle}>Tìm cửa hàng gần bạn</Text>
           </View>
+          <TouchableOpacity style={styles.filterButton} onPress={() => Alert.alert("Bộ lọc", "Tùy chọn bộ lọc")}>
+            <Ionicons name="options-outline" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
         </View>
-      </ImageBackground>
+      </View>
 
       {/* Search với design đẹp hơn */}
       <View style={styles.searchSection}>
@@ -415,52 +412,46 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f8fafc",
   },
-  headerBackground: {
-    paddingTop: 50,
-  },
-  headerImageStyle: {
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  headerOverlay: {
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 16,
+    backgroundColor: "#8B5CF6",
+    paddingTop: 60,
     paddingBottom: 20,
   },
   headerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 16,
+  },
+  headerTextContainer: {
     flex: 1,
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "800",
-    color: "#ffffff",
+    color: "#FFFFFF",
     marginBottom: 4,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
   headerSubtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontWeight: '500',
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.9)",
+    fontWeight: "500",
   },
   filterButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   searchSection: {
     backgroundColor: "#fff",

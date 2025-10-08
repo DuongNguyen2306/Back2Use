@@ -228,6 +228,13 @@ export default function LoginScreen() {
                 <Text style={styles.footerLink}>Create Account</Text>
               </TouchableOpacity>
             </View>
+            
+            <View style={styles.businessFooter}>
+              <Text style={styles.businessFooterText}>Are you a business owner? </Text>
+              <TouchableOpacity onPress={() => router.push("/auth/business-register")}>
+                <Text style={styles.businessFooterLink}>Register Business</Text>
+              </TouchableOpacity>
+            </View>
 
             <TouchableOpacity onPress={enterAsGuest} style={{ alignSelf: "center", marginTop: 12 }}>
               <Text style={{ color: "#0F4D3A", fontSize: 12, fontWeight: "600" }}>Enter as guest</Text>
@@ -320,4 +327,7 @@ const styles = StyleSheet.create({
   footer: { flexDirection: "row", justifyContent: "center", alignItems: "center" },
   footerText: { fontSize: 14, color: "#6B7280" },
   footerLink: { fontSize: 14, color: "#0F4D3A", fontWeight: "600" },
+  businessFooter: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: 12 },
+  businessFooterText: { fontSize: 14, color: "#6B7280" },
+  businessFooterLink: { fontSize: 14, color: "#0F4D3A", fontWeight: "600" },
 });

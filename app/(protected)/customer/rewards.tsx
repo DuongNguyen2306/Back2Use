@@ -1,341 +1,362 @@
-import { Ionicons } from "@expo/vector-icons";
-import { useState, useRef } from "react";
-import { Alert, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Card, CardContent } from '@/components/ui/Card';
+import { Progress } from '@/components/ui/Progress';
+import { Ionicons } from '@expo/vector-icons';
+import React, { useState } from 'react';
+import {
+  Dimensions,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
-export default function CustomerRewards() {
-  const [activeTab, setActiveTab] = useState<"available" | "history" | "achievements">("available");
-  
-  
-  const customerPoints = 1250;
-  const customerLevel = "Gold";
-  const userRank = 8;
+const { width: screenWidth } = Dimensions.get('window');
 
-  const availableRewards = [
-    {
-      id: "1",
-      title: "$5 Store Credit",
-      description: "Use at any partner store",
-      points: 500,
-      discount: "20%",
-      icon: "gift",
-      canRedeem: true,
-    },
-    {
-      id: "2",
-      title: "Free Coffee",
-      description: "At participating cafes",
-      points: 300,
-      discount: "50%",
-      icon: "cafe",
-      canRedeem: true,
-    },
-    {
-      id: "3",
-      title: "10% Discount",
-      description: "Next purchase discount",
-      points: 800,
-      discount: "10%",
-      icon: "pricetag",
-      canRedeem: true,
-    },
-    {
-      id: "4",
-      title: "Premium Item Free",
-      description: "Get one premium eco-friendly product completely free",
-      points: 1200,
-      discount: "100%",
-      icon: "diamond",
-      canRedeem: false,
-    },
-  ];
+// Mock data
+const mockVouchers = [
+  {
+    id: 'v1',
+    name: 'Giảm 20% Cà phê',
+    description: 'Giảm 20% cho đơn hàng cà phê tại các cửa hàng tham gia',
+    discountPercent: 20,
+    requiredPoints: 100,
+    category: 'beverage',
+    icon: 'cafe',
+    isAvailable: true,
+  },
+  {
+    id: 'v2',
+    name: 'Giảm 50% Đồ ăn',
+    description: 'Giảm 50% cho đồ ăn tại các nhà hàng đối tác',
+    discountPercent: 50,
+    requiredPoints: 200,
+    category: 'food',
+    icon: 'restaurant',
+    isAvailable: true,
+  },
+  {
+    id: 'v3',
+    name: 'Miễn phí vận chuyển',
+    description: 'Miễn phí vận chuyển cho đơn hàng tiếp theo',
+    discountPercent: 100,
+    requiredPoints: 150,
+    category: 'general',
+    icon: 'car',
+    isAvailable: false,
+  },
+];
 
-  const rankedRewards = [
-    {
-      id: "rank1",
-      title: "Top 1-5 Ranked Voucher",
-      description: "Exclusive 20% discount for top 5 eco champions",
-      discount: "20%",
-      rank: "1-5",
-      canRedeem: userRank >= 1 && userRank <= 5,
-    },
-    {
-      id: "rank2",
-      title: "Top 6-10 Ranked Voucher",
-      description: "Special 15% discount for top 10 eco champions",
-      discount: "15%",
-      rank: "6-10",
-      canRedeem: userRank >= 6 && userRank <= 10,
-    },
-  ];
+const mockMyVouchers = [
+  {
+    id: 'cv1',
+    voucherId: 'v1',
+    code: 'CAFE20-ABC123',
+    status: 'available',
+    redeemedAt: new Date('2024-01-20'),
+    expiresAt: new Date('2024-12-31'),
+    voucher: mockVouchers[0],
+  },
+  {
+    id: 'cv2',
+    voucherId: 'v2',
+    code: 'FOOD50-XYZ789',
+    status: 'used',
+    redeemedAt: new Date('2024-01-15'),
+    usedAt: new Date('2024-01-18'),
+    expiresAt: new Date('2024-12-31'),
+    voucher: mockVouchers[1],
+  },
+];
 
-  const rewardHistory = [
-    {
-      id: "h1",
-      title: "$5 Store Credit",
-      redeemedAt: "2024-01-15",
-      status: "used",
-      points: 500,
-    },
-    {
-      id: "h2",
-      title: "Free Coffee",
-      redeemedAt: "2024-01-10",
-      status: "expired",
-      points: 300,
-    },
-    {
-      id: "h3",
-      title: "10% Discount",
-      redeemedAt: "2024-01-05",
-      status: "available",
-      points: 800,
-    },
-  ];
+const mockHistory = [
+  {
+    id: 'h1',
+    points: 50,
+    description: 'Trả cốc cà phê đúng hạn',
+    date: '2024-01-20',
+    type: 'earn',
+  },
+  {
+    id: 'h2',
+    points: -100,
+    description: 'Đổi voucher giảm 20% cà phê',
+    date: '2024-01-20',
+    type: 'redeem',
+  },
+  {
+    id: 'h3',
+    points: 30,
+    description: 'Trả hộp đựng thức ăn đúng hạn',
+    date: '2024-01-18',
+    type: 'earn',
+  },
+];
 
-  const achievements = [
-    {
-      id: "a1",
-      title: "Eco Warrior",
-      description: "Returned 50+ containers",
-      icon: "leaf",
-      completed: true,
-      progress: 50,
-      total: 50,
-    },
-    {
-      id: "a2",
-      title: "Loyal Customer",
-      description: "Used service for 6 months",
-      icon: "heart",
-      completed: true,
-      progress: 6,
-      total: 6,
-    },
-    {
-      id: "a3",
-      title: "Perfect Return",
-      description: "100% return rate this month",
-      icon: "trophy",
-      completed: false,
-      progress: 8,
-      total: 10,
-    },
-    {
-      id: "a4",
-      title: "Early Bird",
-      description: "Return items on time 10 times",
-      icon: "time",
-      completed: false,
-      progress: 7,
-      total: 10,
-    },
-  ];
+export default function RewardsScreen() {
+  const [activeTab, setActiveTab] = useState('vouchers');
+  const [userPoints, setUserPoints] = useState(1250);
+  const [userRank, setUserRank] = useState(8);
+  const [myVouchers, setMyVouchers] = useState(mockMyVouchers);
 
-  const handleRedeemReward = (reward: any) => {
-    Alert.alert(
-      "Redeem Reward",
-      `Redeem "${reward.title}" for ${reward.points} points?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Redeem", onPress: () => Alert.alert("Success", "Reward redeemed successfully!") },
-      ]
-    );
+  const handleRedeemVoucher = (voucher: any) => {
+    if (userPoints >= voucher.requiredPoints) {
+      const newVoucher = {
+        id: `cv${Date.now()}`,
+        voucherId: voucher.id,
+        code: `${voucher.name.replace(/\s+/g, '').toUpperCase()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+        status: 'available',
+        redeemedAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        voucher: voucher,
+      };
+      
+      setMyVouchers(prev => [...prev, newVoucher]);
+      setUserPoints(prev => prev - voucher.requiredPoints);
+    }
+  };
+
+  const getVoucherIcon = (category: string) => {
+    switch (category) {
+      case 'beverage': return 'cafe';
+      case 'food': return 'restaurant';
+      case 'general': return 'gift';
+      default: return 'gift';
+    }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "used":
-        return "#16a34a";
-      case "expired":
-        return "#ef4444";
-      case "available":
-        return "#0F4D3A";
-      default:
-        return "#6b7280";
+      case 'available': return '#10B981';
+      case 'used': return '#6B7280';
+      case 'expired': return '#EF4444';
+      default: return '#6B7280';
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'available': return 'Có thể sử dụng';
+      case 'used': return 'Đã sử dụng';
+      case 'expired': return 'Hết hạn';
+      default: return 'Không xác định';
     }
   };
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="light-content" backgroundColor="#8B5CF6" />
       
+      {/* Header with gradient background */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Thưởng</Text>
-        <TouchableOpacity style={styles.notificationButton} onPress={() => Alert.alert("Thông báo", "Không có thông báo mới")}>
-          <Ionicons name="notifications" size={20} color="#0F4D3A" />
+        <View style={styles.headerContent}>
+          <TouchableOpacity style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.headerTitle}>Phần thưởng</Text>
+            <Text style={styles.headerSubtitle}>Đổi điểm lấy ưu đãi</Text>
+          </View>
+          <TouchableOpacity style={styles.menuButton}>
+            <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Points Card */}
+      <Card style={styles.pointsCard}>
+        <CardContent style={styles.pointsContent}>
+          <View style={styles.pointsHeader}>
+            <View style={styles.pointsIcon}>
+              <Ionicons name="trophy" size={24} color="#F59E0B" />
+            </View>
+            <View style={styles.pointsInfo}>
+              <Text style={styles.pointsLabel}>Điểm của bạn</Text>
+              <Text style={styles.pointsValue}>{userPoints}</Text>
+            </View>
+          </View>
+          <Progress value={(userPoints / 2000) * 100} style={styles.progressBar} />
+          <Text style={styles.progressText}>
+            Còn {2000 - userPoints} điểm để đạt cấp độ tiếp theo
+          </Text>
+        </CardContent>
+      </Card>
+
+      {/* Tab Navigation */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'vouchers' && styles.activeTab]}
+          onPress={() => setActiveTab('vouchers')}
+        >
+          <Text style={[styles.tabText, activeTab === 'vouchers' && styles.activeTabText]}>
+            Voucher
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'myVouchers' && styles.activeTab]}
+          onPress={() => setActiveTab('myVouchers')}
+        >
+          <Text style={[styles.tabText, activeTab === 'myVouchers' && styles.activeTabText]}>
+            Voucher của tôi
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'history' && styles.activeTab]}
+          onPress={() => setActiveTab('history')}
+        >
+          <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>
+            Lịch sử
+          </Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Points Summary */}
-        <View style={styles.pointsCard}>
-          <View style={styles.pointsHeader}>
-            <View>
-              <Text style={styles.pointsValue}>{customerPoints}</Text>
-              <Text style={styles.pointsLabel}>Available Points</Text>
-            </View>
-            <View style={styles.levelBadge}>
-              <Text style={styles.levelText}>{customerLevel}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Ranked Rewards */}
-        {rankedRewards.some(reward => reward.canRedeem) && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Ranked Rewards</Text>
-            <View style={styles.rankedInfo}>
-              <Ionicons name="trophy" size={16} color="#7c3aed" />
-              <Text style={styles.rankedText}>
-                Your current rank: {userRank === 1 ? "1st" : userRank === 2 ? "2nd" : userRank === 3 ? "3rd" : `${userRank}th`} place
-              </Text>
-            </View>
-            {rankedRewards
-              .filter(reward => reward.canRedeem)
-              .map((reward) => (
-                <View key={reward.id} style={styles.rankedRewardCard}>
-                  <View style={styles.rankedRewardInfo}>
-                    <Ionicons name="trophy" size={20} color="#7c3aed" />
-                    <View style={styles.rankedRewardDetails}>
-                      <Text style={styles.rankedRewardTitle}>{reward.title}</Text>
-                      <Text style={styles.rankedRewardDescription}>{reward.description}</Text>
-                      <Text style={styles.rankedRewardDiscount}>{reward.discount} OFF</Text>
+      {/* Content */}
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {activeTab === 'vouchers' && (
+          <View style={styles.tabContent}>
+            <Text style={styles.sectionTitle}>Voucher có sẵn</Text>
+            {mockVouchers.map((voucher) => (
+              <Card key={voucher.id} style={styles.voucherCard}>
+                <CardContent style={styles.voucherContent}>
+                  <View style={styles.voucherHeader}>
+                    <View style={styles.voucherIconContainer}>
+                      <Ionicons 
+                        name={getVoucherIcon(voucher.category)} 
+                        size={24} 
+                        color="#F59E0B" 
+                      />
+                    </View>
+                    <View style={styles.voucherInfo}>
+                      <Text style={styles.voucherName}>{voucher.name}</Text>
+                      <Text style={styles.voucherDescription}>{voucher.description}</Text>
+                    </View>
+                    <View style={styles.voucherDiscount}>
+                      <Text style={styles.discountText}>{voucher.discountPercent}%</Text>
+                      <Text style={styles.offText}>OFF</Text>
                     </View>
                   </View>
-                  <TouchableOpacity style={styles.rankedRedeemButton} onPress={() => handleRedeemReward(reward)}>
-                    <Text style={styles.rankedRedeemText}>Redeem</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-          </View>
-        )}
-
-        {/* Tabs */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === "available" && styles.activeTab]}
-            onPress={() => setActiveTab("available")}
-          >
-            <Text style={[styles.tabText, activeTab === "available" && styles.activeTabText]}>
-              Available ({availableRewards.filter(r => r.canRedeem).length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === "history" && styles.activeTab]}
-            onPress={() => setActiveTab("history")}
-          >
-            <Text style={[styles.tabText, activeTab === "history" && styles.activeTabText]}>
-              History ({rewardHistory.length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === "achievements" && styles.activeTab]}
-            onPress={() => setActiveTab("achievements")}
-          >
-            <Text style={[styles.tabText, activeTab === "achievements" && styles.activeTabText]}>
-              Achievements
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Available Rewards */}
-        {activeTab === "available" && (
-          <View style={styles.section}>
-            {availableRewards.map((reward) => (
-              <View key={reward.id} style={styles.rewardCard}>
-                <View style={styles.rewardInfo}>
-                  <View style={styles.rewardIcon}>
-                    <Ionicons name={reward.icon as any} size={20} color="#0F4D3A" />
-                  </View>
-                  <View style={styles.rewardDetails}>
-                    <Text style={styles.rewardTitle}>{reward.title}</Text>
-                    <Text style={styles.rewardDescription}>{reward.description}</Text>
-                    <View style={styles.rewardMeta}>
-                      <Text style={styles.rewardPoints}>{reward.points} points</Text>
-                      <Text style={styles.rewardDiscount}>{reward.discount} OFF</Text>
+                  
+                  <View style={styles.voucherFooter}>
+                    <View style={styles.pointsContainer}>
+                      <Ionicons name="star" size={16} color="#F59E0B" />
+                      <Text style={styles.pointsText}>{voucher.requiredPoints} điểm</Text>
                     </View>
+                    <Button
+                      variant={userPoints >= voucher.requiredPoints ? "eco" : "secondary"}
+                      disabled={userPoints < voucher.requiredPoints}
+                      onPress={() => handleRedeemVoucher(voucher)}
+                      style={styles.redeemButton}
+                    >
+                      <Text style={[
+                        styles.redeemButtonText,
+                        userPoints < voucher.requiredPoints && styles.disabledText
+                      ]}>
+                        {userPoints >= voucher.requiredPoints ? 'Đổi ngay' : 'Không đủ điểm'}
+                      </Text>
+                    </Button>
                   </View>
-                </View>
-                <TouchableOpacity
-                  style={[styles.redeemButton, !reward.canRedeem && styles.disabledButton]}
-                  onPress={() => handleRedeemReward(reward)}
-                  disabled={!reward.canRedeem}
-                >
-                  <Text style={[styles.redeemText, !reward.canRedeem && styles.disabledText]}>
-                    {reward.canRedeem ? "Redeem" : "Need More Points"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                </CardContent>
+              </Card>
             ))}
           </View>
         )}
-
-        {/* Reward History */}
-        {activeTab === "history" && (
-          <View style={styles.section}>
-            {rewardHistory.map((reward) => (
-              <View key={reward.id} style={styles.historyCard}>
-                <View style={styles.historyInfo}>
-                  <Ionicons name="gift" size={20} color="#6b7280" />
-                  <View style={styles.historyDetails}>
-                    <Text style={styles.historyTitle}>{reward.title}</Text>
-                    <Text style={styles.historyDate}>Redeemed: {reward.redeemedAt}</Text>
-                    <Text style={styles.historyPoints}>{reward.points} points</Text>
-                  </View>
-                </View>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(reward.status) + "20" }]}>
-                  <Text style={[styles.statusText, { color: getStatusColor(reward.status) }]}>
-                    {reward.status}
-                  </Text>
-                </View>
+        
+        {activeTab === 'myVouchers' && (
+          <View style={styles.tabContent}>
+            <Text style={styles.sectionTitle}>Voucher của tôi</Text>
+            {myVouchers.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="gift-outline" size={64} color="#D1D5DB" />
+                <Text style={styles.emptyTitle}>Chưa có voucher nào</Text>
+                <Text style={styles.emptyDescription}>Đổi điểm để nhận voucher ưu đãi</Text>
               </View>
-            ))}
-          </View>
-        )}
-
-        {/* Achievements */}
-        {activeTab === "achievements" && (
-          <View style={styles.section}>
-            {achievements.map((achievement) => (
-              <View key={achievement.id} style={styles.achievementCard}>
-                <View style={styles.achievementInfo}>
-                  <Ionicons
-                    name={achievement.icon as any}
-                    size={24}
-                    color={achievement.completed ? "#16a34a" : "#6b7280"}
-                  />
-                  <View style={styles.achievementDetails}>
-                    <Text style={[styles.achievementTitle, achievement.completed && styles.completedTitle]}>
-                      {achievement.title}
-                    </Text>
-                    <Text style={styles.achievementDescription}>{achievement.description}</Text>
-                    <View style={styles.progressContainer}>
-                      <View style={styles.progressBar}>
-                        <View
-                          style={[
-                            styles.progressFill,
-                            { width: `${(achievement.progress / achievement.total) * 100}%` },
-                          ]}
+            ) : (
+              myVouchers.map((voucher) => (
+                <Card key={voucher.id} style={styles.myVoucherCard}>
+                  <CardContent style={styles.myVoucherContent}>
+                    <View style={styles.myVoucherHeader}>
+                      <View style={styles.myVoucherIconContainer}>
+                        <Ionicons 
+                          name={getVoucherIcon(voucher.voucher.category)} 
+                          size={20} 
+                          color="#F59E0B" 
                         />
                       </View>
-                      <Text style={styles.progressText}>
-                        {achievement.progress}/{achievement.total}
+                      <View style={styles.myVoucherInfo}>
+                        <Text style={styles.myVoucherName}>{voucher.voucher.name}</Text>
+                        <Text style={styles.myVoucherDescription}>{voucher.voucher.description}</Text>
+                      </View>
+                      <Badge 
+                        style={[
+                          styles.statusBadge, 
+                          { backgroundColor: getStatusColor(voucher.status) + '20' }
+                        ]}
+                      >
+                        <Text style={[styles.statusText, { color: getStatusColor(voucher.status) }]}>
+                          {getStatusText(voucher.status)}
+                        </Text>
+                      </Badge>
+                    </View>
+                    
+                    <View style={styles.voucherCodeContainer}>
+                      <Text style={styles.codeLabel}>Mã voucher:</Text>
+                      <View style={styles.codeBox}>
+                        <Text style={styles.codeText}>{voucher.code}</Text>
+                      </View>
+                    </View>
+                    
+                    <View style={styles.voucherDates}>
+                      <Text style={styles.dateText}>
+                        Đổi: {voucher.redeemedAt.toLocaleDateString('vi-VN')}
+                      </Text>
+                      <Text style={styles.dateText}>
+                        Hết hạn: {voucher.expiresAt.toLocaleDateString('vi-VN')}
                       </Text>
                     </View>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </View>
+        )}
+        
+        {activeTab === 'history' && (
+          <View style={styles.tabContent}>
+            <Text style={styles.sectionTitle}>Lịch sử điểm</Text>
+            {mockHistory.map((item) => (
+              <Card key={item.id} style={styles.historyCard}>
+                <CardContent style={styles.historyContent}>
+                  <View style={styles.historyHeader}>
+                    <View style={styles.historyIconContainer}>
+                      <Ionicons 
+                        name={item.type === 'earn' ? 'add-circle' : 'remove-circle'} 
+                        size={20} 
+                        color={item.type === 'earn' ? '#10B981' : '#EF4444'} 
+                      />
+                    </View>
+                    <View style={styles.historyInfo}>
+                      <Text style={styles.historyDescription}>{item.description}</Text>
+                      <Text style={styles.historyDate}>{item.date}</Text>
+                    </View>
+                    <View style={styles.pointsChangeContainer}>
+                      <Text style={[
+                        styles.pointsChange,
+                        { color: item.type === 'earn' ? '#10B981' : '#EF4444' }
+                      ]}>
+                        {item.points > 0 ? '+' : ''}{item.points}
+                      </Text>
+                      <Text style={styles.pointsLabelText}>điểm</Text>
+                    </View>
                   </View>
-                </View>
-                {achievement.completed && (
-                  <Ionicons name="checkmark-circle" size={24} color="#16a34a" />
-                )}
-              </View>
+                </CardContent>
+              </Card>
             ))}
           </View>
         )}
       </ScrollView>
-      
     </View>
   );
 }
@@ -343,272 +364,266 @@ export default function CustomerRewards() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
+    backgroundColor: '#F8FAFC',
   },
   header: {
+    backgroundColor: "#8B5CF6",
+    paddingTop: 60,
+    paddingBottom: 20,
+  },
+  headerContent: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    paddingTop: 50,
-    backgroundColor: "#ffffff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    paddingHorizontal: 20,
   },
   backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  notificationButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: "#F9FAFB",
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  pointsCard: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-  pointsHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  pointsValue: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: "#0F4D3A",
-    marginBottom: 4,
-  },
-  pointsLabel: {
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  levelBadge: {
-    backgroundColor: "#0F4D3A",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  levelText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  section: {
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 12,
-  },
-  rankedInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f3e8ff",
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-    gap: 8,
-  },
-  rankedText: {
-    fontSize: 14,
-    color: "#7c3aed",
-    fontWeight: "600",
-  },
-  rankedRewardCard: {
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 8,
-    borderWidth: 2,
-    borderColor: "#7c3aed",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  rankedRewardInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  rankedRewardDetails: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  rankedRewardTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 2,
-  },
-  rankedRewardDescription: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginBottom: 4,
-  },
-  rankedRewardDiscount: {
-    fontSize: 12,
-    color: "#7c3aed",
-    fontWeight: "600",
-  },
-  rankedRedeemButton: {
-    backgroundColor: "#7c3aed",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  rankedRedeemText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  tabContainer: {
-    flexDirection: "row",
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    padding: 4,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    alignItems: "center",
-  },
-  activeTab: {
-    backgroundColor: "#0F4D3A",
-  },
-  tabText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#6b7280",
-  },
-  activeTabText: {
-    color: "#fff",
-  },
-  rewardCard: {
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  rewardInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  rewardIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
+    marginRight: 16,
   },
-  rewardDetails: {
+  headerTextContainer: {
     flex: 1,
   },
-  rewardTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 2,
-  },
-  rewardDescription: {
-    fontSize: 12,
-    color: "#6b7280",
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#FFFFFF",
     marginBottom: 4,
   },
-  rewardMeta: {
-    flexDirection: "row",
-    gap: 8,
+  headerSubtitle: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.9)",
+    fontWeight: "500",
   },
-  rewardPoints: {
-    fontSize: 12,
-    color: "#0F4D3A",
-    fontWeight: "600",
+  menuButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  rewardDiscount: {
+  pointsCard: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+    backgroundColor: '#FEF3C7',
+    borderWidth: 0,
+    elevation: 4,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  pointsContent: {
+    padding: 20,
+  },
+  pointsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  pointsIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  pointsInfo: {
+    flex: 1,
+  },
+  pointsLabel: {
+    fontSize: 14,
+    color: '#92400E',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  pointsValue: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#92400E',
+  },
+  progressBar: {
+    marginBottom: 8,
+  },
+  progressText: {
     fontSize: 12,
-    color: "#16a34a",
-    fontWeight: "600",
+    color: '#92400E',
+    textAlign: 'center',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 20,
+    marginBottom: 20,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 4,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  activeTab: {
+    backgroundColor: '#FFFFFF',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  activeTabText: {
+    color: '#1F2937',
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  tabContent: {
+    paddingBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 16,
+  },
+  // Voucher styles
+  voucherCard: {
+    marginBottom: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 0,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  voucherContent: {
+    padding: 16,
+  },
+  voucherHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  voucherIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  voucherInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  voucherName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  voucherDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+  },
+  voucherDiscount: {
+    alignItems: 'center',
+  },
+  discountText: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#F59E0B',
+  },
+  offText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#F59E0B',
+  },
+  voucherFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  pointsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pointsText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#F59E0B',
+    marginLeft: 4,
   },
   redeemButton: {
-    backgroundColor: "#0F4D3A",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
   },
-  disabledButton: {
-    backgroundColor: "#d1d5db",
-  },
-  redeemText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
+  redeemButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   disabledText: {
-    color: "#6b7280",
+    color: '#9CA3AF',
   },
-  historyCard: {
-    backgroundColor: "#fff",
-    borderRadius: 8,
+  // My Vouchers styles
+  myVoucherCard: {
+    marginBottom: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 0,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  myVoucherContent: {
     padding: 16,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
   },
-  historyInfo: {
-    flexDirection: "row",
-    alignItems: "center",
+  myVoucherHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  myVoucherIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  myVoucherInfo: {
     flex: 1,
+    marginRight: 12,
   },
-  historyDetails: {
-    marginLeft: 12,
-    flex: 1,
+  myVoucherName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 4,
   },
-  historyTitle: {
+  myVoucherDescription: {
     fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 2,
-  },
-  historyDate: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginBottom: 2,
-  },
-  historyPoints: {
-    fontSize: 12,
-    color: "#0F4D3A",
-    fontWeight: "600",
+    color: '#6B7280',
+    lineHeight: 20,
   },
   statusBadge: {
     paddingHorizontal: 8,
@@ -617,62 +632,105 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: '600',
   },
-  achievementCard: {
-    backgroundColor: "#fff",
+  voucherCodeContainer: {
+    marginBottom: 12,
+  },
+  codeLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  codeBox: {
+    backgroundColor: '#F3F4F6',
+    padding: 12,
     borderRadius: 8,
-    padding: 16,
-    marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
   },
-  achievementInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
+  codeText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+    fontFamily: 'monospace',
+    textAlign: 'center',
   },
-  achievementDetails: {
-    marginLeft: 12,
-    flex: 1,
+  voucherDates: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
-  achievementTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 2,
-  },
-  completedTitle: {
-    color: "#16a34a",
-  },
-  achievementDescription: {
+  dateText: {
     fontSize: 12,
-    color: "#6b7280",
+    color: '#6B7280',
+  },
+  // History styles
+  historyCard: {
+    marginBottom: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 0,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+  historyContent: {
+    padding: 16,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  historyIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  historyInfo: {
+    flex: 1,
+  },
+  historyDescription: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  historyDate: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  pointsChangeContainer: {
+    alignItems: 'flex-end',
+  },
+  pointsChange: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  pointsLabelText: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  // Empty state styles
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 48,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginTop: 16,
     marginBottom: 8,
   },
-  progressContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  progressBar: {
-    flex: 1,
-    height: 4,
-    backgroundColor: "#e5e7eb",
-    borderRadius: 2,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#0F4D3A",
-    borderRadius: 2,
-  },
-  progressText: {
-    fontSize: 12,
-    color: "#6b7280",
-    fontWeight: "600",
+  emptyDescription: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
   },
 });
