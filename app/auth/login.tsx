@@ -80,9 +80,13 @@ export default function LoginScreen() {
         });
         console.log("Auth state with real tokens completed");
         
-        // Navigate immediately
-        const destination = "/(protected)/customer";
-        console.log("Navigating to:", destination);
+        // Navigate based on role
+        const destination = response.data.role === "customer" 
+          ? "/(protected)/customer" 
+          : response.data.role === "business" 
+          ? "/(protected)/business" 
+          : "/(protected)/admin";
+        console.log("Navigating to:", destination, "for role:", response.data.role);
         
         try {
           router.replace(destination);
