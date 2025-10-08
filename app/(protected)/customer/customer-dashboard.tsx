@@ -1,24 +1,24 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Camera, CameraView } from "expo-camera";
 import { router } from "expo-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  Alert,
-  Dimensions,
-  ImageBackground,
-  Platform,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  Vibration,
-  View
+    Alert,
+    Dimensions,
+    ImageBackground,
+    Platform,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    Vibration,
+    View
 } from "react-native";
 import { useAuth } from "../../../context/AuthProvider";
-import { mockPackagingItems, mockStores, mockTransactions } from "../../../lib/mock-data";
-import { TokenInfo } from "../../../components/TokenInfo";
 import { useTokenRefresh } from "../../../hooks/useTokenRefresh";
+import { mockPackagingItems, mockStores, mockTransactions } from "../../../lib/mock-data";
+import { getCurrentUserProfile } from "../../../lib/user-service";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -26,14 +26,42 @@ export default function CustomerDashboard() {
   const { state, actions } = useAuth();
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [userData, setUserData] = useState<any>(null);
   const scanLock = useRef(false);
   const lastScrollY = useRef(0);
 
   // Enable automatic token refresh
   useTokenRefresh();
 
-  // Mock user data
-  const user = {
+  // Function to get time-based greeting
+  const getTimeBasedGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) {
+      return "Chào buổi sáng";
+    } else if (hour < 18) {
+      return "Chào buổi trưa";
+    } else {
+      return "Chào buổi tối";
+    }
+  };
+
+  // Load user data
+  useEffect(() => {
+    const loadUserData = async () => {
+      if (state.accessToken) {
+        try {
+          const user = await getCurrentUserProfile(state.accessToken);
+          setUserData(user);
+        } catch (error) {
+          console.error('Error loading user data:', error);
+        }
+      }
+    };
+    loadUserData();
+  }, [state.accessToken]);
+
+  // Mock user data (fallback)
+  const user = userData || {
     name: "John Doe",
     email: "john.doe@example.com",
     points: 1250,
@@ -92,18 +120,17 @@ export default function CustomerDashboard() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
-      {/* Debug Token Info - Remove in production */}
-      <TokenInfo />
+      {/* TokenInfo component removed */}
       
       {/* Header giống các trang khác */}
       <View style={styles.header}>
         <View style={styles.userInfo}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{user.name.charAt(0)}</Text>
+            <Text style={styles.avatarText}>{(user.name || 'U').charAt(0)}</Text>
           </View>
           <View style={styles.userDetails}>
-            <Text style={styles.greeting}>Chào bạn,</Text>
-            <Text style={styles.userName}>{user.name.split(" ")[0]} 👋</Text>
+            <Text style={styles.greeting}>{getTimeBasedGreeting()},</Text>
+            <Text style={styles.userName}>{(user.name || 'User').split(" ")[0]} 👋</Text>
           </View>
         </View>
         <View style={styles.headerActions}>
@@ -147,7 +174,7 @@ export default function CustomerDashboard() {
           </View>
               <View style={styles.statContent}>
                 <Text style={styles.statLabel}>Số dư</Text>
-                <Text style={styles.statValue}>${user.walletBalance.toFixed(2)}</Text>
+                <Text style={styles.statValue}>${(user.walletBalance || 0).toFixed(2)}</Text>
           </View>
         </View>
 
@@ -157,7 +184,7 @@ export default function CustomerDashboard() {
               </View>
               <View style={styles.statContent}>
                 <Text style={styles.statLabel}>Điểm thưởng</Text>
-                <Text style={styles.statValue}>{user.points.toLocaleString()}</Text>
+                <Text style={styles.statValue}>{(user.points || 0).toLocaleString()}</Text>
           </View>
           </View>
         </View>

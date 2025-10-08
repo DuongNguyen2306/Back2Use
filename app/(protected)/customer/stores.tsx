@@ -1,67 +1,127 @@
 import { Ionicons } from "@expo/vector-icons";
+// import * as Location from 'expo-location';
 import { useRef, useState } from "react";
-import { Alert, Animated, Dimensions, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, Animated, Dimensions, Linking, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import MapView, { Marker, Region } from "react-native-maps";
 import { mockStores } from "../../../lib/mock-data";
 
 const { width } = Dimensions.get('window');
+
+// Coordinates cho trường Đại học FPT Hồ Chí Minh
+const FPT_HCM_COORDS = {
+  latitude: 10.8412,
+  longitude: 106.8099,
+};
+
+// Sử dụng coordinates từ mockStores
+const storesWithCoords = mockStores;
+
+// Thêm một số cửa hàng cố định quanh FPT HCM
+const nearbyStores = [
+  {
+    id: 'fpt-campus',
+    name: 'Trường Đại học FPT HCM',
+    address: 'Lô E2a-7, Đường D1, Khu Công nghệ cao, Quận 9, TP.HCM',
+    latitude: FPT_HCM_COORDS.latitude,
+    longitude: FPT_HCM_COORDS.longitude,
+    phone: '028 7300 5588',
+    operatingHours: '24/7',
+    packagingTypes: ['Cốc giấy', 'Hộp giấy', 'Túi giấy'],
+    ownerId: 'fpt',
+    isActive: true,
+  },
+  {
+    id: 'coffee-nearby-1',
+    name: 'Cà phê gần FPT',
+    address: '123 Đường D1, Quận 9, TP.HCM',
+    latitude: FPT_HCM_COORDS.latitude + 0.001,
+    longitude: FPT_HCM_COORDS.longitude + 0.001,
+    phone: '0901234567',
+    operatingHours: '6:00 - 22:00',
+    packagingTypes: ['Cốc giấy', 'Ống hút giấy'],
+    ownerId: 'coffee1',
+    isActive: true,
+  },
+  {
+    id: 'restaurant-nearby-1',
+    name: 'Nhà hàng gần FPT',
+    address: '456 Đường D1, Quận 9, TP.HCM',
+    latitude: FPT_HCM_COORDS.latitude - 0.002,
+    longitude: FPT_HCM_COORDS.longitude + 0.001,
+    phone: '0907654321',
+    operatingHours: '10:00 - 23:00',
+    packagingTypes: ['Hộp giấy', 'Túi giấy', 'Khay giấy'],
+    ownerId: 'restaurant1',
+    isActive: true,
+  },
+];
+
+// Kết hợp stores từ mock data và nearby stores
+const allStores = [...storesWithCoords, ...nearbyStores];
 
 export default function CustomerStores() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStore, setSelectedStore] = useState<string | null>(null);
   const [showStoreDetails, setShowStoreDetails] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<"distance" | "rating" | "name">("distance");
+  const [mapRegion, setMapRegion] = useState<Region>({
+    latitude: FPT_HCM_COORDS.latitude,
+    longitude: FPT_HCM_COORDS.longitude,
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
+  });
+  const [searchLocation, setSearchLocation] = useState<{latitude: number, longitude: number, name: string} | null>(null);
+  // const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
   
   const scrollY = useRef(new Animated.Value(0)).current;
   const lastScrollY = useRef(0);
+  const mapRef = useRef<MapView>(null);
 
   const getStoreRating = (storeId: string) => {
-    // Mock rating calculation
     return (Math.random() * 2 + 3).toFixed(1);
   };
 
   const getStoreDistance = (storeId: string) => {
-    // Mock distance calculation
     return (Math.random() * 5 + 0.5).toFixed(1);
   };
 
+  // Lấy vị trí user - tạm thời comment out
+  // useEffect(() => {
+  //   (async () => {
+  //     let { status } = await Location.requestForegroundPermissionsAsync();
+  //     if (status !== 'granted') {
+  //       Alert.alert('Permission denied', 'Location permission is required to show your location on the map');
+  //       return;
+  //     }
 
-  const categories = [
-    { id: "all", name: "Tất cả", icon: "grid", count: mockStores.length },
-    { id: "restaurant", name: "Nhà hàng", icon: "restaurant", count: 12 },
-    { id: "grocery", name: "Tạp hóa", icon: "storefront", count: 8 },
-    { id: "cafe", name: "Cà phê", icon: "cafe", count: 15 },
-    { id: "retail", name: "Bán lẻ", icon: "bag", count: 6 },
-  ];
+  //     let location = await Location.getCurrentPositionAsync({});
+  //     setUserLocation(location);
+  //     setMapRegion({
+  //       latitude: location.coords.latitude,
+  //       longitude: location.coords.longitude,
+  //       latitudeDelta: 0.0922,
+  //       longitudeDelta: 0.0421,
+  //     });
+  //   })();
+  // }, []);
 
-  const filteredStores = mockStores
-    .filter((store) => {
-      const matchesSearch = store.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        store.address.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = !selectedCategory || selectedCategory === "all" || 
-        store.packagingTypes.some(type => type.toLowerCase().includes(selectedCategory));
-      return matchesSearch && matchesCategory;
-    })
-    .sort((a, b) => {
-      switch (sortBy) {
-        case "distance":
-          return parseFloat(getStoreDistance(a.id)) - parseFloat(getStoreDistance(b.id));
-        case "rating":
-          return parseFloat(getStoreRating(b.id)) - parseFloat(getStoreRating(a.id));
-        case "name":
-          return a.name.localeCompare(b.name);
-        default:
-          return 0;
-      }
-    });
+  const filteredStores = allStores.filter((store) => {
+    return store.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           store.address.toLowerCase().includes(searchTerm.toLowerCase());
+  });
 
   const handleStorePress = (store: any) => {
     setSelectedStore(store.id);
     setShowStoreDetails(true);
   };
 
+
   const handleDirections = (store: any) => {
-    Alert.alert("Directions", `Opening directions to ${store.name}`);
+    console.log('Opening directions to:', store.name, store.latitude, store.longitude);
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${store.latitude},${store.longitude}`;
+    console.log('Google Maps URL:', url);
+    Linking.openURL(url).catch(() => {
+      Alert.alert("Lỗi", "Không thể mở Google Maps");
+    });
   };
 
   const handleCallStore = (store: any) => {
@@ -75,11 +135,77 @@ export default function CustomerStores() {
     );
   };
 
-  const selectedStoreData = selectedStore ? mockStores.find(s => s.id === selectedStore) : null;
+  // Xử lý tìm kiếm địa điểm
+  const handlePlaceSelect = (data: any, details: any) => {
+    if (details) {
+      const newRegion = {
+        latitude: details.geometry.location.lat,
+        longitude: details.geometry.location.lng,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+      setMapRegion(newRegion);
+      setSearchLocation({
+        latitude: details.geometry.location.lat,
+        longitude: details.geometry.location.lng,
+        name: details.formatted_address || details.name
+      });
+      if (mapRef.current) {
+        mapRef.current.animateToRegion(newRegion, 1000);
+      }
+    }
+  };
+
+  // Tìm kiếm địa chỉ đơn giản
+  const handleSearchLocation = () => {
+    if (searchTerm.trim()) {
+      // Mock tìm kiếm - trong thực tế sẽ gọi Google Places API
+      const mockLocations = [
+        {
+          name: "Trung tâm TP.HCM",
+          latitude: 10.8231,
+          longitude: 106.6297,
+        },
+        {
+          name: "Sân bay Tân Sơn Nhất",
+          latitude: 10.8188,
+          longitude: 106.6519,
+        },
+        {
+          name: "Chợ Bến Thành",
+          latitude: 10.7720,
+          longitude: 106.6983,
+        }
+      ];
+
+      const foundLocation = mockLocations.find(loc => 
+        loc.name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+
+      if (foundLocation) {
+        setSearchLocation(foundLocation);
+        const newRegion = {
+          latitude: foundLocation.latitude,
+          longitude: foundLocation.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        };
+        setMapRegion(newRegion);
+        if (mapRef.current) {
+          mapRef.current.animateToRegion(newRegion, 1000);
+        }
+      } else {
+        Alert.alert("Không tìm thấy", "Không tìm thấy địa chỉ phù hợp. Thử tìm: Trung tâm TP.HCM, Sân bay Tân Sơn Nhất, Chợ Bến Thành");
+      }
+    }
+  };
+
+  const selectedStoreData = selectedStore ? allStores.find(s => s.id === selectedStore) : null;
+
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#8B5CF6" />
+      <StatusBar barStyle="light-content" backgroundColor="#009900" />
       
       {/* Header with gradient background */}
       <View style={styles.header}>
@@ -116,114 +242,61 @@ export default function CustomerStores() {
         </View>
       </View>
 
-      {/* Category Filters */}
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false} 
-        contentContainerStyle={styles.categoryScrollContainer}
-        style={styles.categoryScroll}
-      >
-        {categories.map((category) => (
-          <TouchableOpacity
-            key={category.id}
-            style={[
-              styles.categoryChip,
-              selectedCategory === category.id && styles.selectedCategoryChip
-            ]}
-            onPress={() => setSelectedCategory(selectedCategory === category.id ? null : category.id)}
-          >
-            <Ionicons 
-              name={category.icon as any} 
-              size={16} 
-              color={selectedCategory === category.id ? "#fff" : "#667eea"} 
-            />
-            <Text style={[
-              styles.categoryChipText,
-              selectedCategory === category.id && styles.selectedCategoryChipText
-            ]}>
-              {category.name}
-            </Text>
-            <View style={[
-              styles.categoryCount,
-              selectedCategory === category.id && styles.selectedCategoryCount
-            ]}>
-              <Text style={[
-                styles.categoryCountText,
-                selectedCategory === category.id && styles.selectedCategoryCountText
-              ]}>
-                {category.count}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      {/* Sort Options */}
-      <View style={styles.sortContainer}>
-        <Text style={styles.sortLabel}>Sắp xếp theo:</Text>
-        <View style={styles.sortButtons}>
-          {[
-            { key: "distance", label: "Khoảng cách", icon: "location" },
-            { key: "rating", label: "Đánh giá", icon: "star" },
-            { key: "name", label: "Tên", icon: "text" }
-          ].map((option) => (
-            <TouchableOpacity
-              key={option.key}
-              style={[
-                styles.sortButton,
-                sortBy === option.key && styles.selectedSortButton
-              ]}
-              onPress={() => setSortBy(option.key as any)}
-            >
-              <Ionicons 
-                name={option.icon as any} 
-                size={14} 
-                color={sortBy === option.key ? "#fff" : "#667eea"} 
-              />
-              <Text style={[
-                styles.sortButtonText,
-                sortBy === option.key && styles.selectedSortButtonText
-              ]}>
-                {option.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* Map Placeholder */}
-      <View style={styles.mapContainer}>
-        <View style={styles.mapPlaceholder}>
-          <View style={styles.mapIconContainer}>
-            <Ionicons name="map" size={32} color="#667eea" />
-          </View>
-          <Text style={styles.mapText}>Bản đồ tương tác</Text>
-          <Text style={styles.mapSubtext}>Chạm vào các điểm đánh dấu để xem chi tiết</Text>
-        </View>
-        
-        {/* Store Markers */}
-        {filteredStores.map((store, index) => (
-          <TouchableOpacity
-            key={store.id}
-            style={[
-              styles.storeMarker,
-              {
-                left: `${20 + index * 15}%`,
-                top: `${30 + index * 10}%`,
-              },
-            ]}
-            onPress={() => handleStorePress(store)}
-          >
-            <Ionicons name="location" size={16} color="#fff" />
-          </TouchableOpacity>
-        ))}
-      </View>
 
       {/* Store List */}
       <ScrollView 
+        style={styles.scrollView}
         contentContainerStyle={styles.scrollContent} 
         showsVerticalScrollIndicator={false}
       >
+        {/* Real Map */}
+        <View style={styles.mapContainer}>
+          <MapView
+            ref={mapRef}
+            style={styles.map}
+            region={mapRegion}
+            onRegionChangeComplete={setMapRegion}
+            showsUserLocation={true}
+            showsMyLocationButton={true}
+            showsCompass={true}
+            toolbarEnabled={false}
+            mapType="standard"
+          >
+            {/* Marker cho FPT HCM */}
+            <Marker
+              coordinate={{
+                latitude: FPT_HCM_COORDS.latitude,
+                longitude: FPT_HCM_COORDS.longitude,
+              }}
+              title="Trường Đại học FPT HCM"
+              description="Lô E2a-7, Đường D1, Khu Công nghệ cao, Quận 9, TP.HCM"
+              onPress={() => handleStorePress(nearbyStores[0])}
+            >
+              <View style={styles.fptMarker}>
+                <Ionicons name="school" size={24} color="#fff" />
+              </View>
+            </Marker>
+
+            {/* Markers cho các cửa hàng khác */}
+            {filteredStores.filter(store => store.id !== 'fpt-campus').map((store) => (
+              <Marker
+                key={store.id}
+                coordinate={{
+                  latitude: store.latitude,
+                  longitude: store.longitude,
+                }}
+                title={store.name}
+                description={store.address}
+                onPress={() => handleStorePress(store)}
+              >
+                <View style={styles.customMarker}>
+                  <Ionicons name="location" size={24} color="#fff" />
+                </View>
+              </Marker>
+            ))}
+          </MapView>
+        </View>
+
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Cửa hàng gần đây</Text>
@@ -297,7 +370,6 @@ export default function CustomerStores() {
             </TouchableOpacity>
           ))}
         </View>
-
       </ScrollView>
 
       {/* Store Details Modal */}
@@ -380,20 +452,10 @@ export default function CustomerStores() {
           </View>
         </View>
       )}
-      
     </View>
   );
 }
 
-function CategoryItem({ icon, name, count }: { icon: string; name: string; count: number }) {
-  return (
-    <TouchableOpacity style={styles.categoryItem}>
-      <Ionicons name={icon as any} size={20} color="#0F4D3A" />
-      <Text style={styles.categoryName}>{name}</Text>
-      <Text style={styles.categoryCount}>{count} stores</Text>
-    </TouchableOpacity>
-  );
-}
 
 function InfoItem({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
@@ -413,7 +475,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
   },
   header: {
-    backgroundColor: "#8B5CF6",
+    backgroundColor: "#009900",
     paddingTop: 60,
     paddingBottom: 20,
   },
@@ -456,15 +518,16 @@ const styles = StyleSheet.create({
   searchSection: {
     backgroundColor: "#fff",
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 4,
     marginTop: -12,
+    marginBottom: -8,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   searchContainer: {
     flexDirection: "row",
@@ -490,114 +553,37 @@ const styles = StyleSheet.create({
     color: "#0f172a",
     fontWeight: "500",
   },
+  autocompleteContainer: {
+    flex: 0,
+    position: 'relative',
+    zIndex: 1,
+  },
+  autocompleteList: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginTop: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  autocompleteRow: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  autocompleteDescription: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
   clearButton: {
     padding: 8,
     borderRadius: 12,
     backgroundColor: "#e2e8f0",
   },
-  categoryScroll: {
-    backgroundColor: "#fff",
-    paddingBottom: 16,
-  },
-  categoryScrollContainer: {
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-  categoryChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f8fafc",
-    borderRadius: 24,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderWidth: 2,
-    borderColor: "#e2e8f0",
-    gap: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  selectedCategoryChip: {
-    backgroundColor: "#6366f1",
-    borderColor: "#6366f1",
-    shadowColor: "#6366f1",
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  categoryChipText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#0f172a",
-  },
-  selectedCategoryChipText: {
-    color: "#ffffff",
-  },
-  categoryCount: {
-    backgroundColor: "#e5e7eb",
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  selectedCategoryCount: {
-    backgroundColor: "rgba(255, 255, 255, 0.3)",
-  },
-  categoryCountText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#6b7280",
-  },
-  selectedCategoryCountText: {
-    color: "#fff",
-  },
-  sortContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-  },
-  sortLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#6b7280",
-  },
-  sortButtons: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  sortButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f8fafc",
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    gap: 4,
-  },
-  selectedSortButton: {
-    backgroundColor: "#667eea",
-    borderColor: "#667eea",
-  },
-  sortButtonText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#667eea",
-  },
-  selectedSortButtonText: {
-    color: "#fff",
-  },
   mapContainer: {
     height: 240,
-    backgroundColor: "#f8fafc",
-    position: "relative",
     marginHorizontal: 20,
     marginVertical: 16,
     borderRadius: 24,
@@ -610,55 +596,21 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
   },
-  mapPlaceholder: {
+  map: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#eef2ff",
   },
-  mapIconContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+  customMarker: {
     backgroundColor: "#6366f1",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-    shadowColor: "#6366f1",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  mapText: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#0f172a",
-    marginBottom: 6,
-  },
-  mapSubtext: {
-    fontSize: 15,
-    color: "#64748b",
-    textAlign: "center",
-    fontWeight: "500",
-  },
-  storeMarker: {
-    position: "absolute",
-    width: 40,
-    height: 40,
+    padding: 4,
     borderRadius: 20,
-    backgroundColor: "#6366f1",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 4,
+    borderWidth: 2,
     borderColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
+  },
+  scrollView: {
+    flex: 1,
   },
   scrollContent: {
+    flexGrow: 1,
     paddingBottom: 100,
   },
   section: {
@@ -973,22 +925,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  categoryItem: {
-    flexDirection: "row",
+  fptMarker: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#0F4D3A",
     alignItems: "center",
-    backgroundColor: "#f8fafc",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginRight: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-  categoryName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-    marginLeft: 8,
-    marginRight: 8,
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
 });

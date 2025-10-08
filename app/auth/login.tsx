@@ -67,10 +67,18 @@ export default function LoginScreen() {
         }
         
         console.log("Login successful, user role:", role);
+        console.log("Access token:", response.data?.accessToken ? "***" + response.data.accessToken.slice(-8) : "None");
+        console.log("Refresh token:", response.data?.refreshToken ? "***" + response.data.refreshToken.slice(-8) : "None");
+        console.log("Full response.data:", JSON.stringify(response.data, null, 2));
         
-        // Sign in first
-        await actions.signIn({ role });
-        console.log("Auth state after signIn completed");
+        // Sign in with real tokens from API
+        await actions.signInWithTokens({
+          accessToken: response.data?.accessToken || "",
+          refreshToken: response.data?.refreshToken || null,
+          role,
+          tokenExpiry: response.data?.tokenExpiry ? new Date(response.data.tokenExpiry).getTime() : undefined
+        });
+        console.log("Auth state with real tokens completed");
         
         // Navigate immediately
         const destination = "/(protected)/customer";
@@ -98,10 +106,7 @@ export default function LoginScreen() {
     }
   };
 
-  const enterAsGuest = async () => {
-    await actions.enableBypass("customer");
-    router.replace("/(protected)/customer");
-  };
+  // Guest mode removed - only real authentication allowed
 
   const handleTermsPress = (type: "agreement" | "privacy") => {
     Alert.alert(
@@ -236,9 +241,7 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity onPress={enterAsGuest} style={{ alignSelf: "center", marginTop: 12 }}>
-              <Text style={{ color: "#0F4D3A", fontSize: 12, fontWeight: "600" }}>Enter as guest</Text>
-            </TouchableOpacity>
+            {/* Guest mode removed - only real authentication allowed */}
             </View>
           </ScrollView>
         </KeyboardAvoidingView>

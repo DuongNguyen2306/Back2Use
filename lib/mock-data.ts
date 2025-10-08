@@ -32,8 +32,18 @@ export const mockUsers = [
 ];
 
 export const mockStores = [
-  { id: "1", name: "Green Café Downtown", address: "123 Main St, Downtown", phone: "+1234567893", operatingHours: "Mon-Fri: 7-21", packagingTypes: ["cup","container","bowl"], ownerId: "2", isActive: true },
-  { id: "2", name: "EcoEats Market", address: "456 Oak Ave, Uptown", phone: "+1234567894", operatingHours: "Daily: 9-20", packagingTypes: ["container","bowl","bottle"], ownerId: "2", isActive: true },
+  { 
+    id: "1", 
+    name: "Back2Use Store FPT HCM", 
+    address: "Trường Đại học FPT TP.HCM, Quận 9, TP.HCM", 
+    phone: "+84901234567", 
+    operatingHours: "Mon-Sun: 7-22", 
+    packagingTypes: ["cup","container","bowl","bottle"], 
+    ownerId: "2", 
+    isActive: true,
+    latitude: 10.8412,
+    longitude: 106.8099
+  },
 ];
 
 export const mockPackagingItems = [

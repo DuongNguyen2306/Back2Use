@@ -9,7 +9,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     isHydrated: state.isHydrated,
     isAuthenticated: state.isAuthenticated,
     role: state.role,
-    bypassAuth: state.bypassAuth
+    hasAccessToken: !!state.accessToken
   });
 
   if (!state.isHydrated) {

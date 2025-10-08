@@ -5,13 +5,13 @@ import { Progress } from '@/components/ui/Progress';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-  Dimensions,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -148,7 +148,7 @@ export default function RewardsScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#8B5CF6" />
+      <StatusBar barStyle="light-content" backgroundColor="#009900" />
       
       {/* Header with gradient background */}
       <View style={styles.header}>
@@ -166,55 +166,58 @@ export default function RewardsScreen() {
         </View>
       </View>
 
-      {/* Points Card */}
-      <Card style={styles.pointsCard}>
-        <CardContent style={styles.pointsContent}>
-          <View style={styles.pointsHeader}>
-            <View style={styles.pointsIcon}>
-              <Ionicons name="trophy" size={24} color="#F59E0B" />
-            </View>
-            <View style={styles.pointsInfo}>
-              <Text style={styles.pointsLabel}>Điểm của bạn</Text>
-              <Text style={styles.pointsValue}>{userPoints}</Text>
-            </View>
-          </View>
-          <Progress value={(userPoints / 2000) * 100} style={styles.progressBar} />
-          <Text style={styles.progressText}>
-            Còn {2000 - userPoints} điểm để đạt cấp độ tiếp theo
-          </Text>
-        </CardContent>
-      </Card>
-
-      {/* Tab Navigation */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'vouchers' && styles.activeTab]}
-          onPress={() => setActiveTab('vouchers')}
-        >
-          <Text style={[styles.tabText, activeTab === 'vouchers' && styles.activeTabText]}>
-            Voucher
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'myVouchers' && styles.activeTab]}
-          onPress={() => setActiveTab('myVouchers')}
-        >
-          <Text style={[styles.tabText, activeTab === 'myVouchers' && styles.activeTabText]}>
-            Voucher của tôi
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'history' && styles.activeTab]}
-          onPress={() => setActiveTab('history')}
-        >
-          <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>
-            Lịch sử
-          </Text>
-        </TouchableOpacity>
-      </View>
-
       {/* Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Points Card */}
+        <Card style={styles.pointsCard}>
+          <CardContent style={styles.pointsContent}>
+            <View style={styles.pointsHeader}>
+              <View style={styles.pointsIcon}>
+                <Ionicons name="trophy" size={24} color="#F59E0B" />
+              </View>
+              <View style={styles.pointsInfo}>
+                <Text style={styles.pointsLabel}>Điểm của bạn</Text>
+                <Text style={styles.pointsValue}>{userPoints}</Text>
+              </View>
+            </View>
+            <Progress value={(userPoints / 2000) * 100} style={styles.progressBar} />
+            <Text style={styles.progressText}>
+              Còn {2000 - userPoints} điểm để đạt cấp độ tiếp theo
+            </Text>
+          </CardContent>
+        </Card>
+
+        {/* Tab Navigation */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'vouchers' && styles.activeTab]}
+            onPress={() => setActiveTab('vouchers')}
+          >
+            <Text style={[styles.tabText, activeTab === 'vouchers' && styles.activeTabText]}>
+              Voucher
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'myVouchers' && styles.activeTab]}
+            onPress={() => setActiveTab('myVouchers')}
+          >
+            <Text style={[styles.tabText, activeTab === 'myVouchers' && styles.activeTabText]}>
+              Voucher của tôi
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'history' && styles.activeTab]}
+            onPress={() => setActiveTab('history')}
+          >
+            <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>
+              Lịch sử
+            </Text>
+          </TouchableOpacity>
+        </View>
         {activeTab === 'vouchers' && (
           <View style={styles.tabContent}>
             <Text style={styles.sectionTitle}>Voucher có sẵn</Text>
@@ -367,7 +370,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   header: {
-    backgroundColor: "#8B5CF6",
+    backgroundColor: "#009900", // Green color
     paddingTop: 60,
     paddingBottom: 20,
   },
@@ -490,6 +493,10 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 20,
   },
   tabContent: {
     paddingBottom: 20,

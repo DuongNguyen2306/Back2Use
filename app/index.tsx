@@ -19,7 +19,7 @@ export default function SplashScreen() {
         isHydrated: state.isHydrated,
         isAuthenticated: state.isAuthenticated,
         role: state.role,
-        bypassAuth: state.bypassAuth
+        hasAccessToken: !!state.accessToken
       });
       
       // Only redirect after hydration is complete

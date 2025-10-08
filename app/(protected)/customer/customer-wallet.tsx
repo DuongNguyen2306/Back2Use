@@ -201,7 +201,7 @@ export default function CustomerWallet() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#8B5CF6" />
+      <StatusBar barStyle="light-content" backgroundColor="#009900" />
       
       {/* Header with gradient background */}
       <View style={styles.header}>
@@ -527,7 +527,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
   },
   header: {
-    backgroundColor: "#8B5CF6",
+    backgroundColor: "#009900", // Green color
     paddingTop: 60,
     paddingBottom: 20,
   },

@@ -12,9 +12,9 @@ export const API_ENDPOINTS = {
     REFRESH_TOKEN: '/auth/refresh-token',
   },
   USER: {
-    PROFILE: '/user/profile',
+    PROFILE: '/users/me',
     GET_BY_ID: '/users', // GET /users/{id}
-    UPDATE_PROFILE: '/user/profile',
+    UPDATE_PROFILE: '/users/edit-profile',
     CHANGE_PASSWORD: '/user/change-password',
   },
   BUSINESS: {

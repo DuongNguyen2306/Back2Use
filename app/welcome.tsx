@@ -2,19 +2,22 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Animated,
-  Dimensions,
-  Image,
-  ImageBackground,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Dimensions,
+    Image,
+    ImageBackground,
+    Linking,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
+import MapView, { Marker } from "react-native-maps";
 import { useAuth } from "../context/AuthProvider";
 import { mockStores } from "../lib/mock-data";
 
@@ -24,6 +27,16 @@ export default function WelcomeScreen() {
   const { state } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStore, setSelectedStore] = useState<string | null>(null);
+  const [mapRegion, setMapRegion] = useState({
+    latitude: 10.8412,
+    longitude: 106.8099,
+    latitudeDelta: 0.01,
+    longitudeDelta: 0.01,
+  });
+  const [userLocation, setUserLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const fadeAnim = useState(new Animated.Value(0))[0];
 
   useEffect(() => {
@@ -32,6 +45,9 @@ export default function WelcomeScreen() {
       duration: 800,
       useNativeDriver: true,
     }).start();
+    
+    // Auto get location when app opens
+    getCurrentLocation();
   }, []);
 
   // Redirect if already authenticated (only after hydration)
@@ -51,6 +67,30 @@ export default function WelcomeScreen() {
       store.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       store.address.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const getCurrentLocation = () => {
+    // Simulate getting current location (in real app, use expo-location)
+    const mockLocation = {
+      latitude: 10.8412 + (Math.random() - 0.5) * 0.005,
+      longitude: 106.8099 + (Math.random() - 0.5) * 0.005,
+    };
+    console.log('Setting user location:', mockLocation);
+    setUserLocation(mockLocation);
+    setMapRegion({
+      ...mockLocation,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    });
+  };
+
+  const handleDirections = (store: any) => {
+    console.log('Opening directions to:', store.name, store.latitude, store.longitude);
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${store.latitude},${store.longitude}`;
+    console.log('Google Maps URL:', url);
+    Linking.openURL(url).catch(() => {
+      Alert.alert("Lỗi", "Không thể mở Google Maps");
+    });
+  };
 
 
   // Show loading while hydrating or if already authenticated
@@ -151,34 +191,50 @@ export default function WelcomeScreen() {
         {/* Map Section */}
         <View style={styles.mapSection}>
           <View style={styles.mapContainer}>
-            <View style={styles.mapBackground}>
-              {filteredStores.slice(0, 6).map((store, index) => (
-                <TouchableOpacity
+            <MapView
+              style={styles.map}
+              initialRegion={mapRegion}
+              onRegionChangeComplete={setMapRegion}
+            >
+              {/* User Location Marker */}
+              {userLocation && (
+                <Marker
+                  coordinate={userLocation}
+                  title="Vị trí của bạn"
+                  description="Đây là vị trí hiện tại của bạn"
+                  pinColor="#3B82F6"
+                />
+              )}
+              
+              {/* FPT HCM Marker */}
+              <Marker
+                coordinate={{
+                  latitude: 10.8412,
+                  longitude: 106.8099,
+                }}
+                title="FPT University HCM"
+                description="Trường Đại học FPT TP.HCM"
+                pinColor="#0F4D3A"
+              />
+              
+              {/* Store Markers */}
+              {filteredStores.slice(0, 6).map((store) => (
+                <Marker
                   key={store.id}
-                  style={[
-                    styles.mapPin,
-                    {
-                      left: `${20 + index * 13}%`,
-                      top: `${25 + index * 11}%`,
-                      transform: [{ scale: selectedStore === store.id ? 1.25 : 1 }],
-                    },
-                  ]}
+                  coordinate={{
+                    latitude: store.latitude,
+                    longitude: store.longitude,
+                  }}
+                  title={store.name}
+                  description={store.address}
                   onPress={() => setSelectedStore(selectedStore === store.id ? null : store.id)}
-                >
-                  <View
-                    style={[
-                      styles.pinIcon,
-                      {
-                        backgroundColor: selectedStore === store.id ? '#0F4D3A' : '#10B981',
-                      },
-                    ]}
-                  >
-                    <Ionicons name="location" size={20} color="#FFFFFF" />
-                  </View>
-                </TouchableOpacity>
+                />
               ))}
-            </View>
-            <TouchableOpacity style={styles.locationButton}>
+            </MapView>
+            <TouchableOpacity 
+              style={styles.locationButton}
+              onPress={getCurrentLocation}
+            >
               <Ionicons name="navigate" size={16} color="#FFFFFF" />
               <Text style={styles.locationButtonText}>Vị trí của tôi</Text>
             </TouchableOpacity>
@@ -231,7 +287,16 @@ export default function WelcomeScreen() {
                     </View>
                   </View>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+                <View style={styles.storeActions}>
+                  <TouchableOpacity 
+                    style={styles.directionsButton}
+                    onPress={() => handleDirections(store)}
+                  >
+                    <Ionicons name="navigate" size={16} color="#0F4D3A" />
+                    <Text style={styles.directionsText}>Chỉ đường</Text>
+                  </TouchableOpacity>
+                  <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+                </View>
               </TouchableOpacity>
             ))}
 
@@ -476,31 +541,8 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  mapBackground: {
+  map: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
-    position: 'relative',
-  },
-  mapPin: {
-    position: 'absolute',
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
   },
   locationButton: {
     position: 'absolute',
@@ -570,6 +612,11 @@ const styles = StyleSheet.create({
   storeInfo: {
     flex: 1,
   },
+  storeActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   storeHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -626,6 +673,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#111827',
+    marginLeft: 4,
+  },
+  directionsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  directionsText: {
+    fontSize: 12,
+    color: '#0F4D3A',
+    fontWeight: '600',
     marginLeft: 4,
   },
   moreStoresButton: {

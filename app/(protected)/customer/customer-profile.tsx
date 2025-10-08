@@ -5,28 +5,75 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
+import { useToast } from '../../../hooks/use-toast';
 import { getCurrentUserProfile, UpdateProfileRequest, updateUserProfile, User } from '../../../lib/user-service';
+import { validateProfileForm, ValidationError } from '../../../lib/validation';
 
 const { width: screenWidth } = Dimensions.get('window');
 
 export default function CustomerProfile() {
   const { state, actions } = useAuth();
+  const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+
+  // Helper function to format date string to YYYY-MM-DD
+  const formatDateString = (dateStr: string): string => {
+    if (!dateStr) return '';
+    
+    // If it's already in YYYY-MM-DD format, return as is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      return dateStr;
+    }
+    
+    // If it's a full ISO date string, extract YYYY-MM-DD
+    if (dateStr.includes('T')) {
+      return dateStr.split('T')[0];
+    }
+    
+    // If it's in other formats, try to parse and format
+    try {
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+    } catch (error) {
+      console.log('Date parsing error:', error);
+    }
+    
+    return dateStr;
+  };
+
+  // Helper function to format input as user types (add dashes automatically)
+  const formatDateInput = (value: string): string => {
+    // Remove all non-digits
+    const digits = value.replace(/\D/g, '');
+    
+    // Add dashes at appropriate positions
+    if (digits.length <= 4) {
+      return digits;
+    } else if (digits.length <= 6) {
+      return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+    } else {
+      return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+    }
+  };
 
   const [formData, setFormData] = useState({
     name: "",
@@ -45,7 +92,18 @@ export default function CustomerProfile() {
     const loadUserData = async () => {
       try {
         setLoading(true);
+        console.log('🔍 CustomerProfile: Loading user data...');
+        console.log('🔍 Auth state:', {
+          isAuthenticated: state.isAuthenticated,
+          hasAccessToken: !!state.accessToken,
+          hasRefreshToken: !!state.refreshToken,
+          accessTokenPreview: state.accessToken ? '***' + state.accessToken.slice(-8) : 'None',
+          refreshTokenPreview: state.refreshToken ? '***' + state.refreshToken.slice(-8) : 'None',
+          role: state.role
+        });
+        
         if (state.accessToken) {
+          console.log('🔍 Using accessToken for API call:', '***' + state.accessToken.slice(-8));
           const userData = await getCurrentUserProfile(state.accessToken);
           setUser(userData);
           setFormData({
@@ -53,7 +111,7 @@ export default function CustomerProfile() {
             email: userData.email || "",
             phone: userData.phone || "",
             address: userData.address || "",
-            dateOfBirth: userData.yob || "",
+            dateOfBirth: formatDateString(userData.yob || ""),
             notifications: true,
             emailUpdates: true,
             smsAlerts: false,
@@ -61,7 +119,10 @@ export default function CustomerProfile() {
         }
       } catch (error) {
         console.error('Error loading user data:', error);
-        Alert.alert("Lỗi", "Không thể tải thông tin người dùng");
+        toast({
+          title: "Lỗi",
+          description: "Không thể tải thông tin người dùng"
+        });
       } finally {
         setLoading(false);
       }
@@ -77,28 +138,60 @@ export default function CustomerProfile() {
         return;
       }
 
-      setLoading(true);
+      // Validate form data
+      const validation = validateProfileForm(formData);
+      if (!validation.isValid) {
+        setValidationErrors(validation.errors);
+        toast({
+          title: "Lỗi xác thực",
+          description: "Vui lòng kiểm tra lại thông tin đã nhập"
+        });
+        return;
+      }
+
+      setSaving(true);
+      setValidationErrors([]);
+      
       const updateData: UpdateProfileRequest = {
-        name: formData.name,
-        phone: formData.phone,
-        address: formData.address,
-        yob: formData.dateOfBirth,
+        name: formData.name.trim(),
+        phone: formData.phone.trim() || undefined,
+        address: formData.address.trim() || undefined,
+        yob: formData.dateOfBirth.trim() || undefined,
       };
 
       const updatedUser = await updateUserProfile(updateData, state.accessToken);
       setUser(updatedUser);
       setIsEditing(false);
-      Alert.alert("Thành công", "Cập nhật thông tin thành công!");
+      setValidationErrors([]);
+      toast({
+        title: "✅ Cập nhật thành công",
+        description: "Thông tin hồ sơ đã được cập nhật"
+      });
     } catch (error) {
       console.error('Error updating profile:', error);
-      Alert.alert("Lỗi", "Không thể cập nhật thông tin");
+      const errorMessage = error instanceof Error ? error.message : "Không thể cập nhật thông tin";
+      toast({
+        title: "Lỗi",
+        description: errorMessage
+      });
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
   const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    let processedValue = value;
+    
+    // Special handling for dateOfBirth field
+    if (field === 'dateOfBirth' && typeof value === 'string') {
+      processedValue = formatDateInput(value);
+    }
+    
+    setFormData(prev => ({ ...prev, [field]: processedValue }));
+    // Clear validation errors for this field when user starts typing
+    if (validationErrors.some(error => error.field === field)) {
+      setValidationErrors(prev => prev.filter(error => error.field !== field));
+    }
   };
 
   const handleCancel = () => {
@@ -108,13 +201,20 @@ export default function CustomerProfile() {
         email: user.email || "",
         phone: user.phone || "",
         address: user.address || "",
-        dateOfBirth: user.yob || "",
+        dateOfBirth: formatDateString(user.yob || ""),
         notifications: true,
         emailUpdates: true,
         smsAlerts: false,
       });
     }
+    setValidationErrors([]);
     setIsEditing(false);
+  };
+
+  // Helper function to get error message for a field
+  const getFieldError = (field: string): string | undefined => {
+    const error = validationErrors.find(err => err.field === field);
+    return error?.message;
   };
 
   const handleSignOut = () => {
@@ -151,7 +251,7 @@ export default function CustomerProfile() {
   if (loading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
-        <ActivityIndicator size="large" color="#10B981" />
+        <ActivityIndicator size="large" color="#009900" />
         <Text style={styles.loadingText}>Đang tải thông tin...</Text>
       </View>
     );
@@ -159,9 +259,9 @@ export default function CustomerProfile() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#8B5CF6" />
+      <StatusBar barStyle="light-content" backgroundColor="#009900" />
       
-      {/* Header with gradient background */}
+      {/* Header with green gradient background */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity style={styles.backButton}>
@@ -173,6 +273,19 @@ export default function CustomerProfile() {
             onPress={() => isEditing ? handleSave() : setIsEditing(true)}
           >
             <Ionicons name={isEditing ? "checkmark" : "create-outline"} size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.headerEditButton, { marginLeft: 10 }]}
+            onPress={async () => {
+              console.log("🧹 Clearing all tokens...");
+              await actions.clearFakeTokens();
+              toast({
+                title: "Đã xóa tokens",
+                description: "Vui lòng đăng nhập lại"
+              });
+            }}
+          >
+            <Ionicons name="refresh" size={24} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </View>
@@ -191,7 +304,7 @@ export default function CustomerProfile() {
                 </Text>
               </View>
               <TouchableOpacity style={styles.cameraButton}>
-                <Ionicons name="camera" size={20} color="#8B5CF6" />
+                <Ionicons name="camera" size={20} color="#009900" />
               </TouchableOpacity>
             </View>
             <Text style={styles.userName}>{user?.name || formData.name}</Text>
@@ -228,14 +341,14 @@ export default function CustomerProfile() {
         <Card style={styles.section}>
           <CardContent style={styles.sectionContent}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="person" size={24} color="#8B5CF6" />
+              <Ionicons name="person" size={24} color="#009900" />
               <Text style={styles.sectionTitle}>Thông tin cá nhân</Text>
             </View>
           
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Họ và tên</Text>
-              <View style={styles.inputContainer}>
-                <Ionicons name="person" size={20} color="#8B5CF6" style={styles.inputIcon} />
+              <Text style={styles.label}>Họ và tên *</Text>
+              <View style={[styles.inputContainer, getFieldError('name') && styles.inputError]}>
+                <Ionicons name="person" size={20} color={getFieldError('name') ? "#ef4444" : "#009900"} style={styles.inputIcon} />
                 <TextInput
                   style={[styles.input, !isEditing && styles.inputDisabled]}
                   value={formData.name}
@@ -244,56 +357,68 @@ export default function CustomerProfile() {
                   placeholder="Nhập họ và tên"
                 />
               </View>
+              {getFieldError('name') && (
+                <Text style={styles.errorText}>{getFieldError('name')}</Text>
+              )}
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Email</Text>
-              <View style={styles.inputContainer}>
-                <Ionicons name="mail" size={20} color="#8B5CF6" style={styles.inputIcon} />
+              <View style={[styles.inputContainer, styles.inputReadOnly]}>
+                <Ionicons name="mail" size={20} color="#009900" style={styles.inputIcon} />
                 <TextInput
-                  style={[styles.input, !isEditing && styles.inputDisabled]}
+                  style={[styles.input, styles.inputReadOnly]}
                   value={formData.email}
-                  onChangeText={(value) => handleInputChange("email", value)}
-                  editable={isEditing}
+                  editable={false}
                   keyboardType="email-address"
-                  placeholder="Nhập email"
+                  placeholder="Email không thể chỉnh sửa"
                 />
+                <Ionicons name="lock-closed" size={16} color="#6B7280" style={styles.lockIcon} />
               </View>
+              <Text style={styles.helpText}>Email không thể thay đổi. Liên hệ hỗ trợ nếu cần thay đổi email.</Text>
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Số điện thoại</Text>
-              <View style={styles.inputContainer}>
-                <Ionicons name="call" size={20} color="#8B5CF6" style={styles.inputIcon} />
+              <View style={[styles.inputContainer, getFieldError('phone') && styles.inputError]}>
+                <Ionicons name="call" size={20} color={getFieldError('phone') ? "#ef4444" : "#009900"} style={styles.inputIcon} />
                 <TextInput
                   style={[styles.input, !isEditing && styles.inputDisabled]}
                   value={formData.phone}
                   onChangeText={(value) => handleInputChange("phone", value)}
                   editable={isEditing}
                   keyboardType="phone-pad"
-                  placeholder="Nhập số điện thoại"
+                  placeholder="Nhập số điện thoại (VD: 0987654321)"
                 />
               </View>
+              {getFieldError('phone') && (
+                <Text style={styles.errorText}>{getFieldError('phone')}</Text>
+              )}
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Ngày sinh</Text>
-              <View style={styles.inputContainer}>
-                <Ionicons name="calendar" size={20} color="#8B5CF6" style={styles.inputIcon} />
+              <View style={[styles.inputContainer, getFieldError('dateOfBirth') && styles.inputError]}>
+                <Ionicons name="calendar" size={20} color={getFieldError('dateOfBirth') ? "#ef4444" : "#009900"} style={styles.inputIcon} />
                 <TextInput
                   style={[styles.input, !isEditing && styles.inputDisabled]}
                   value={formData.dateOfBirth}
                   onChangeText={(value) => handleInputChange("dateOfBirth", value)}
                   editable={isEditing}
                   placeholder="YYYY-MM-DD"
+                  keyboardType="numeric"
+                  maxLength={10}
                 />
               </View>
+              {getFieldError('dateOfBirth') && (
+                <Text style={styles.errorText}>{getFieldError('dateOfBirth')}</Text>
+              )}
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Địa chỉ</Text>
-              <View style={styles.inputContainer}>
-                <Ionicons name="location" size={20} color="#8B5CF6" style={styles.inputIcon} />
+              <View style={[styles.inputContainer, getFieldError('address') && styles.inputError]}>
+                <Ionicons name="location" size={20} color={getFieldError('address') ? "#ef4444" : "#009900"} style={styles.inputIcon} />
                 <TextInput
                   style={[styles.input, !isEditing && styles.inputDisabled]}
                   value={formData.address}
@@ -303,6 +428,9 @@ export default function CustomerProfile() {
                   multiline
                 />
               </View>
+              {getFieldError('address') && (
+                <Text style={styles.errorText}>{getFieldError('address')}</Text>
+              )}
             </View>
           </CardContent>
         </Card>
@@ -311,7 +439,7 @@ export default function CustomerProfile() {
         <Card style={styles.section}>
           <CardContent style={styles.sectionContent}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="notifications" size={24} color="#8B5CF6" />
+              <Ionicons name="notifications" size={24} color="#009900" />
               <Text style={styles.sectionTitle}>Cài đặt thông báo</Text>
             </View>
           
@@ -324,7 +452,7 @@ export default function CustomerProfile() {
                 value={formData.notifications}
                 onValueChange={(value) => handleInputChange("notifications", value)}
                 disabled={!isEditing}
-                trackColor={{ false: "#E5E7EB", true: "#8B5CF6" }}
+                trackColor={{ false: "#E5E7EB", true: "#009900" }}
                 thumbColor="#FFFFFF"
               />
             </View>
@@ -338,7 +466,7 @@ export default function CustomerProfile() {
                 value={formData.emailUpdates}
                 onValueChange={(value) => handleInputChange("emailUpdates", value)}
                 disabled={!isEditing}
-                trackColor={{ false: "#E5E7EB", true: "#8B5CF6" }}
+                trackColor={{ false: "#E5E7EB", true: "#009900" }}
                 thumbColor="#FFFFFF"
               />
             </View>
@@ -352,7 +480,7 @@ export default function CustomerProfile() {
                 value={formData.smsAlerts}
                 onValueChange={(value) => handleInputChange("smsAlerts", value)}
                 disabled={!isEditing}
-                trackColor={{ false: "#E5E7EB", true: "#8B5CF6" }}
+                trackColor={{ false: "#E5E7EB", true: "#009900" }}
                 thumbColor="#FFFFFF"
               />
             </View>
@@ -363,7 +491,7 @@ export default function CustomerProfile() {
         <Card style={styles.section}>
           <CardContent style={styles.sectionContent}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="shield-checkmark" size={24} color="#8B5CF6" />
+              <Ionicons name="shield-checkmark" size={24} color="#009900" />
               <Text style={styles.sectionTitle}>Trạng thái tài khoản</Text>
             </View>
             <View style={styles.statusCard}>
@@ -394,8 +522,13 @@ export default function CustomerProfile() {
                 variant="eco"
                 onPress={handleSave}
                 style={styles.saveButton}
+                disabled={saving}
               >
-                <Text style={styles.saveButtonText}>Lưu thay đổi</Text>
+                {saving ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.saveButtonText}>Lưu thay đổi</Text>
+                )}
               </Button>
             </View>
           ) : (
@@ -440,7 +573,7 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   header: {
-    backgroundColor: "#8B5CF6",
+    backgroundColor: "#009900", // Green color
     paddingTop: 60,
     paddingBottom: 20,
   },
@@ -484,7 +617,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
     marginBottom: 20,
-    shadowColor: "#8B5CF6",
+    shadowColor: "#009900",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
@@ -502,10 +635,10 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: "#8B5CF6",
+    backgroundColor: "#009900",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#8B5CF6",
+    shadowColor: "#009900",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -832,5 +965,29 @@ const styles = StyleSheet.create({
   },
   signOutContent: {
     padding: 20,
+  },
+  inputError: {
+    borderColor: "#ef4444",
+    backgroundColor: "#fef2f2",
+  },
+  errorText: {
+    color: "#ef4444",
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
+  },
+  inputReadOnly: {
+    backgroundColor: "#F3F4F6",
+    borderColor: "#D1D5DB",
+  },
+  lockIcon: {
+    marginLeft: 8,
+  },
+  helpText: {
+    color: "#6B7280",
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
+    fontStyle: "italic",
   },
 });
