@@ -1,4 +1,4 @@
-import * as Linking from 'expo-linking';
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { Alert } from 'react-native';
@@ -22,13 +22,25 @@ export class GoogleAuthService {
     try {
       console.log('Initiating Google OAuth login...');
       
-      // Directly open the Google OAuth URL since API might return HTML
-      const authUrl = `${process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.0.197:8000'}/auth/google`;
+      // Get API base URL from app config
+      const apiBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl || 'http://192.168.0.197:8000';
+      
+      // Generate device info for private IP
+      const deviceId = `mobile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const deviceName = 'Back2Use Mobile App';
+      
+      // Add device parameters to auth URL
+      const authUrl = `${apiBaseUrl}/auth/google?device_id=${deviceId}&device_name=${encodeURIComponent(deviceName)}`;
       console.log('Opening Google OAuth URL:', authUrl);
       
+      // Use the actual backend redirect URI
+      const redirectUri = `${apiBaseUrl}/auth/google-redirect`;
+      console.log('Redirect URI:', redirectUri);
+      
+      // Use the backend OAuth flow
       const result = await WebBrowser.openAuthSessionAsync(
         authUrl,
-        Linking.createURL('/auth/google-redirect')
+        redirectUri
       );
       
       console.log('WebBrowser result:', result);
@@ -39,6 +51,7 @@ export class GoogleAuthService {
         console.log('User cancelled Google OAuth');
       } else {
         console.log('Google OAuth failed or was dismissed');
+        Alert.alert('Error', 'Google OAuth failed. Please try again.');
       }
     } catch (error) {
       console.error('Google OAuth login error:', error);
@@ -47,34 +60,20 @@ export class GoogleAuthService {
   }
 
   /**
-   * Handle Google OAuth redirect
-   * This processes the callback from Google OAuth
+   * Handle Google OAuth code
+   * This processes the authorization code from Google
    */
-  async handleGoogleRedirect(url: string): Promise<void> {
+  async handleGoogleCode(code: string): Promise<void> {
     try {
-      console.log('Handling Google OAuth redirect:', url);
+      console.log('Handling Google OAuth code:', code);
       
-      // Extract authorization code from URL if present
-      const urlObj = new URL(url);
-      const code = urlObj.searchParams.get('code');
-      const error = urlObj.searchParams.get('error');
-      
-      if (error) {
-        Alert.alert('Error', `Google OAuth error: ${error}`);
-        return;
-      }
-      
-      if (!code) {
-        Alert.alert('Error', 'No authorization code received from Google');
-        return;
-      }
-      
-      // Call the redirect endpoint with the authorization code
-      const redirectUrl = `${process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.0.197:8000'}/auth/google-redirect?code=${code}`;
-      console.log('Calling redirect URL:', redirectUrl);
+      // Get API base URL from app config
+      const apiBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl || 'http://192.168.0.197:8000';
+      const processUrl = `${apiBaseUrl}/auth/google-redirect?code=${code}`;
+      console.log('Processing OAuth code:', processUrl);
       
       try {
-        const response = await fetch(redirectUrl, {
+        const response = await fetch(processUrl, {
           method: 'GET',
         });
         
@@ -83,7 +82,7 @@ export class GoogleAuthService {
         
         if (contentType && contentType.includes('application/json')) {
           const responseData = await response.json();
-          console.log('Google redirect response:', responseData);
+          console.log('Google OAuth response:', responseData);
           
           if (responseData.success && responseData.data) {
             await this.handleSuccessfulLogin(responseData.data);
@@ -104,7 +103,6 @@ export class GoogleAuthService {
                 text: 'OK',
                 onPress: () => {
                   // Navigate to login page to complete the process
-                  // Delay navigation to ensure app is ready
                   setTimeout(() => {
                     router.replace('/auth/login');
                   }, 100);
@@ -116,6 +114,89 @@ export class GoogleAuthService {
       } catch (fetchError) {
         console.error('Fetch error:', fetchError);
         Alert.alert('Error', 'Failed to process Google OAuth. Please try again.');
+      }
+    } catch (error) {
+      console.error('Google OAuth code error:', error);
+      Alert.alert('Error', 'Failed to process Google OAuth code. Please try again.');
+    }
+  }
+
+  /**
+   * Handle Google OAuth redirect
+   * This processes the callback from Google OAuth
+   */
+  async handleGoogleRedirect(url: string): Promise<void> {
+    try {
+      console.log('Handling Google OAuth redirect:', url);
+      
+      // Check if this is a successful redirect from backend
+      if (url.includes('/auth/google-redirect')) {
+        // Extract parameters from URL
+        const urlObj = new URL(url);
+        const code = urlObj.searchParams.get('code');
+        const error = urlObj.searchParams.get('error');
+        
+        if (error) {
+          Alert.alert('Error', `Google OAuth error: ${error}`);
+          return;
+        }
+        
+        if (!code) {
+          Alert.alert('Error', 'No authorization code received from Google');
+          return;
+        }
+        
+        // Call the backend to process the code
+        const apiBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl || 'http://192.168.0.197:8000';
+        const processUrl = `${apiBaseUrl}/auth/google-redirect?code=${code}`;
+        console.log('Processing OAuth code:', processUrl);
+        
+        try {
+          const response = await fetch(processUrl, {
+            method: 'GET',
+          });
+          
+          const contentType = response.headers.get('content-type');
+          console.log('Response content-type:', contentType);
+          
+          if (contentType && contentType.includes('application/json')) {
+            const responseData = await response.json();
+            console.log('Google OAuth response:', responseData);
+            
+            if (responseData.success && responseData.data) {
+              await this.handleSuccessfulLogin(responseData.data);
+            } else {
+              Alert.alert('Error', responseData.message || 'Google OAuth failed');
+            }
+          } else {
+            // If response is HTML, it might be a redirect page
+            const text = await response.text();
+            console.log('Response is HTML:', text.substring(0, 200) + '...');
+            
+            // For now, show a success message since the OAuth flow completed
+            Alert.alert(
+              'Success',
+              'Google OAuth completed successfully! Please check your email for login details.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    // Navigate to login page to complete the process
+                    setTimeout(() => {
+                      router.replace('/auth/login');
+                    }, 100);
+                  }
+                }
+              ]
+            );
+          }
+        } catch (fetchError) {
+          console.error('Fetch error:', fetchError);
+          Alert.alert('Error', 'Failed to process Google OAuth. Please try again.');
+        }
+      } else {
+        console.log('Unexpected redirect URL:', url);
+        Alert.alert('Error', 'Unexpected redirect URL received');
       }
     } catch (error) {
       console.error('Google OAuth redirect error:', error);
@@ -168,7 +249,8 @@ export class GoogleAuthService {
   async isGoogleAuthAvailable(): Promise<boolean> {
     try {
       // Test if the Google OAuth endpoint is accessible
-      const authUrl = `${process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.0.197:8000'}/auth/google`;
+      const apiBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl || 'http://192.168.0.197:8000';
+      const authUrl = `${apiBaseUrl}/auth/google`;
       const response = await fetch(authUrl, { method: 'HEAD' });
       return response.ok;
     } catch (error) {

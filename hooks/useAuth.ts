@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { authApi } from "../lib/api/apiconfig";
 
 export type Role = "customer" | "business" | "admin";
 
@@ -25,11 +26,35 @@ const STORAGE_KEYS = {
 
 const refreshAccessToken = async (refreshToken: string) => {
   try {
-    // TODO: Implement real token refresh API call
-    console.log("Token refresh not implemented yet - using refreshToken:", refreshToken);
-    return null;
+    console.log("🔄 Refreshing access token...");
+    const response = await authApi.refreshToken(refreshToken);
+    
+    if (response.success && response.data) {
+      const { accessToken, refreshToken: newRefreshToken, user } = response.data;
+      
+      // Save new tokens
+      await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken || '');
+      if (newRefreshToken) {
+        await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, newRefreshToken);
+      }
+      
+      // Calculate new expiry time (assuming 1 hour from now)
+      const newExpiry = Date.now() + (60 * 60 * 1000); // 1 hour
+      await AsyncStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRY, newExpiry.toString());
+      
+      console.log("✅ Token refreshed successfully");
+      return {
+        accessToken,
+        refreshToken: newRefreshToken || refreshToken,
+        expiry: newExpiry,
+        user
+      };
+    } else {
+      console.error("❌ Token refresh failed:", response.message);
+      return null;
+    }
   } catch (error) {
-    console.error("Error refreshing token:", error);
+    console.error("❌ Error refreshing token:", error);
     return null;
   }
 };
@@ -48,6 +73,48 @@ const clearAuthData = async () => {
 const clearFakeTokens = async () => {
   console.log("🧹 Clearing all tokens and forcing logout");
   await clearAuthData();
+};
+
+// Check if token is expired or about to expire (within 5 minutes)
+const isTokenExpired = (expiry: number | null) => {
+  if (!expiry) return true;
+  const now = Date.now();
+  const fiveMinutes = 5 * 60 * 1000; // 5 minutes in milliseconds
+  return now >= (expiry - fiveMinutes);
+};
+
+// Auto refresh token if needed
+const checkAndRefreshToken = async (state: AuthState) => {
+  if (!state.isAuthenticated || !state.refreshToken || !state.tokenExpiry) {
+    return state;
+  }
+
+  if (isTokenExpired(state.tokenExpiry)) {
+    console.log("⚠️ Token expired or about to expire, refreshing...");
+    const refreshResult = await refreshAccessToken(state.refreshToken);
+    
+    if (refreshResult) {
+      return {
+        ...state,
+        accessToken: refreshResult.accessToken,
+        refreshToken: refreshResult.refreshToken,
+        tokenExpiry: refreshResult.expiry,
+      };
+    } else {
+      console.log("❌ Token refresh failed, logging out");
+      await clearAuthData();
+      return {
+        isAuthenticated: false,
+        role: null,
+        isHydrated: true,
+        accessToken: null,
+        refreshToken: null,
+        tokenExpiry: null,
+      };
+    }
+  }
+
+  return state;
 };
 
 export function useAuthCore() {
@@ -164,6 +231,23 @@ export function useAuthCore() {
       }
     })();
   }, []);
+
+  // Auto refresh token timer - check every 5 minutes
+  useEffect(() => {
+    if (!state.isAuthenticated || !state.refreshToken || !state.tokenExpiry) {
+      return;
+    }
+
+    const interval = setInterval(async () => {
+      console.log("🕐 Auto checking token expiry...");
+      const refreshedState = await checkAndRefreshToken(state);
+      if (refreshedState !== state) {
+        setState(refreshedState);
+      }
+    }, 5 * 60 * 1000); // Check every 5 minutes
+
+    return () => clearInterval(interval);
+  }, [state.isAuthenticated, state.refreshToken, state.tokenExpiry]);
 
   const persist = useCallback(async (next: Partial<AuthState>) => {
     console.log("Persisting auth state:", {
@@ -295,6 +379,27 @@ export function useAuthCore() {
     return Date.now() > state.tokenExpiry;
   }, [state.tokenExpiry]);
 
+  // Get current access token with auto refresh if needed
+  const getCurrentAccessToken = useCallback(async () => {
+    if (!state.isAuthenticated || !state.accessToken) {
+      return null;
+    }
+
+    // Check if token is expired or about to expire
+    if (isTokenExpired()) {
+      console.log("🔄 Token expired, refreshing...");
+      const success = await refreshToken();
+      if (success) {
+        // Return the new token from state
+        return state.accessToken;
+      } else {
+        return null;
+      }
+    }
+
+    return state.accessToken;
+  }, [state.isAuthenticated, state.accessToken, isTokenExpired, refreshToken]);
+
   return useMemo(() => ({ 
     state, 
     actions: { 
@@ -302,9 +407,10 @@ export function useAuthCore() {
       signOut, 
       refreshToken,
       isTokenExpired,
+      getCurrentAccessToken,
       clearFakeTokens
     } 
-  }), [state, signInWithTokens, signOut, refreshToken, isTokenExpired]);
+  }), [state, signInWithTokens, signOut, refreshToken, isTokenExpired, getCurrentAccessToken]);
 }
 
 

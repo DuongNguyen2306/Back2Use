@@ -121,6 +121,7 @@ export default function LoginScreen() {
 
   const handleGoogleLogin = async () => {
     try {
+      console.log('Starting Google login...');
       await googleAuthService.initiateGoogleLogin();
     } catch (error) {
       console.error('Google login error:', error);

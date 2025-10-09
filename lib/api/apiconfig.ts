@@ -237,17 +237,25 @@ export const authApi = {
     });
   },
 
-  // Google OAuth login (web)
-  googleLogin: async (): Promise<GoogleOAuthResponse> => {
-    return apiCall<GoogleOAuthResponse>('/auth/google', {
-      method: 'GET',
+  // Google OAuth login - redirect to Google
+  googleLogin: async (): Promise<string> => {
+    // Return the Google OAuth URL instead of making API call
+    return `${API_BASE_URL}/auth/google`;
+  },
+
+  // Google OAuth callback - handle response from Google
+  googleCallback: async (code: string, state?: string): Promise<LoginResponse> => {
+    return apiCall<LoginResponse>('/auth/google/callback', {
+      method: 'POST',
+      body: JSON.stringify({ code, state }),
     });
   },
 
-  // Google OAuth redirect (web)
-  googleRedirect: async (): Promise<GoogleOAuthResponse> => {
-    return apiCall<GoogleOAuthResponse>('/auth/google-redirect', {
-      method: 'GET',
+  // Refresh access token
+  refreshToken: async (refreshToken: string): Promise<LoginResponse> => {
+    return apiCall<LoginResponse>(API_ENDPOINTS.AUTH.REFRESH_TOKEN, {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
     });
   },
 };

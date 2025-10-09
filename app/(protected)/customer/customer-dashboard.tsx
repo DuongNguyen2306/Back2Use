@@ -18,7 +18,7 @@ import {
 import { useAuth } from "../../../context/AuthProvider";
 import { useTokenRefresh } from "../../../hooks/useTokenRefresh";
 import { mockPackagingItems, mockStores, mockTransactions } from "../../../lib/mock-data";
-import { getCurrentUserProfile } from "../../../lib/user-service";
+import { getCurrentUserProfileWithAutoRefresh } from "../../../lib/user-service";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -50,7 +50,7 @@ export default function CustomerDashboard() {
     const loadUserData = async () => {
       if (state.accessToken) {
         try {
-          const user = await getCurrentUserProfile(state.accessToken);
+          const user = await getCurrentUserProfileWithAutoRefresh();
           setUserData(user);
         } catch (error) {
           console.error('Error loading user data:', error);

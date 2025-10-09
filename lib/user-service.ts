@@ -1,5 +1,12 @@
 import { API_BASE_URL, API_ENDPOINTS, DEFAULT_HEADERS, REQUEST_TIMEOUT } from './constants';
 
+// Helper function to get current access token with auto refresh
+let getCurrentAccessToken: (() => Promise<string | null>) | null = null;
+
+export const setTokenProvider = (tokenProvider: () => Promise<string | null>) => {
+  getCurrentAccessToken = tokenProvider;
+};
+
 // User interface based on API response
 export interface User {
   _id: string;
@@ -68,6 +75,20 @@ export const getUserById = async (userId: string, token: string): Promise<User> 
 
 // No more fake token logic - only use real tokens from server
 
+// Get current user profile with auto refresh token
+export const getCurrentUserProfileWithAutoRefresh = async (): Promise<User> => {
+  if (!getCurrentAccessToken) {
+    throw new Error('Token provider not set. Call setTokenProvider first.');
+  }
+
+  const token = await getCurrentAccessToken();
+  if (!token) {
+    throw new Error('No valid access token available');
+  }
+
+  return getCurrentUserProfile(token);
+};
+
 // Get current user profile - GET /users/me
 export const getCurrentUserProfile = async (token: string): Promise<User> => {
   try {
@@ -112,6 +133,20 @@ export const getCurrentUserProfile = async (token: string): Promise<User> => {
     }
     throw new Error(`Failed to fetch user profile: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
+};
+
+// Update user profile with auto refresh token
+export const updateUserProfileWithAutoRefresh = async (updates: UpdateProfileRequest): Promise<User> => {
+  if (!getCurrentAccessToken) {
+    throw new Error('Token provider not set. Call setTokenProvider first.');
+  }
+
+  const token = await getCurrentAccessToken();
+  if (!token) {
+    throw new Error('No valid access token available');
+  }
+
+  return updateUserProfile(updates, token);
 };
 
 // Update user profile - POST /users/edit-profile

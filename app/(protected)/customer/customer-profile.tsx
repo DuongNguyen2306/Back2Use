@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
 import { useToast } from '../../../hooks/use-toast';
-import { getCurrentUserProfile, UpdateProfileRequest, updateUserProfile, User } from '../../../lib/user-service';
+import { getCurrentUserProfileWithAutoRefresh, UpdateProfileRequest, updateUserProfileWithAutoRefresh, User } from '../../../lib/user-service';
 import { validateProfileForm, ValidationError } from '../../../lib/validation';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -104,7 +104,7 @@ export default function CustomerProfile() {
         
         if (state.accessToken) {
           console.log('🔍 Using accessToken for API call:', '***' + state.accessToken.slice(-8));
-          const userData = await getCurrentUserProfile(state.accessToken);
+          const userData = await getCurrentUserProfileWithAutoRefresh();
           setUser(userData);
           setFormData({
             name: userData.name || "",
@@ -159,7 +159,7 @@ export default function CustomerProfile() {
         yob: formData.dateOfBirth.trim() || undefined,
       };
 
-      const updatedUser = await updateUserProfile(updateData, state.accessToken);
+      const updatedUser = await updateUserProfileWithAutoRefresh(updateData);
       setUser(updatedUser);
       setIsEditing(false);
       setValidationErrors([]);
