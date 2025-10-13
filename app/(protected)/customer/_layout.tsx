@@ -56,7 +56,8 @@ export default function CustomerLayout() {
     
 
     {/* Bottom Navigation */}
-    <View style={styles.navigation}>
+    <View style={styles.navWrapper}>
+      <View style={styles.navigation}>
       {navigationItems.map((item) => {
         const isActive = activeTab === item.id;
         return (
@@ -69,7 +70,7 @@ export default function CustomerLayout() {
               <Ionicons
                 name={item.icon as any}
                 size={18}
-                color={isActive ? "#FFFFFF" : "#6B7280"}
+                color={"#0F4D3A"}
               />
               <Text style={[styles.navText, isActive && styles.activeNavText]}>
                 {item.label}
@@ -78,6 +79,7 @@ export default function CustomerLayout() {
           </TouchableOpacity>
         );
       })}
+      </View>
     </View>
     </View>
   );
@@ -91,21 +93,26 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  navWrapper: {
+    paddingBottom: 8,
+  },
   navigation: {
     flexDirection: "row",
-    backgroundColor: "#fff",
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    paddingBottom: 12,
-    justifyContent: "space-around",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    justifyContent: "space-between",
     alignItems: "center",
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 24,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 10,
   },
   navItem: {
     flex: 1,
@@ -115,12 +122,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   activeNavItem: {
-    backgroundColor: "#6366f1",
-    shadowColor: "#6366f1",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+    backgroundColor: "#F3F4F6",
   },
   navItemContent: {
     alignItems: "center",
