@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { authApi } from "../lib/api/apiconfig";
+import { authApi } from "../lib/api";
 
 export type Role = "customer" | "business" | "admin";
 
@@ -29,8 +29,14 @@ const refreshAccessToken = async (refreshToken: string) => {
     console.log("🔄 Refreshing access token...");
     const response = await authApi.refreshToken(refreshToken);
     
-    if (response.success && response.data) {
-      const { accessToken, refreshToken: newRefreshToken, user } = response.data;
+    // Accept multiple success formats from server
+    const successByFlag = (response as any)?.success === true;
+    const successByStatus = (response as any)?.statusCode === 200;
+    const successByMessage = typeof (response as any)?.message === 'string' && /success|thành công|refreshed/i.test((response as any).message);
+    const isSuccess = successByFlag || successByStatus || successByMessage;
+
+    if (isSuccess && (response as any)?.data) {
+      const { accessToken, refreshToken: newRefreshToken, user } = (response as any).data;
       
       // Save new tokens
       await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken || '');
@@ -50,7 +56,7 @@ const refreshAccessToken = async (refreshToken: string) => {
         user
       };
     } else {
-      console.error("❌ Token refresh failed:", response.message);
+      console.error("❌ Token refresh failed:", (response as any)?.message || 'Unknown message');
       return null;
     }
   } catch (error) {

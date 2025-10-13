@@ -1,549 +1,404 @@
 "use client"
 
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useState } from "react";
-import { Dimensions, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  Dimensions,
+  ImageBackground,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from "react-native";
 import { useAuth } from "../../../context/AuthProvider";
-import { mockPackagingItems, mockStores, mockTransactions } from "../../../lib/mock-data";
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function BusinessDashboard() {
+  console.log("BusinessDashboard rendered");
   const { state } = useAuth();
-  const [activeTab, setActiveTab] = useState("overview");
-  const [showReturnModal, setShowReturnModal] = useState(false);
+  
+  const [userData] = useState({
+    name: "Business Owner",
+    email: "business@example.com",
+    avatar: "https://via.placeholder.com/100"
+  });
 
-  const currentStore = mockStores[0]
-  const storeItems = mockPackagingItems.filter((item: any) => item.storeId === currentStore.id)
-  const storeTransactions = mockTransactions.filter((t: any) => t.storeId === currentStore.id)
+  // Function to get time-based greeting
+  const getTimeBasedGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) {
+      return "Chào buổi sáng";
+    } else if (hour < 18) {
+      return "Chào buổi trưa";
+    } else {
+      return "Chào buổi tối";
+    }
+  };
 
-  const totalItems = storeItems.length
-  const availableItems = storeItems.filter((item: any) => item.status === "available").length
-  const borrowedItems = storeItems.filter((item: any) => item.status === "borrowed").length
-  const overdueItems = storeItems.filter((item: any) => item.status === "overdue").length
+  // Mock data for business stats
+  const businessStats = {
+    totalRevenue: 12500000,
+    totalOrders: 156,
+    totalCustomers: 89,
+    totalProducts: 234
+  };
 
-  const bottomNavItems = [
-    { id: "overview", label: "Tổng quan", icon: "home" },
-    { id: "wallet", label: "Ví", icon: "wallet" },
-    { id: "inventory", label: "Kho", icon: "cube" },
-    { id: "transactions", label: "Giao dịch", icon: "qr-code" },
-    { id: "more", label: "Thêm", icon: "settings" },
-  ]
+  const quickActions = [
+    {
+      id: "wallet",
+      title: "Ví Business",
+      subtitle: "Quản lý tài chính",
+      icon: "wallet",
+      color: "#10B981",
+      route: "/(protected)/business/wallet"
+    },
+    {
+      id: "inventory",
+      title: "Quản lý kho",
+      subtitle: "Sản phẩm & hàng hóa",
+      icon: "cube",
+      color: "#3B82F6",
+      route: "/(protected)/business/inventory"
+    },
+    {
+      id: "orders",
+      title: "Đơn hàng",
+      subtitle: "Theo dõi giao dịch",
+      icon: "receipt",
+      color: "#F59E0B",
+      route: "/(protected)/business/transactions"
+    },
+    {
+      id: "settings",
+      title: "Cài đặt",
+      subtitle: "Tùy chỉnh hệ thống",
+      icon: "settings",
+      color: "#8B5CF6",
+      route: "/(protected)/business/more"
+    }
+  ];
+
+  const recentActivities = [
+    {
+      id: 1,
+      type: "order",
+      title: "Đơn hàng mới #12345",
+      time: "2 phút trước",
+      amount: 250000
+    },
+    {
+      id: 2,
+      type: "payment",
+      title: "Thanh toán thành công",
+      time: "15 phút trước",
+      amount: 500000
+    },
+    {
+      id: 3,
+      type: "inventory",
+      title: "Cập nhật kho hàng",
+      time: "1 giờ trước",
+      amount: 0
+    }
+  ];
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND'
+    }).format(amount);
+  };
 
   return (
     <View style={styles.container}>
-      <StatusBar backgroundColor="#009900" barStyle="light-content" />
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      
+      {/* Header with Background */}
+      <ImageBackground
+        source={{ uri: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?ixlib=rb-4.0.3&auto=format&fit=crop&w=2074&q=80' }}
+        style={styles.header}
+        imageStyle={styles.headerImage}
+      >
+        <View style={styles.headerOverlay}>
           <View style={styles.headerContent}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {"B"}
-              </Text>
+            <View style={styles.greetingSection}>
+              <Text style={styles.greeting}>{getTimeBasedGreeting()}</Text>
+              <Text style={styles.userName}>{userData.name}</Text>
+              <Text style={styles.userEmail}>{userData.email}</Text>
             </View>
-            <View style={styles.headerTextContainer}>
-              <Text style={styles.headerTitle}>Xin chào, Business</Text>
-              <Text style={styles.headerSubtitle}>{currentStore.name}</Text>
-            </View>
-            <TouchableOpacity style={styles.notificationButton}>
-              <Ionicons name="notifications" size={24} color="#666" />
+            
+            <TouchableOpacity style={styles.profileButton}>
+              <Ionicons name="person-circle" size={40} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
+      </ImageBackground>
 
-        {/* Content */}
-        {activeTab === "overview" && (
-          <>
-            {/* Wallet Card */}
-            <View style={styles.walletCard}>
-              <View style={styles.walletContent}>
-                <View style={styles.walletHeader}>
-                  <View>
-                    <Text style={styles.walletLabel}>Số dư ví</Text>
-                    <Text style={styles.walletAmount}>$0.00</Text>
-                  </View>
-                  <Ionicons name="wallet" size={40} color="rgba(255,255,255,0.8)" />
-                </View>
-                <View style={styles.walletActions}>
-                  <TouchableOpacity style={styles.walletButton}>
-                    <Ionicons name="add" size={16} color="#FFFFFF" />
-                    <Text style={styles.walletButtonText}>Nạp tiền</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.walletButton}>
-                    <Ionicons name="cash" size={16} color="#FFFFFF" />
-                    <Text style={styles.walletButtonText}>Rút tiền</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Stats Cards */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statsRow}>
+            <View style={[styles.statCard, { backgroundColor: '#10B981' }]}>
+              <Ionicons name="trending-up" size={24} color="#FFFFFF" />
+              <Text style={styles.statValue}>{formatCurrency(businessStats.totalRevenue)}</Text>
+              <Text style={styles.statLabel}>Doanh thu</Text>
             </View>
-
-            {/* Stats Grid */}
-            <View style={styles.statsGrid}>
-              <View style={[styles.statCard, styles.availableCard]}>
-                <View style={styles.statContent}>
-                  <View>
-                    <Text style={styles.statNumber}>{availableItems}</Text>
-                    <Text style={styles.statLabel}>Có sẵn</Text>
-                  </View>
-                  <Ionicons name="checkmark-circle" size={32} color="rgba(255,255,255,0.8)" />
-                </View>
-              </View>
-
-              <View style={[styles.statCard, styles.borrowedCard]}>
-                <View style={styles.statContent}>
-                  <View>
-                    <Text style={styles.statNumber}>{borrowedItems}</Text>
-                    <Text style={styles.statLabel}>Đang mượn</Text>
-                  </View>
-                  <Ionicons name="people" size={32} color="rgba(255,255,255,0.8)" />
-                </View>
-              </View>
-
-              <View style={[styles.statCard, styles.overdueCard]}>
-                <View style={styles.statContent}>
-                  <View>
-                    <Text style={styles.statNumber}>{overdueItems}</Text>
-                    <Text style={styles.statLabel}>Quá hạn</Text>
-                  </View>
-                  <Ionicons name="warning" size={32} color="rgba(255,255,255,0.8)" />
-                </View>
-              </View>
-
-              <View style={[styles.statCard, styles.totalCard]}>
-                <View style={styles.statContent}>
-                  <View>
-                    <Text style={styles.statNumber}>{totalItems}</Text>
-                    <Text style={styles.statLabel}>Tổng số</Text>
-                  </View>
-                  <Ionicons name="cube" size={32} color="rgba(255,255,255,0.8)" />
-                </View>
-              </View>
+            
+            <View style={[styles.statCard, { backgroundColor: '#3B82F6' }]}>
+              <Ionicons name="receipt" size={24} color="#FFFFFF" />
+              <Text style={styles.statValue}>{businessStats.totalOrders}</Text>
+              <Text style={styles.statLabel}>Đơn hàng</Text>
             </View>
-
-            {/* Quick Actions */}
-            <View style={styles.quickActionsCard}>
-              <Text style={styles.quickActionsTitle}>Thao tác nhanh</Text>
-              <View style={styles.quickActionsGrid}>
-                <TouchableOpacity 
-                  style={[styles.quickActionButton, styles.scanButton]}
-                  onPress={() => setShowReturnModal(true)}
-                >
-                  <Ionicons name="qr-code" size={24} color="#FFFFFF" />
-                  <Text style={styles.quickActionText}>Quét QR</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.quickActionButton, styles.addButton]}
-                  onPress={() => setActiveTab("inventory")}
-                >
-                  <Ionicons name="add" size={24} color="#FFFFFF" />
-                  <Text style={styles.quickActionText}>Thêm mới</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.quickActionButton, styles.reportButton]}
-                  onPress={() => setActiveTab("transactions")}
-                >
-                  <Ionicons name="bar-chart" size={24} color="#FFFFFF" />
-                  <Text style={styles.quickActionText}>Báo cáo</Text>
-                </TouchableOpacity>
-              </View>
+          </View>
+          
+          <View style={styles.statsRow}>
+            <View style={[styles.statCard, { backgroundColor: '#F59E0B' }]}>
+              <Ionicons name="people" size={24} color="#FFFFFF" />
+              <Text style={styles.statValue}>{businessStats.totalCustomers}</Text>
+              <Text style={styles.statLabel}>Khách hàng</Text>
             </View>
-
-            {/* Recent Activity */}
-            <View style={styles.recentActivityCard}>
-              <Text style={styles.recentActivityTitle}>Hoạt động gần đây</Text>
-              <View style={styles.activityList}>
-                {storeTransactions.slice(0, 5).map((transaction: any) => {
-                  const item = mockPackagingItems.find((p: any) => p.id === transaction.packagingItemId)
-                  return (
-                    <View key={transaction.id} style={styles.activityItem}>
-                      <View style={[
-                        styles.activityIcon,
-                        transaction.type === "borrow" ? styles.borrowIcon : styles.returnIcon
-                      ]}>
-                        <Ionicons 
-                          name={transaction.type === "borrow" ? "cube" : "checkmark-circle"} 
-                          size={20} 
-                          color="#FFFFFF" 
-                        />
-                      </View>
-                      <View style={styles.activityContent}>
-                        <Text style={styles.activityTitle}>
-                          {transaction.type === "borrow" ? "Đã mượn" : "Đã trả"}
-                        </Text>
-                        <Text style={styles.activitySubtitle}>{item?.qrCode}</Text>
-                      </View>
-                      <View style={[
-                        styles.activityBadge,
-                        transaction.status === "completed" ? styles.completedBadge : styles.pendingBadge
-                      ]}>
-                        <Text style={styles.activityBadgeText}>{transaction.status}</Text>
-                      </View>
-                    </View>
-                  )
-                })}
-              </View>
+            
+            <View style={[styles.statCard, { backgroundColor: '#8B5CF6' }]}>
+              <Ionicons name="cube" size={24} color="#FFFFFF" />
+              <Text style={styles.statValue}>{businessStats.totalProducts}</Text>
+              <Text style={styles.statLabel}>Sản phẩm</Text>
             </View>
-          </>
-        )}
-
-        {/* Other tabs content */}
-        {activeTab === "wallet" && (
-          <View style={styles.tabContent}>
-            <Text style={styles.tabTitle}>Ví</Text>
-            <Text style={styles.tabSubtitle}>Chức năng ví sẽ được thêm sau</Text>
           </View>
-        )}
+        </View>
 
-        {activeTab === "inventory" && (
-          <View style={styles.tabContent}>
-            <Text style={styles.tabTitle}>Kho</Text>
-            <Text style={styles.tabSubtitle}>Quản lý kho sẽ được thêm sau</Text>
+        {/* Quick Actions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Thao tác nhanh</Text>
+          <View style={styles.quickActionsGrid}>
+            {quickActions.map((action) => (
+              <TouchableOpacity
+                key={action.id}
+                style={styles.quickActionCard}
+                onPress={() => router.push(action.route as any)}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: action.color }]}>
+                  <Ionicons name={action.icon as any} size={24} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionTitle}>{action.title}</Text>
+                <Text style={styles.quickActionSubtitle}>{action.subtitle}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
-        )}
+        </View>
 
-        {activeTab === "transactions" && (
-          <View style={styles.tabContent}>
-            <Text style={styles.tabTitle}>Giao dịch</Text>
-            <Text style={styles.tabSubtitle}>Xử lý giao dịch sẽ được thêm sau</Text>
+        {/* Recent Activities */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Hoạt động gần đây</Text>
+          <View style={styles.activitiesList}>
+            {recentActivities.map((activity) => (
+              <View key={activity.id} style={styles.activityItem}>
+                <View style={styles.activityIcon}>
+                  <Ionicons 
+                    name={
+                      activity.type === 'order' ? 'receipt' :
+                      activity.type === 'payment' ? 'card' : 'cube'
+                    } 
+                    size={20} 
+                    color="#6B7280" 
+                  />
+                </View>
+                <View style={styles.activityContent}>
+                  <Text style={styles.activityTitle}>{activity.title}</Text>
+                  <Text style={styles.activityTime}>{activity.time}</Text>
+                </View>
+                {activity.amount > 0 && (
+                  <Text style={styles.activityAmount}>
+                    {formatCurrency(activity.amount)}
+                  </Text>
+                )}
+              </View>
+            ))}
           </View>
-        )}
-
-        {activeTab === "more" && (
-          <View style={styles.tabContent}>
-            <Text style={styles.tabTitle}>Thêm</Text>
-            <Text style={styles.tabSubtitle}>Các chức năng khác sẽ được thêm sau</Text>
-          </View>
-        )}
+        </View>
       </ScrollView>
-
-      {/* Bottom Navigation */}
-      <View style={styles.bottomNav}>
-        {bottomNavItems.map((item) => {
-          const isActive = activeTab === item.id
-          return (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.bottomNavItem}
-              onPress={() => setActiveTab(item.id)}
-            >
-              <Ionicons 
-                name={item.icon as any} 
-                size={24} 
-                color={isActive ? "#009900" : "#666"} 
-              />
-              <Text style={[
-                styles.bottomNavLabel,
-                isActive && styles.bottomNavLabelActive
-              ]}>
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          )
-        })}
-      </View>
     </View>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  scrollView: {
-    flex: 1,
+    backgroundColor: '#F8FAFC',
   },
   header: {
-    backgroundColor: '#009900',
     paddingTop: 50,
-    paddingBottom: 20,
+    paddingBottom: 30,
     paddingHorizontal: 20,
+    height: 200,
+  },
+  headerImage: {
+    opacity: 0.8,
+  },
+  headerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
   headerContent: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  avatarText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  headerTextContainer: {
+  greetingSection: {
     flex: 1,
   },
-  headerTitle: {
-    fontSize: 18,
+  greeting: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    opacity: 0.9,
+  },
+  userName: {
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 2,
+    marginTop: 4,
   },
-  headerSubtitle: {
+  userEmail: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
+    color: '#FFFFFF',
+    opacity: 0.8,
+    marginTop: 2,
   },
-  notificationButton: {
+  profileButton: {
     padding: 8,
   },
-  walletCard: {
-    margin: 20,
+  content: {
+    flex: 1,
+    marginTop: -20,
+  },
+  statsContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 30,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15,
+  },
+  statCard: {
+    flex: 1,
+    marginHorizontal: 5,
+    padding: 20,
     borderRadius: 16,
-    backgroundColor: '#4F46E5',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
   },
-  walletContent: {
-    padding: 20,
-  },
-  walletHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  walletLabel: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-    marginBottom: 4,
-  },
-  walletAmount: {
-    fontSize: 32,
+  statValue: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
-  },
-  walletActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  walletButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  walletButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-  statCard: {
-    width: (screenWidth - 52) / 2,
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  availableCard: {
-    backgroundColor: '#10B981',
-  },
-  borrowedCard: {
-    backgroundColor: '#F59E0B',
-  },
-  overdueCard: {
-    backgroundColor: '#EF4444',
-  },
-  totalCard: {
-    backgroundColor: '#8B5CF6',
-  },
-  statContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 4,
+    marginTop: 8,
+    textAlign: 'center',
   },
   statLabel: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.9)',
+    color: '#FFFFFF',
+    opacity: 0.9,
+    marginTop: 4,
+    textAlign: 'center',
   },
-  quickActionsCard: {
-    margin: 20,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+  section: {
+    paddingHorizontal: 20,
+    marginBottom: 30,
   },
-  quickActionsTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 16,
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 15,
   },
   quickActionsGrid: {
     flexDirection: 'row',
-    gap: 12,
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
-  quickActionButton: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-  },
-  scanButton: {
-    backgroundColor: '#3B82F6',
-  },
-  addButton: {
-    backgroundColor: '#10B981',
-  },
-  reportButton: {
-    backgroundColor: '#8B5CF6',
-  },
-  quickActionText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 8,
-  },
-  recentActivityCard: {
-    margin: 20,
+  quickActionCard: {
+    width: (screenWidth - 60) / 2,
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+    padding: 20,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginBottom: 15,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
   },
-  recentActivityTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 16,
+  quickActionIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
   },
-  activityList: {
-    gap: 12,
+  quickActionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  quickActionSubtitle: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  activitiesList: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   activityItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
   activityIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
-  },
-  borrowIcon: {
-    backgroundColor: '#F59E0B',
-  },
-  returnIcon: {
-    backgroundColor: '#10B981',
+    marginRight: 15,
   },
   activityContent: {
     flex: 1,
   },
   activityTitle: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 2,
+    fontWeight: '500',
+    color: '#1F2937',
   },
-  activitySubtitle: {
+  activityTime: {
     fontSize: 12,
     color: '#6B7280',
+    marginTop: 2,
   },
-  activityBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  completedBadge: {
-    backgroundColor: '#D1FAE5',
-  },
-  pendingBadge: {
-    backgroundColor: '#FEF3C7',
-  },
-  activityBadgeText: {
-    fontSize: 12,
+  activityAmount: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#111827',
+    color: '#10B981',
   },
-  tabContent: {
-    margin: 20,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  tabTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 8,
-  },
-  tabSubtitle: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  bottomNav: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    paddingBottom: 20,
-    paddingTop: 8,
-  },
-  bottomNavItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  bottomNavLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
-  },
-  bottomNavLabelActive: {
-    color: '#009900',
-    fontWeight: '600',
-  },
-})
+});

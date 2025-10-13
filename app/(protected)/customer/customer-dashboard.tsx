@@ -18,7 +18,7 @@ import {
 import { useAuth } from "../../../context/AuthProvider";
 import { useTokenRefresh } from "../../../hooks/useTokenRefresh";
 import { mockPackagingItems, mockStores, mockTransactions } from "../../../lib/mock-data";
-import { getCurrentUserProfileWithAutoRefresh } from "../../../lib/user-service";
+import { getCurrentUserProfileWithAutoRefresh } from "../../../lib/api";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 

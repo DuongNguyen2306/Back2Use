@@ -1,0 +1,764 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
+import { API_BASE_URL, API_ENDPOINTS, DEFAULT_HEADERS, REQUEST_TIMEOUT } from './constants';
+
+// ============================================================================
+// AXIOS CONFIGURATION
+// ============================================================================
+
+// Tạo instance axios với cấu hình mặc định
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: REQUEST_TIMEOUT,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request interceptor để thêm token vào header
+apiClient.interceptors.request.use(
+  async (config) => {
+    try {
+      const token = await AsyncStorage.getItem('ACCESS_TOKEN');
+      console.log('🔑 Token from AsyncStorage:', token ? 'Present' : 'Missing');
+      console.log('🌐 Making request to:', config.url);
+      console.log('📝 Request method:', config.method?.toUpperCase());
+      
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+        console.log('✅ Token added to request headers');
+        console.log('🔐 Authorization header:', `Bearer ${token.substring(0, 20)}...`);
+      } else {
+        console.log('❌ No token found, request will be unauthorized');
+        console.log('⚠️ This request will likely fail with 401');
+      }
+    } catch (error) {
+      console.error('Error getting token from AsyncStorage:', error);
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor để xử lý lỗi chung
+apiClient.interceptors.response.use(
+  (response) => {
+    console.log('✅ API Response:', response.status, response.config.url);
+    return response;
+  },
+  async (error) => {
+    console.log('❌ API Error:', error.response?.status, error.config?.url);
+    console.log('Error details:', error.response?.data);
+    
+    // Do NOT auto-clear tokens here. Let the auth flow decide how to handle 401.
+    // This avoids race conditions where tokens are valid/just refreshed.
+    return Promise.reject(error);
+  }
+);
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+export interface RegisterRequest {
+  name: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface RegisterResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  statusCode: number;
+  message: string;
+  data?: {
+    accessToken?: string;
+    refreshToken?: string;
+    user?: {
+      _id?: string;
+      email?: string;
+      name?: string;
+      role?: string;
+      isActive?: boolean;
+      isBlocked?: boolean;
+    };
+  };
+  // Legacy support
+  success?: boolean;
+  user?: {
+    id?: string;
+    name?: string;
+    email?: string;
+    role?: string;
+  };
+  role?: string;
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ForgotPasswordResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface VerifyOTPRequest {
+  otp: string;
+  email?: string;
+}
+
+export interface VerifyOTPResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    verified: boolean;
+  };
+}
+
+export interface ResendOTPRequest {
+  email: string;
+}
+
+export interface ResendOTPResponse {
+  success: boolean;
+  message: string;
+  statusCode?: number;
+}
+
+export interface ResetPasswordRequest {
+  email: string;
+  otp: string;
+  newPassword: string;
+  confirmNewPassword: string;
+}
+
+export interface ResetPasswordResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface ChangePasswordRequest {
+  oldPassword: string;
+  newPassword: string;
+  confirmNewPassword: string;
+}
+
+export interface ChangePasswordResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface GoogleOAuthResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    accessToken?: string;
+    refreshToken?: string;
+    user?: {
+      _id?: string;
+      email?: string;
+      name?: string;
+      role?: string;
+      isActive?: boolean;
+      isBlocked?: boolean;
+    };
+  };
+}
+
+export interface BusinessRegisterRequest {
+  storeName: string;
+  storeMail: string;
+  storeAddress: string;
+  storePhone: string;
+  taxCode: string;
+  foodLicenseFile?: any;
+  businessLicenseFile?: any;
+}
+
+export interface BusinessRegisterResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    id: string;
+    storeName: string;
+    storeMail: string;
+    status: string;
+  };
+}
+
+export interface ApiError {
+  success: false;
+  message: string;
+  errors?: Record<string, string[]>;
+}
+
+// User interface
+export interface User {
+  _id: string;
+  email: string;
+  name: string;
+  role: 'customer' | 'business' | 'admin';
+  isActive: boolean;
+  isBlocked: boolean;
+  createdAt: string;
+  updatedAt: string;
+  phone?: string;
+  avatar?: string;
+  address?: string;
+  yob?: string;
+}
+
+export interface UpdateProfileRequest {
+  name?: string;
+  phone?: string;
+  avatar?: string;
+  address?: string;
+  yob?: string;
+}
+
+// ============================================================================
+// GENERIC API CALL FUNCTION
+// ============================================================================
+
+async function apiCall<T>(
+  endpoint: string,
+  options: {
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+    data?: any;
+    headers?: Record<string, string>;
+    params?: Record<string, any>;
+  } = {}
+): Promise<T> {
+  console.log('🚀 API Call:', {
+    endpoint,
+    method: options.method || 'GET',
+    hasData: !!options.data,
+    hasHeaders: !!options.headers
+  });
+  
+  try {
+    const response = await apiClient({
+      url: endpoint,
+      method: options.method || 'GET',
+      data: options.data,
+      headers: {
+        ...DEFAULT_HEADERS,
+        ...options.headers,
+      },
+      params: options.params,
+      timeout: REQUEST_TIMEOUT,
+    });
+
+    return response.data;
+  } catch (error: any) {
+    console.error('API call failed:', error);
+    
+    if (error.response) {
+      const errorMessage = error.response.data?.message || `HTTP error! status: ${error.response.status}`;
+      throw new Error(errorMessage);
+    } else if (error.request) {
+      throw new Error('Network error. Please check your connection and try again.');
+    } else {
+      throw new Error(error.message || 'An unexpected error occurred.');
+    }
+  }
+}
+
+// ============================================================================
+// AUTH API
+// ============================================================================
+
+export const authApi = {
+  // Register a new user
+  register: async (userData: RegisterRequest): Promise<RegisterResponse> => {
+    return apiCall<RegisterResponse>(API_ENDPOINTS.AUTH.REGISTER, {
+      method: 'POST',
+      data: userData,
+    });
+  },
+
+  // Login user
+  login: async (loginData: LoginRequest): Promise<LoginResponse> => {
+    return apiCall<LoginResponse>(API_ENDPOINTS.AUTH.LOGIN, {
+      method: 'POST',
+      data: loginData,
+    });
+  },
+
+  // Forgot password
+  forgotPassword: async (email: string): Promise<ForgotPasswordResponse> => {
+    return apiCall<ForgotPasswordResponse>(API_ENDPOINTS.AUTH.FORGOT_PASSWORD, {
+      method: 'POST',
+      data: { email },
+    });
+  },
+
+  // Activate account with OTP
+  activateAccount: async (otpData: VerifyOTPRequest): Promise<VerifyOTPResponse> => {
+    return apiCall<VerifyOTPResponse>('/auth/active-account', {
+      method: 'POST',
+      data: otpData,
+    });
+  },
+
+  // Resend OTP
+  resendOTP: async (email: string): Promise<ResendOTPResponse> => {
+    return apiCall<ResendOTPResponse>('/auth/resend-otp', {
+      method: 'POST',
+      data: { email },
+    });
+  },
+
+  // Reset password with OTP
+  resetPassword: async (resetData: ResetPasswordRequest): Promise<ResetPasswordResponse> => {
+    return apiCall<ResetPasswordResponse>('/auth/reset-password', {
+      method: 'POST',
+      data: resetData,
+    });
+  },
+
+  // Google OAuth login - redirect to Google
+  googleLogin: async (): Promise<string> => {
+    return `${API_BASE_URL}/auth/google`;
+  },
+
+  // Google OAuth callback - handle response from Google
+  googleCallback: async (code: string, state?: string): Promise<LoginResponse> => {
+    return apiCall<LoginResponse>('/auth/google/callback', {
+      method: 'POST',
+      data: { code, state },
+    });
+  },
+
+  // Refresh access token
+  refreshToken: async (refreshToken: string): Promise<LoginResponse> => {
+    return apiCall<LoginResponse>(API_ENDPOINTS.AUTH.REFRESH_TOKEN, {
+      method: 'POST',
+      data: { refreshToken },
+    });
+  },
+
+  // Change password
+  changePassword: async (passwordData: ChangePasswordRequest): Promise<ChangePasswordResponse> => {
+    console.log('🔐 ===== CHANGE PASSWORD REQUEST START =====');
+    console.log('🔐 Endpoint:', API_ENDPOINTS.USER.CHANGE_PASSWORD);
+    console.log('🔐 Data:', { ...passwordData, oldPassword: '***', newPassword: '***', confirmNewPassword: '***' });
+    
+    // Check token before making request
+    try {
+      const token = await AsyncStorage.getItem('ACCESS_TOKEN');
+      console.log('🔐 Token check before change password:', token ? 'Present' : 'Missing');
+      if (token) {
+        console.log('🔐 Token preview:', token.substring(0, 20) + '...');
+      }
+    } catch (error) {
+      console.error('🔐 Error checking token:', error);
+    }
+    
+    console.log('🔐 ===== CHANGE PASSWORD REQUEST END =====');
+    
+    try {
+      const response = await apiCall<ChangePasswordResponse>(API_ENDPOINTS.USER.CHANGE_PASSWORD, {
+        method: 'POST',
+        data: passwordData,
+      });
+      
+      console.log('🔐 Change password response:', response);
+      return response;
+    } catch (error: any) {
+      console.log('🔐 Change password error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      throw error;
+    }
+  },
+};
+
+// ============================================================================
+// BUSINESS API
+// ============================================================================
+
+export const businessApi = {
+  // Register a new business
+  register: async (businessData: BusinessRegisterRequest): Promise<BusinessRegisterResponse> => {
+    const formData = new FormData();
+    
+    formData.append('storeName', businessData.storeName);
+    formData.append('storeMail', businessData.storeMail);
+    formData.append('storeAddress', businessData.storeAddress);
+    formData.append('storePhone', businessData.storePhone);
+    formData.append('taxCode', businessData.taxCode);
+    
+    if (businessData.foodLicenseFile) {
+      formData.append('foodLicenseFile', {
+        uri: businessData.foodLicenseFile.uri,
+        type: businessData.foodLicenseFile.type || 'image/jpeg',
+        name: businessData.foodLicenseFile.name || 'food_license.jpg',
+      } as any);
+    }
+    
+    if (businessData.businessLicenseFile) {
+      formData.append('businessLicenseFile', {
+        uri: businessData.businessLicenseFile.uri,
+        type: businessData.businessLicenseFile.type || 'image/jpeg',
+        name: businessData.businessLicenseFile.name || 'business_license.jpg',
+      } as any);
+    }
+
+    return apiCall<BusinessRegisterResponse>('/businesses/form', {
+      method: 'POST',
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+};
+
+// ============================================================================
+// USER API
+// ============================================================================
+
+// Helper function to get current access token with auto refresh
+let getCurrentAccessToken: (() => Promise<string | null>) | null = null;
+
+export const setTokenProvider = (tokenProvider: () => Promise<string | null>) => {
+  getCurrentAccessToken = tokenProvider;
+};
+
+// ============================================================================
+// MATERIALS API
+// ============================================================================
+
+export interface MaterialCreateRequest {
+  materialName: string;
+  maximumReuse?: number;
+  description?: string;
+}
+
+export interface MaterialItem {
+  _id: string;
+  materialName: string;
+  maximumReuse?: number;
+  description?: string;
+  status?: 'approved' | 'pending' | 'rejected';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PaginatedResponse<T> {
+  statusCode?: number;
+  message?: string;
+  data?: {
+    docs?: T[];
+    items?: T[];
+    totalDocs?: number;
+    total?: number;
+    page?: number;
+    limit?: number;
+  };
+  success?: boolean;
+}
+
+export const materialsApi = {
+  create: async (payload: MaterialCreateRequest) => {
+    return apiCall<any>(API_ENDPOINTS.MATERIALS.CREATE, {
+      method: 'POST',
+      data: payload,
+    });
+  },
+  listApproved: async (page = 1, limit = 10): Promise<PaginatedResponse<MaterialItem>> => {
+    return apiCall<PaginatedResponse<MaterialItem>>(API_ENDPOINTS.MATERIALS.LIST_APPROVED, {
+      method: 'GET',
+      params: { page, limit },
+    });
+  },
+  listMy: async (params: { status?: 'pending' | 'rejected'; page?: number; limit?: number } = {}): Promise<PaginatedResponse<MaterialItem>> => {
+    const { status, page = 1, limit = 10 } = params;
+    return apiCall<PaginatedResponse<MaterialItem>>(API_ENDPOINTS.MATERIALS.LIST_MY, {
+      method: 'GET',
+      params: { status, page, limit },
+    });
+  },
+};
+
+// ============================================================================
+// PAYMENTS API (VNPay)
+// ============================================================================
+
+export const paymentsApi = {
+  // Create a VNPay payment and receive payUrl
+  createVnPay: async (payload: {
+    amount: number; // in VND
+    orderInfo: string;
+    returnUrl?: string; // optional override
+  }): Promise<{ payUrl: string } & Record<string, any>> => {
+    return apiCall<any>(API_ENDPOINTS.PAYMENTS.VNPAY_CREATE, {
+      method: 'POST',
+      data: payload,
+    });
+  },
+  // Deposit money into a wallet via VNPay: POST /wallets/{walletId}/deposit { amount }
+  depositToWallet: async (walletId: string, amount: number): Promise<{ payUrl?: string } & Record<string, any>> => {
+    return apiCall<any>(`/wallets/${walletId}/deposit`, {
+      method: 'POST',
+      data: { amount },
+    });
+  },
+};
+
+// Get user by ID
+export const getUserById = async (userId: string, token: string): Promise<User> => {
+  try {
+    const response = await apiClient.get(`${API_ENDPOINTS.USER.GET_BY_ID}/${userId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      timeout: REQUEST_TIMEOUT,
+    });
+
+    return response.data;
+  } catch (error: any) {
+    console.error('Error fetching user by ID:', error);
+    if (error.code === 'ECONNABORTED') {
+      throw new Error('Request timeout. Please check your connection and try again.');
+    }
+    throw new Error(`Failed to fetch user: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+  }
+};
+
+// Get current user profile with auto refresh token
+export const getCurrentUserProfileWithAutoRefresh = async (): Promise<User> => {
+  if (!getCurrentAccessToken) {
+    throw new Error('Token provider not set. Call setTokenProvider first.');
+  }
+
+  const token = await getCurrentAccessToken();
+  if (!token) {
+    throw new Error('No valid access token available');
+  }
+
+  return getCurrentUserProfile(token);
+};
+
+// Get current user profile - GET /users/me
+export const getCurrentUserProfile = async (token: string): Promise<User> => {
+  try {
+    console.log('getCurrentUserProfile called with token:', token ? '***' + token.slice(-8) : 'None');
+    console.log('Token length:', token?.length || 0);
+    
+    if (!token) {
+      throw new Error('No access token provided');
+    }
+
+    const response = await apiClient.get('/users/me', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      timeout: REQUEST_TIMEOUT,
+    });
+
+    const result = response.data;
+    
+    if (result.statusCode === 200 && result.data && result.data.user) {
+      return result.data.user;
+    } else {
+      throw new Error(result.message || 'Failed to get user profile');
+    }
+  } catch (error: any) {
+    console.error('Error fetching current user profile:', error);
+    if (error.code === 'ECONNABORTED') {
+      throw new Error('Request timeout. Please check your connection and try again.');
+    }
+    throw new Error(`Failed to fetch user profile: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+  }
+};
+
+// Update user profile with auto refresh token
+export const updateUserProfileWithAutoRefresh = async (updates: UpdateProfileRequest): Promise<User> => {
+  if (!getCurrentAccessToken) {
+    throw new Error('Token provider not set. Call setTokenProvider first.');
+  }
+
+  const token = await getCurrentAccessToken();
+  if (!token) {
+    throw new Error('No valid access token available');
+  }
+
+  return updateUserProfile(updates, token);
+};
+
+// Update user profile - POST /users/edit-profile
+export const updateUserProfile = async (updates: UpdateProfileRequest, token: string): Promise<User> => {
+  try {
+    console.log('🔄 updateUserProfile called with:', {
+      updates,
+      tokenPreview: token ? '***' + token.slice(-8) : 'None',
+      tokenLength: token?.length || 0
+    });
+    
+    if (!token) {
+      throw new Error('No access token provided');
+    }
+
+    console.log('📤 Sending request to:', `${API_ENDPOINTS.USER.UPDATE_PROFILE}`);
+    console.log('📤 Request body:', updates);
+
+    const response = await apiClient.post(API_ENDPOINTS.USER.UPDATE_PROFILE, updates, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      timeout: REQUEST_TIMEOUT,
+    });
+
+    console.log('📥 Response status:', response.status);
+    console.log('📥 Response data:', response.data);
+
+    const result = response.data;
+    
+    if (result.statusCode === 200) {
+      if (result.data && result.data.user) {
+        console.log('✅ Profile updated successfully (with user data)');
+        return result.data.user;
+      } else if (result.message === 'User updated successfully') {
+        console.log('✅ Profile updated successfully (fetching updated data)');
+        const updatedUser = await getCurrentUserProfile(token);
+        return updatedUser;
+      } else {
+        console.log('❌ Unexpected response structure:', result);
+        throw new Error(result.message || 'Failed to update user profile');
+      }
+    } else {
+      console.log('❌ Invalid response structure:', result);
+      throw new Error(result.message || 'Failed to update user profile');
+    }
+  } catch (error: any) {
+    console.error('Error updating user profile:', error);
+    if (error.code === 'ECONNABORTED') {
+      throw new Error('Request timeout. Please check your connection and try again.');
+    }
+    throw new Error(`Failed to update user profile: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+  }
+};
+
+// ============================================================================
+// TEST FUNCTIONS
+// ============================================================================
+
+export const testApiConnection = async (): Promise<boolean> => {
+  try {
+    await apiClient.post('/auth/login', {
+      email: 'test@test.com',
+      password: 'test'
+    });
+    return true;
+  } catch (error: any) {
+    if (error.response?.status === 401) {
+      return true;
+    }
+    console.error('API connection test failed:', error);
+    return false;
+  }
+};
+
+export const testAuthEndpoints = async () => {
+  const results = {
+    login: false,
+    register: false,
+    forgotPassword: false,
+  };
+
+  try {
+    try {
+      await apiClient.post('/auth/login', {});
+    } catch (error: any) {
+      results.login = error.response?.status === 400;
+    }
+
+    try {
+      await apiClient.post('/auth/register', {});
+    } catch (error: any) {
+      results.register = error.response?.status === 400;
+    }
+
+    try {
+      await apiClient.post('/auth/forgot-password', {});
+    } catch (error: any) {
+      results.forgotPassword = error.response?.status === 400;
+    }
+
+  } catch (error) {
+    console.error('Auth endpoints test failed:', error);
+  }
+
+  return results;
+};
+
+// Test Profile API
+export const testProfileAPI = async (token: string) => {
+  console.log('🧪 Testing Profile API...');
+  
+  try {
+    console.log('📡 Testing GET /users/me...');
+    const userProfile = await getCurrentUserProfile(token);
+    console.log('✅ User Profile:', userProfile);
+    
+    console.log('📡 Testing POST /users/edit-profile...');
+    const updateData: UpdateProfileRequest = {
+      name: "Nguyễn Văn Test",
+      phone: "0987654321",
+      address: "123 Test Street, Hanoi",
+      yob: "1990-01-01"
+    };
+    
+    const updatedProfile = await updateUserProfile(updateData, token);
+    console.log('✅ Updated Profile:', updatedProfile);
+    
+    return {
+      success: true,
+      originalProfile: userProfile,
+      updatedProfile: updatedProfile
+    };
+    
+  } catch (error) {
+    console.error('❌ API Test Failed:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+};
+
+export const useProfileAPI = () => {
+  const testAPI = async (token: string) => {
+    return await testProfileAPI(token);
+  };
+  
+  return { testAPI };
+};
+
+// ============================================================================
+// EXPORTS
+// ============================================================================
+
+export { API_BASE_URL, apiClient };
+export default apiClient;

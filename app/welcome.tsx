@@ -2,20 +2,20 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    Dimensions,
-    Image,
-    ImageBackground,
-    Linking,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Dimensions,
+  Image,
+  ImageBackground,
+  Linking,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { useAuth } from "../context/AuthProvider";
@@ -117,7 +117,7 @@ export default function WelcomeScreen() {
           <Animated.View style={[styles.heroTopRow, { opacity: fadeAnim }]}>
             <View style={styles.brandContainer}>
               <View style={styles.logoContainer}>
-                <Image source={require("../assets/images/logo.jpg")} style={styles.logo} />
+                <Image source={require("../assets/images/logo2.png")} style={styles.logo} />
               </View>
               <View style={styles.brandTextContainer}>
                 <Text style={styles.brandTitle}>Back2Use</Text>

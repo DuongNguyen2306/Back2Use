@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect } from "react";
 import { useAuthCore, type Role } from "../hooks/useAuth";
-import { setTokenProvider } from "../lib/user-service";
+import { setTokenProvider } from "../lib/api";
 
 type AuthContextType = ReturnType<typeof useAuthCore>;
 

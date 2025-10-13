@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { Alert } from 'react-native';
+import apiClient from './api';
 
 // Google OAuth Service
 export class GoogleAuthService {
@@ -73,15 +74,13 @@ export class GoogleAuthService {
       console.log('Processing OAuth code:', processUrl);
       
       try {
-        const response = await fetch(processUrl, {
-          method: 'GET',
-        });
+        const response = await apiClient.get(`/auth/google-redirect?code=${code}`);
         
-        const contentType = response.headers.get('content-type');
+        const contentType = response.headers['content-type'];
         console.log('Response content-type:', contentType);
         
         if (contentType && contentType.includes('application/json')) {
-          const responseData = await response.json();
+          const responseData = response.data;
           console.log('Google OAuth response:', responseData);
           
           if (responseData.success && responseData.data) {
@@ -91,7 +90,7 @@ export class GoogleAuthService {
           }
         } else {
           // If response is HTML, it might be a redirect page
-          const text = await response.text();
+          const text = response.data;
           console.log('Response is HTML:', text.substring(0, 200) + '...');
           
           // For now, show a success message since the OAuth flow completed
@@ -152,15 +151,13 @@ export class GoogleAuthService {
         console.log('Processing OAuth code:', processUrl);
         
         try {
-          const response = await fetch(processUrl, {
-            method: 'GET',
-          });
+          const response = await apiClient.get(`/auth/google-redirect?code=${code}`);
           
-          const contentType = response.headers.get('content-type');
+          const contentType = response.headers['content-type'];
           console.log('Response content-type:', contentType);
           
           if (contentType && contentType.includes('application/json')) {
-            const responseData = await response.json();
+            const responseData = response.data;
             console.log('Google OAuth response:', responseData);
             
             if (responseData.success && responseData.data) {
@@ -170,7 +167,7 @@ export class GoogleAuthService {
             }
           } else {
             // If response is HTML, it might be a redirect page
-            const text = await response.text();
+            const text = response.data;
             console.log('Response is HTML:', text.substring(0, 200) + '...');
             
             // For now, show a success message since the OAuth flow completed
@@ -250,9 +247,8 @@ export class GoogleAuthService {
     try {
       // Test if the Google OAuth endpoint is accessible
       const apiBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl || 'http://192.168.0.197:8000';
-      const authUrl = `${apiBaseUrl}/auth/google`;
-      const response = await fetch(authUrl, { method: 'HEAD' });
-      return response.ok;
+      const response = await apiClient.head('/auth/google');
+      return response.status === 200;
     } catch (error) {
       console.error('Google OAuth not available:', error);
       return false;

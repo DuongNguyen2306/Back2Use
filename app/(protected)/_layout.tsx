@@ -1,9 +1,10 @@
 import { Stack } from "expo-router";
 import { View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AuthGate from "../../components/AuthGate";
 
 export default function ProtectedLayout() {
+  console.log("🔒 ProtectedLayout rendered");
+  
   return (
     <AuthGate>
       <View style={{ flex: 1 }}>

@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
 import { useToast } from '../../../hooks/use-toast';
-import { getCurrentUserProfileWithAutoRefresh, UpdateProfileRequest, updateUserProfileWithAutoRefresh, User } from '../../../lib/user-service';
+import { getCurrentUserProfileWithAutoRefresh, UpdateProfileRequest, updateUserProfileWithAutoRefresh, User } from '../../../lib/api';
 import { validateProfileForm, ValidationError } from '../../../lib/validation';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -543,6 +543,19 @@ export default function CustomerProfile() {
           )}
         </View>
 
+        {/* Change Password Button */}
+        <Card style={styles.changePasswordCard}>
+          <CardContent style={styles.changePasswordContent}>
+            <TouchableOpacity 
+              style={styles.changePasswordButton} 
+              onPress={() => router.push("/(protected)/customer/change-password")}
+            >
+              <Ionicons name="lock-closed" size={20} color="#3B82F6" />
+              <Text style={styles.changePasswordText}>Đổi mật khẩu</Text>
+            </TouchableOpacity>
+          </CardContent>
+        </Card>
+
         {/* Sign Out Button */}
         <Card style={styles.signOutCard}>
           <CardContent style={styles.signOutContent}>
@@ -952,6 +965,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#ef4444",
+  },
+  changePasswordCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  changePasswordContent: {
+    padding: 20,
+  },
+  changePasswordButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#eff6ff",
+    borderRadius: 8,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#dbeafe",
+    gap: 8,
+  },
+  changePasswordText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#3B82F6",
   },
   signOutCard: {
     backgroundColor: "#FFFFFF",

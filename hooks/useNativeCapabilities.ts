@@ -1,5 +1,6 @@
 // hooks/useNativeCapabilities.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import { useEffect, useState } from "react";
 import { Platform } from "react-native";
@@ -25,6 +26,10 @@ Notifications.setNotificationHandler({
 });
 
 async function ensureNotifPerm() {
+  // Skip in Expo Go to avoid unsupported remote notifications warning
+  if (Constants.appOwnership === "expo") {
+    return false;
+  }
   const { status } = await Notifications.getPermissionsAsync();
   if (status !== "granted") {
     const req = await Notifications.requestPermissionsAsync();

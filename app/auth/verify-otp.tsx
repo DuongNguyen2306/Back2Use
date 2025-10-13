@@ -16,7 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { authApi } from "../../lib/api/apiconfig";
+import { authApi } from "../../lib/api";
 
 export default function VerifyOTPScreen() {
   const params = useLocalSearchParams();

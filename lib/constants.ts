@@ -1,5 +1,5 @@
 // API Configuration Constants
-export const API_BASE_URL = 'http://192.168.0.197:8000';
+export const API_BASE_URL = 'http://192.168.0.200:8000';
 
 // API Endpoints
 export const API_ENDPOINTS = {
@@ -15,7 +15,7 @@ export const API_ENDPOINTS = {
     PROFILE: '/users/me',
     GET_BY_ID: '/users', // GET /users/{id}
     UPDATE_PROFILE: '/users/edit-profile',
-    CHANGE_PASSWORD: '/user/change-password',
+    CHANGE_PASSWORD: '/auth/change-password', // Thử endpoint auth
   },
   BUSINESS: {
     DASHBOARD: '/business/dashboard',
@@ -35,6 +35,14 @@ export const API_ENDPOINTS = {
     USERS: '/admin/users',
     BUSINESSES: '/admin/businesses',
     ANALYTICS: '/admin/analytics',
+  },
+  PAYMENTS: {
+    VNPAY_CREATE: '/vnpay/create',
+  },
+  MATERIALS: {
+    CREATE: '/materials', // POST
+    LIST_APPROVED: '/materials/approved', // GET ?page=&limit=
+    LIST_MY: '/materials/my', // GET ?status=&page=&limit=
   },
 } as const;
 

@@ -19,7 +19,7 @@ import {
     View,
 } from "react-native";
 import { useAuth } from "../../context/AuthProvider";
-import { authApi, LoginRequest } from "../../lib/api/apiconfig";
+import { authApi, LoginRequest } from "../../lib/api";
 import { googleAuthService } from "../../lib/google-auth-service";
 
 type Role = "customer" | "business" | "admin";

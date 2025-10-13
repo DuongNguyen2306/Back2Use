@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -57,6 +58,11 @@ export default function AdminDashboard() {
 
   const registerForPushNotificationsAsync = async () => {
     let token: string | undefined;
+    // Expo Go does not support remote push tokens. Skip to avoid warnings.
+    if (Constants.appOwnership === "expo") {
+      console.warn("expo-notifications: Skipping push token registration on Expo Go. Use a dev build.");
+      return undefined;
+    }
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== "granted") {

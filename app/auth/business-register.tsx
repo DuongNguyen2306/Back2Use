@@ -17,7 +17,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import { businessApi, BusinessRegisterRequest } from "../../lib/api/apiconfig";
+import { businessApi, BusinessRegisterRequest } from "../../lib/api";
 
 const { width } = Dimensions.get('window');
 

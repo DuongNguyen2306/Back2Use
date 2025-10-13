@@ -17,7 +17,7 @@ import {
     View
 } from "react-native";
 import { useAuth } from "../../context/AuthProvider";
-import { authApi, RegisterRequest } from "../../lib/api/apiconfig";
+import { authApi, RegisterRequest } from "../../lib/api";
 
 export default function RegisterScreen() {
   const [name, setName] = useState("");
