@@ -19,7 +19,7 @@ import { StandaloneAIChecker } from "../../../components/StandaloneAIChecker";
 import { useAuth } from "../../../context/AuthProvider";
 import { useTokenRefresh } from "../../../hooks/useTokenRefresh";
 import { getCurrentUserProfileWithAutoRefresh } from "../../../lib/api";
-import { mockPackagingItems, mockStores, mockTransactions } from "../../../lib/mock-data";
+import { mockTransactions } from "../../../lib/mock-data";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -66,7 +66,43 @@ export default function CustomerDashboard() {
   };
 
   const userTransactions = mockTransactions.filter((t) => t.customerId === user?.id);
-  const activeBorrows = userTransactions.filter((t) => t.type === "borrow" && (t.status === "completed" || t.status === "complete") && !t.returnedAt);
+  // Mock data for active borrows
+  const mockActiveBorrows = [
+    {
+      id: "borrow-1",
+      customerId: "1",
+      storeId: "store-1",
+      packagingItemId: "item-1",
+      type: "borrow",
+      status: "completed",
+      borrowedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
+      dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), // 5 days from now
+      returnedAt: null,
+    },
+    {
+      id: "borrow-2", 
+      customerId: "1",
+      storeId: "store-2",
+      packagingItemId: "item-2",
+      type: "borrow",
+      status: "completed",
+      borrowedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1 day ago
+      dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days from now
+      returnedAt: null,
+    }
+  ];
+
+  const mockBorrowItems = [
+    { id: "item-1", name: "Coffee Cup", type: "cup", size: "Medium" },
+    { id: "item-2", name: "Food Container", type: "container", size: "Large" }
+  ];
+
+  const mockBorrowStores = [
+    { id: "store-1", name: "Starbucks Coffee" },
+    { id: "store-2", name: "McDonald's" }
+  ];
+
+  const activeBorrows = mockActiveBorrows;
 
   const startScanning = async () => {
     try {
@@ -112,13 +148,7 @@ export default function CustomerDashboard() {
 
       <View style={styles.heroHeaderArea}>
           <View style={styles.topBar}>
-            <TouchableOpacity style={styles.iconGhost}>
-              <Ionicons name="notifications" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
             <Text style={styles.brandTitle}>BACK2USE</Text>
-            <TouchableOpacity style={styles.iconGhost}>
-              <Ionicons name="menu" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
           </View>
           <View style={styles.greetingRow}>
             <View>
@@ -146,11 +176,11 @@ export default function CustomerDashboard() {
       <View style={styles.whiteBackground}>
         <View style={styles.contentWrapper}>
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-            <View style={{ gap: 16, paddingTop: 24 }}>
+            <View style={{ gap: 24, paddingTop: 24 }}>
             <View style={styles.sectionPad}>
               <View style={styles.balanceRow}>
                 <Text style={styles.balanceLabel}>Card Balance</Text>
-                <Text style={styles.balanceValue}>${(user?.walletBalance ?? 0).toFixed(2)}</Text>
+                <Text style={styles.balanceValue}>{(user?.walletBalance ?? 0 * 25000).toLocaleString('vi-VN')} VND</Text>
               </View>
               <ScrollView 
                 horizontal 
@@ -180,6 +210,13 @@ export default function CustomerDashboard() {
             </View>
 
             <View style={styles.sectionPad}>
+              <View style={styles.recoHeader}>
+                <Text style={styles.recoTitle}>Quick Actions</Text>
+                <TouchableOpacity>
+                  <Text style={styles.recoCta}>View All</Text>
+                </TouchableOpacity>
+              </View>
+              
               <ScrollView 
                 horizontal 
                 showsHorizontalScrollIndicator={false}
@@ -237,7 +274,7 @@ export default function CustomerDashboard() {
                   <Text style={styles.quickText}>AI Chat</Text>
                 </TouchableOpacity>
               </ScrollView>
-        </View>
+            </View>
 
             <View style={styles.sectionPad}>
               <View style={styles.recoHeader}>
@@ -245,41 +282,38 @@ export default function CustomerDashboard() {
                 <TouchableOpacity>
                   <Text style={styles.recoCta}>View All</Text>
                 </TouchableOpacity>
-          </View>
-          </View>
-
-            <View style={styles.sectionPad}>
-              <View style={styles.recoGrid}>
-                {["eco-friendly-coffee-cup", "sustainable-store-interior", "reusable-container-food", "green-eco-packaging"].map((k) => (
-                  <Image
-                    key={k}
-                    source={{ uri: `https://source.unsplash.com/random/800x600?sig=${k}` }}
-                    style={styles.recoImg}
-                  />
+              </View>
+              
+              <View style={[styles.recoGrid, { marginTop: 12 }]}>
+                {[
+                  "https://i.pinimg.com/736x/c2/22/59/c22259cd5eea08886a0642857da34345.jpg",
+                  "https://i.pinimg.com/736x/66/fe/de/66fedec04f3aba15c6892be93406481d.jpg",
+                  "https://i.pinimg.com/736x/cb/66/84/cb668448a69f7917c91cd06c0943901a.jpg",
+                  "https://i.pinimg.com/1200x/2e/13/a2/2e13a2c8a786bb5eeebb3531c4709a18.jpg"
+                ].map((uri, index) => (
+                  <View key={uri} style={styles.recoCard}>
+                    <Image
+                      source={{ uri }}
+                      style={styles.recoImg}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.recoOverlay}>
+                      <Text style={styles.recoCardTitle}>Coffee Cup {index + 1}</Text>
+                      <Text style={styles.recoSubtitle}>Eco-friendly</Text>
+                    </View>
+                  </View>
                 ))}
-        </View>
+              </View>
+            </View>
       </View>
 
-            <View style={styles.sectionPad}>
-              <View style={styles.iconRow}>
-                <TouchableOpacity style={styles.iconBtn} onPress={startScanning}>
-                  <Ionicons name="cube" size={18} color="#6B7280" />
-            </TouchableOpacity>
-                <TouchableOpacity style={styles.iconBtn} onPress={() => router.push("/(protected)/customer/transaction-history")}>
-                  <Ionicons name="trending-up" size={18} color="#6B7280" />
-               </TouchableOpacity>
-                <TouchableOpacity style={styles.iconBtn} onPress={() => router.push("/(protected)/customer/rewards")}>
-                  <Ionicons name="gift" size={18} color="#6B7280" />
-                </TouchableOpacity>
-            </View>
-          </View>
 
-            <View style={styles.sectionPad}>
+            <View style={[styles.sectionPad, { marginTop: 8 }]}>
               <View style={styles.cardPlain}>
                 <View style={styles.cardHeaderRow}>
                   <View style={styles.cardHeaderLeft}>
                     <Ionicons name="cube" size={16} color="#111827" />
-                    <Text style={styles.cardHeaderTitle}>Đang mượn</Text>
+                    <Text style={styles.cardHeaderTitle}>Currently Borrowing</Text>
                 </View>
                   <View style={styles.badgeSmall}><Text style={styles.badgeSmallText}>{activeBorrows.length}</Text></View>
             </View>
@@ -288,18 +322,18 @@ export default function CustomerDashboard() {
                     <View style={styles.emptyIconBox}>
                       <Ionicons name="cube" size={40} color="#6B7280" />
                   </View>
-                  <Text style={styles.emptyTitle}>Chưa có vật phẩm nào</Text>
-                    <Text style={styles.emptySub}>Quét mã QR để bắt đầu</Text>
+                  <Text style={styles.emptyTitle}>No items available</Text>
+                    <Text style={styles.emptySub}>Scan QR code to start</Text>
                     <TouchableOpacity style={styles.primaryBtn} onPress={startScanning}>
                       <Ionicons name="qr-code" size={18} color="#fff" />
-                      <Text style={styles.primaryBtnText}>Quét mã QR</Text>
+                      <Text style={styles.primaryBtnText}>Scan QR Code</Text>
                 </TouchableOpacity>
               </View>
               ) : (
                   <View style={{ gap: 10 }}>
                   {activeBorrows.map((transaction) => {
-                    const item = mockPackagingItems.find((p) => p.id === transaction.packagingItemId);
-                    const store = mockStores.find((s) => s.id === transaction.storeId);
+                    const item = mockBorrowItems.find((p) => p.id === transaction.packagingItemId);
+                    const store = mockBorrowStores.find((s) => s.id === transaction.storeId);
                     const isOverdue = transaction.dueDate && new Date() > transaction.dueDate;
                     return (
                         <View key={transaction.id} style={styles.borrowCard}>
@@ -307,16 +341,16 @@ export default function CustomerDashboard() {
                             <View style={styles.borrowLeft}>
                               <View style={styles.borrowIcon}><Ionicons name="cube" size={18} color="#0F4D3A" /></View>
                               <View style={{ flex: 1 }}>
-                                <Text style={styles.borrowTitle}>{item?.type} - {item?.size}</Text>
+                                <Text style={styles.borrowTitle}>{item?.name} - {item?.size}</Text>
                                 <Text style={styles.borrowStore}>{store?.name}</Text>
             </View>
           </View>
                             <View style={[styles.statusPill, isOverdue && styles.statusPillDanger]}>
-                              <Text style={[styles.statusPillText, isOverdue && styles.statusPillDangerText]}>{isOverdue ? "Quá hạn" : "Đang mượn"}</Text>
+                              <Text style={[styles.statusPillText, isOverdue && styles.statusPillDangerText]}>{isOverdue ? "Overdue" : "Borrowing"}</Text>
                     </View>
                   </View>
                           <View style={styles.borrowFoot}>
-                            <Text style={styles.borrowLabel}>Hạn trả</Text>
+                            <Text style={styles.borrowLabel}>Due Date</Text>
                             <Text style={styles.borrowDate}>{transaction.dueDate?.toLocaleDateString("vi-VN")}</Text>
               </View>
             </View>
@@ -331,28 +365,27 @@ export default function CustomerDashboard() {
           <View style={styles.impactCard}>
                 <View style={styles.impactHead}>
                   <Ionicons name="leaf" size={18} color="#fff" />
-              <Text style={styles.impactTitle}>Tác động của bạn</Text>
+              <Text style={styles.impactTitle}>Your Impact</Text>
             </View>
                 <View style={styles.impactGrid}>
               <View style={styles.impactStat}>
                     <Text style={styles.impactValue}>12</Text>
-                    <Text style={styles.impactLabel}>Lần trả hàng</Text>
+                    <Text style={styles.impactLabel}>Returns</Text>
             </View>
               <View style={styles.impactStat}>
                     <Text style={styles.impactValue}>2.4kg</Text>
-                    <Text style={styles.impactLabel}>Nhựa tiết kiệm</Text>
-                  </View>
+                    <Text style={styles.impactLabel}>Plastic Saved</Text>
                   </View>
                 </View>
               </View>
             </View>
-       </ScrollView>
+          </ScrollView>
         </View>
       </View>
 
       {/* bottom navigation removed; using layout navigation */}
 
-       {showQRScanner && hasPermission && (
+      {showQRScanner && hasPermission && (
          <View style={styles.cameraSheet}>
           <TouchableOpacity style={styles.cameraBackdrop} onPress={stopScanning} activeOpacity={1} />
            <View style={styles.cameraHeader}>
@@ -410,14 +443,14 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   heroHeaderArea: { backgroundColor: '#00704A', paddingHorizontal: 16, paddingTop: 40, paddingBottom: 16 },
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   brandTitle: { color: '#fff', fontWeight: '800', letterSpacing: 2, fontSize: 14 },
   iconGhost: { height: 36, width: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)' },
   iconGhostDark: { height: 36, width: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18, backgroundColor: '#F3F4F6' },
   greetingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   greetingSub: { color: 'rgba(255,255,255,0.9)', fontSize: 14, marginBottom: 4 },
   greetingName: { color: '#fff', fontWeight: '800', fontSize: 24 },
-  avatarLg: { height: 56, width: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)' },
+  avatarLg: { height: 64, width: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)' },
   avatarLgText: { color: '#fff', fontWeight: '800', fontSize: 18 },
   pointsCard: { backgroundColor: '#fff', borderRadius: 24, marginTop: 16, padding: 20, overflow: 'hidden' },
   rewardHeader: { color: '#00704A', fontWeight: '800', fontSize: 11, letterSpacing: 1.2 },
@@ -473,7 +506,44 @@ const styles = StyleSheet.create({
   recoTitle: { fontWeight: '800', fontSize: 16, color: '#111827' },
   recoCta: { color: '#00704A', fontWeight: '700', fontSize: 12 },
   recoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  recoImg: { width: (Dimensions.get('window').width - 16*2 - 10) / 2, aspectRatio: 4/3, borderRadius: 16 },
+  recoCard: { 
+    width: (Dimensions.get('window').width - 16*2 - 10) / 2, 
+    aspectRatio: 4/3, 
+    borderRadius: 16, 
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  recoImg: { 
+    width: '100%', 
+    height: '100%', 
+    borderRadius: 16,
+  },
+  recoOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    padding: 12,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+  },
+  recoCardTitle: { 
+    color: '#fff', 
+    fontSize: 14, 
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  recoSubtitle: { 
+    color: 'rgba(255, 255, 255, 0.8)', 
+    fontSize: 12, 
+    fontWeight: '500',
+  },
   iconRow: { flexDirection: 'row', justifyContent: 'center', gap: 24, paddingVertical: 12 },
   iconBtn: { padding: 8 },
   cardPlain: { backgroundColor: '#fff', borderRadius: 16, padding: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
@@ -501,7 +571,7 @@ const styles = StyleSheet.create({
   borrowFoot: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   borrowLabel: { fontSize: 11, color: '#6B7280' },
   borrowDate: { fontSize: 11, fontWeight: '600', color: '#111827' },
-  impactCard: { backgroundColor: '#10B981', borderRadius: 16, padding: 16, overflow: 'hidden' },
+  impactCard: { backgroundColor: '#00704A', borderRadius: 16, padding: 16, overflow: 'hidden' },
   impactHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   impactTitle: { color: '#fff', fontWeight: '800', fontSize: 14 },
   impactGrid: { flexDirection: 'row', gap: 12 },

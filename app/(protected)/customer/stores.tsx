@@ -221,6 +221,9 @@ export default function CustomerStores() {
       
       {/* Location Bar with Search */}
       <View style={styles.locationBar}>
+        <View style={styles.topBar}>
+          <Text style={styles.brandTitle}>BACK2USE</Text>
+        </View>
         <Text style={styles.locationLabel}>Location</Text>
         <View style={styles.locationContainer}>
           <Ionicons name="location" size={20} color="#fff" />
@@ -629,11 +632,23 @@ const styles = StyleSheet.create({
   },
   locationBar: {
     backgroundColor: "#00704A",
-    paddingTop: 50,
+    paddingTop: 40,
     paddingBottom: 30,
     paddingHorizontal: 20,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
+  },
+  topBar: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginBottom: 4 
+  },
+  brandTitle: { 
+    color: '#fff', 
+    fontWeight: '800', 
+    letterSpacing: 2, 
+    fontSize: 14 
   },
   locationLabel: {
     fontSize: 14,

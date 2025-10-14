@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     justifyContent: "space-between",
     alignItems: "flex-end",
-    paddingBottom: 16,
+    paddingBottom: 24,
     marginHorizontal: 16,
     marginBottom: 16,
     borderRadius: 24,

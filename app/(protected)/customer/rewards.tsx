@@ -14,6 +14,13 @@ import {
     View,
 } from 'react-native';
 
+const getTimeBasedGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good Morning";
+  if (hour < 18) return "Good Afternoon";
+  return "Good Evening";
+};
+
 const { width: screenWidth } = Dimensions.get('window');
 
 // Mock data
@@ -152,17 +159,11 @@ export default function RewardsScreen() {
       
       <View style={styles.heroHeaderArea}>
           <View style={styles.topBar}>
-            <TouchableOpacity style={styles.iconGhost}>
-              <Ionicons name="notifications" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
             <Text style={styles.brandTitle}>BACK2USE</Text>
-            <TouchableOpacity style={styles.iconGhost}>
-              <Ionicons name="menu" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
           </View>
           <View style={styles.greetingRow}>
             <View>
-              <Text style={styles.greetingSub}>Good Morning,</Text>
+              <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
               <Text style={styles.greetingName}>Rewards</Text>
           </View>
             <View style={styles.avatarLg}>
@@ -375,7 +376,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   heroHeaderArea: { backgroundColor: '#00704A', paddingHorizontal: 16, paddingTop: 40, paddingBottom: 32, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   brandTitle: { color: '#fff', fontWeight: '800', letterSpacing: 2, fontSize: 14 },
   iconGhost: { height: 36, width: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)' },
   greetingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
