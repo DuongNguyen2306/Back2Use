@@ -152,34 +152,56 @@ export default function CustomerDashboard() {
                 <Text style={styles.balanceLabel}>Card Balance</Text>
                 <Text style={styles.balanceValue}>${(user?.walletBalance ?? 0).toFixed(2)}</Text>
               </View>
-              <View style={styles.cardGrid}>
-                <View style={[styles.cardTile, { backgroundColor: "#0f172a" }]}>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.cardScrollContainer}
+                contentInset={{ left: 0, right: 0 }}
+                contentInsetAdjustmentBehavior="never"
+              >
+                <View style={[styles.cardTile, { backgroundColor: "#0f172a", marginRight: 8 }]}>
                   <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>BACK2USE</Text>
-                  </View>
-                <Image source={{ uri: "https://images.unsplash.com/photo-1509043759401-136742328bb3?w=800" }} style={styles.cardTileImg} />
-                <Image source={{ uri: "https://images.unsplash.com/photo-1526312426976-593c128eea47?w=800" }} style={styles.cardTileImg} />
                 </View>
-              </View>
+                {[
+                  "https://i.pinimg.com/originals/23/4f/9b/234f9bbee27cd84a0a1ffba559d5bb4b.gif",
+                  "https://i.pinimg.com/736x/15/f3/78/15f378382068f1695de5a8f1a73a81e2.jpg",
+                  "https://i.pinimg.com/736x/ac/b8/ed/acb8edfe7de480f3de889444d3079ca1.jpg",
+                  "https://i.pinimg.com/1200x/f0/d8/ac/f0d8ac3b671863d6473cec480755cf47.jpg",
+                  
+                ].map((uri, i, arr) => (
+                  <Image
+                    key={uri}
+                    source={{ uri }}
+                    style={[styles.cardTileImg, { marginRight: i === arr.length - 1 ? 0 : 8 }]}
+                    resizeMode="cover"
+                  />
+                ))}
+              </ScrollView>
+            </View>
 
             <View style={styles.sectionPad}>
-              <View style={styles.quickGrid}>
-                <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/(protected)/customer/customer-wallet")}>
-                  <View style={[styles.quickIcon, { backgroundColor: "#00704A" }]}>
-                    <Ionicons name="wallet" size={20} color="#fff" />
-                  </View>
-                  <Text style={styles.quickText}>Top-up</Text>
-                </TouchableOpacity>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.quickScrollContainer}
+              >
                 <TouchableOpacity style={styles.quickBtn} onPress={startScanning}>
                   <View style={[styles.quickIcon, { backgroundColor: "#00704A" }]}>
-                    <Ionicons name="qr-code" size={20} color="#fff" />
-            </View>
-                  <Text style={styles.quickText}>Pay</Text>
+                    <Image source={require("../../../assets/images/qr.png")} style={{ width: 28, height: 28 }} />
+                  </View>
+                  <Text style={styles.quickText}>QR</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/(protected)/customer/transaction-history")}>
+                <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/(protected)/customer/customer-wallet")}>
                   <View style={[styles.quickIcon, { backgroundColor: "#00704A" }]}>
-                    <Ionicons name="time" size={20} color="#fff" />
-        </View>
-                  <Text style={styles.quickText}>History</Text>
+                    <Image source={require("../../../assets/images/wallet.png")} style={{ width: 28, height: 28 }} />
+                  </View>
+                  <Text style={styles.quickText}>Wallet</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/(protected)/customer/stores")}>
+                  <View style={[styles.quickIcon, { backgroundColor: "#00704A" }]}>
+                    <Image source={require("../../../assets/images/store.png")} style={{ width: 28, height: 28 }} />
+                  </View>
+                  <Text style={styles.quickText}>Store</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={styles.quickBtn} 
@@ -194,12 +216,27 @@ export default function CustomerDashboard() {
                     setShowAIQualityCheck(true);
                   }}
                 >
-                  <View style={[styles.quickIcon, { backgroundColor: "#FFA500" }]}>
-                    <Ionicons name="sparkles" size={20} color="#fff" />
-          </View>
+                  <View style={[styles.quickIcon, { backgroundColor: "#00704A" }]}>
+                    <Image source={require("../../../assets/images/AI.png")} style={{ width: 28, height: 28 }} />
+                  </View>
                   <Text style={styles.quickText}>AI Check</Text>
                 </TouchableOpacity>
-          </View>
+                <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/(protected)/customer/rewards")}>
+                  <View style={[styles.quickIcon, { backgroundColor: "#00704A" }]}>
+                    <Image source={require("../../../assets/images/rank.png")} style={{ width: 28, height: 28 }} />
+                  </View>
+                  <Text style={styles.quickText}>Rank</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.quickBtn} onPress={() => {
+                  // Add AI chatbot functionality here
+                  Alert.alert("AI Chatbot", "AI Chatbot feature coming soon!");
+                }}>
+                  <View style={[styles.quickIcon, { backgroundColor: "#00704A" }]}>
+                    <Image source={require("../../../assets/images/chatbot.png")} style={{ width: 28, height: 28 }} />
+                  </View>
+                  <Text style={styles.quickText}>AI Chat</Text>
+                </TouchableOpacity>
+              </ScrollView>
         </View>
 
             <View style={styles.sectionPad}>
@@ -410,10 +447,26 @@ const styles = StyleSheet.create({
   balanceLabel: { fontSize: 14, fontWeight: '600', color: '#111827' },
   balanceValue: { fontSize: 16, fontWeight: '800', color: '#00704A' },
   cardGrid: { flexDirection: 'row', gap: 10 },
-  cardTile: { flex: 1, aspectRatio: 3/2, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  cardTileImg: { flex: 1, aspectRatio: 3/2, borderRadius: 14 },
+  cardScrollContainer: {
+    paddingHorizontal: 0,
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  cardTile: {
+    width: 160,
+    height: 107,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardTileImg: {
+    width: 160,
+    height: 107,
+    borderRadius: 14,
+  },
   quickGrid: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
-  quickBtn: { alignItems: 'center', flex: 1 },
+  quickScrollContainer: { paddingVertical: 8, gap: 16 },
+  quickBtn: { alignItems: 'center', marginRight: 16 },
   quickIcon: { padding: 14, borderRadius: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 2 },
   quickText: { fontSize: 10, color: '#111827', marginTop: 6, fontWeight: '600', fontFamily: 'Poppins' },
   recoHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8 },

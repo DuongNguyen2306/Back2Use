@@ -201,18 +201,26 @@ export default function CustomerWallet() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#009900" />
+      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
       
-      {/* Header with gradient background */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <TouchableOpacity style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Ví của tôi</Text>
-          <TouchableOpacity style={styles.notificationButton} onPress={() => Alert.alert("Thông báo", "Không có thông báo mới")}>
-            <Ionicons name="notifications" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
+      <View style={styles.heroHeaderArea}>
+          <View style={styles.topBar}>
+            <TouchableOpacity style={styles.iconGhost}>
+              <Ionicons name="notifications" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+            <Text style={styles.brandTitle}>BACK2USE</Text>
+            <TouchableOpacity style={styles.iconGhost}>
+              <Ionicons name="menu" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.greetingRow}>
+            <View>
+              <Text style={styles.greetingSub}>Good Morning,</Text>
+              <Text style={styles.greetingName}>Wallet</Text>
+          </View>
+            <View style={styles.avatarLg}>
+              <Ionicons name="wallet" size={24} color="#FFFFFF" />
+          </View>
         </View>
       </View>
 
@@ -526,30 +534,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f8fafc",
   },
-  header: {
-    backgroundColor: "#009900", // Green color
-    paddingTop: 60,
-    paddingBottom: 20,
-  },
-  headerContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
+  heroHeaderArea: { backgroundColor: '#00704A', paddingHorizontal: 16, paddingTop: 40, paddingBottom: 32, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  brandTitle: { color: '#fff', fontWeight: '800', letterSpacing: 2, fontSize: 14 },
+  iconGhost: { height: 36, width: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)' },
+  greetingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  greetingSub: { color: 'rgba(255,255,255,0.9)', fontSize: 14, marginBottom: 4 },
+  greetingName: { color: '#fff', fontWeight: '800', fontSize: 24 },
+  avatarLg: { height: 56, width: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)' },
   notificationButton: {
     width: 40,
     height: 40,

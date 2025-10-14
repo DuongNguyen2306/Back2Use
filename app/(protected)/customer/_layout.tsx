@@ -1,18 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack, usePathname } from "expo-router";
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View, StatusBar } from "react-native";
+import { Image, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function CustomerLayout() {
   const pathname = usePathname();
   const [activeTab, setActiveTab] = useState("dashboard");
   
   const navigationItems = [
-    { id: "dashboard", label: "Trang chủ", icon: "home", route: "/(protected)/customer" },
-    { id: "wallet", label: "Ví", icon: "wallet", route: "/(protected)/customer/customer-wallet" },
-    { id: "stores", label: "Cửa hàng", icon: "storefront", route: "/(protected)/customer/stores" },
-    { id: "rewards", label: "Thưởng", icon: "gift", route: "/(protected)/customer/rewards" },
-    { id: "profile", label: "Hồ sơ", icon: "person", route: "/(protected)/customer/customer-profile" },
+    { id: "dashboard", label: "Home", icon: "home-button", route: "/(protected)/customer" },
+    { id: "wallet", label: "Wallet", icon: "wallet", route: "/(protected)/customer/customer-wallet" },
+    { id: "stores", label: "Store", icon: "storefront", route: "/(protected)/customer/stores" },
+    { id: "rewards", label: "Rewards", icon: "gift", route: "/(protected)/customer/rewards" },
+    { id: "profile", label: "Profile", icon: "person", route: "/(protected)/customer/customer-profile" },
   ];
 
   // Function to get active tab based on pathname
@@ -67,14 +67,27 @@ export default function CustomerLayout() {
             onPress={() => handleNavigation(item.route, item.id)}
           >
             <View style={styles.navItemContent}>
-              <Ionicons
-                name={item.icon as any}
-                size={18}
-                color={"#0F4D3A"}
-              />
-              <Text style={[styles.navText, isActive && styles.activeNavText]}>
-                {item.label}
-              </Text>
+              {item.icon === "home-button" ? (
+                <Image
+                  source={require("../../../assets/images/home-button.png")}
+                  style={{ 
+                    width: 18, 
+                    height: 18,
+                    tintColor: isActive ? "#00704A" : "#FFFFFF"
+                  }}
+                />
+              ) : (
+                <Ionicons
+                  name={item.icon as any}
+                  size={18}
+                  color={isActive ? "#00704A" : "#FFFFFF"}
+                />
+              )}
+              {isActive && (
+                <Text style={[styles.navText, styles.activeNavText]}>
+                  {item.label}
+                </Text>
+              )}
             </View>
           </TouchableOpacity>
         );
@@ -98,13 +111,12 @@ const styles = StyleSheet.create({
   },
   navigation: {
     flexDirection: "row",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    backgroundColor: "#00704A",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-end",
+    paddingBottom: 16,
     marginHorizontal: 16,
     marginBottom: 16,
     borderRadius: 24,
@@ -117,25 +129,38 @@ const styles = StyleSheet.create({
   navItem: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    borderRadius: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    position: "relative",
   },
   activeNavItem: {
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#A8E063",
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
   },
   navItemContent: {
     alignItems: "center",
   },
   navText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "600",
-    color: "#6B7280",
-    marginTop: 4,
+    color: "rgba(255, 255, 255, 0.7)",
+    marginTop: 2,
     textAlign: "center",
+    numberOfLines: 1,
   },
   activeNavText: {
-    color: "#FFFFFF",
+    color: "#00704A",
     fontWeight: "700",
+    marginTop: 2,
+    fontSize: 9,
+    numberOfLines: 1,
   },
 });

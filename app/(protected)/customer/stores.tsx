@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-// import * as Location from 'expo-location';
-import { useRef, useState } from "react";
+import * as Location from 'expo-location';
+import { useEffect, useRef, useState } from "react";
 import { Alert, Animated, Dimensions, Linking, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import MapView, { Marker, Region } from "react-native-maps";
 import { mockStores } from "../../../lib/mock-data";
@@ -70,7 +70,10 @@ export default function CustomerStores() {
     longitudeDelta: 0.0421,
   });
   const [searchLocation, setSearchLocation] = useState<{latitude: number, longitude: number, name: string} | null>(null);
-  // const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
+  const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
+  const [currentLocationName, setCurrentLocationName] = useState("Ho Chi Minh City, Vietnam");
+  const [isMapFullscreen, setIsMapFullscreen] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState<{name: string, latitude: number, longitude: number} | null>(null);
   
   const scrollY = useRef(new Animated.Value(0)).current;
   const lastScrollY = useRef(0);
@@ -84,25 +87,85 @@ export default function CustomerStores() {
     return (Math.random() * 5 + 0.5).toFixed(1);
   };
 
-  // Lấy vị trí user - tạm thời comment out
-  // useEffect(() => {
-  //   (async () => {
-  //     let { status } = await Location.requestForegroundPermissionsAsync();
-  //     if (status !== 'granted') {
-  //       Alert.alert('Permission denied', 'Location permission is required to show your location on the map');
-  //       return;
-  //     }
+  // Lấy vị trí user và reverse geocoding
+  useEffect(() => {
+    const getLocation = async () => {
+      try {
+        console.log('Starting location request at:', new Date().toLocaleTimeString());
+        
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        console.log('Permission status:', status);
+        
+        if (status !== 'granted') {
+          console.log('Location permission denied');
+          Alert.alert("Lỗi", "Vui lòng cấp quyền truy cập vị trí trong cài đặt ứng dụng.");
+          setCurrentLocationName("Vị trí không khả dụng");
+          return;
+        }
 
-  //     let location = await Location.getCurrentPositionAsync({});
-  //     setUserLocation(location);
-  //     setMapRegion({
-  //       latitude: location.coords.latitude,
-  //       longitude: location.coords.longitude,
-  //       latitudeDelta: 0.0922,
-  //       longitudeDelta: 0.0421,
-  //     });
-  //   })();
-  // }, []);
+        console.log('Getting current position...');
+        let location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Lowest,
+        });
+        
+        console.log('Location obtained:', location.coords);
+        setUserLocation(location);
+        
+        const newRegion = {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          latitudeDelta: 0.0922,
+          longitudeDelta: 0.0421,
+        };
+        setMapRegion(newRegion);
+
+        try {
+          console.log('Starting reverse geocoding...');
+          const reverseGeocode = await Location.reverseGeocodeAsync({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          });
+
+          console.log('Reverse geocode result:', reverseGeocode);
+
+          if (reverseGeocode.length > 0) {
+            const address = reverseGeocode[0];
+            const city = address.city || address.district || address.subregion || 'Unknown City';
+            const country = address.country || 'Unknown Country';
+            const locationName = `${city}, ${country}`;
+            console.log('Setting location name:', locationName);
+            setCurrentLocationName(locationName);
+          } else {
+            console.log('No reverse geocode results');
+            const fallbackName = `${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)}`;
+            console.log('Using fallback location name:', fallbackName);
+            setCurrentLocationName(fallbackName);
+          }
+        } catch (reverseGeocodeError) {
+          console.log('Reverse geocoding failed:', reverseGeocodeError);
+          const fallbackName = `${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)}`;
+          console.log('Using fallback location name:', fallbackName);
+          setCurrentLocationName(fallbackName);
+        }
+
+        if (mapRef.current) {
+          mapRef.current.animateToRegion(newRegion, 1000);
+        }
+      } catch (error) {
+        console.log('Error getting location:', error);
+        Alert.alert("Lỗi", "Không thể lấy vị trí hiện tại. Sử dụng vị trí mặc định.");
+        setCurrentLocationName("Vị trí không xác định");
+      }
+    };
+
+    const timer = setTimeout(() => {
+      getLocation();
+    }, 1000);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, []);
 
   const filteredStores = allStores.filter((store) => {
     return store.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -113,7 +176,6 @@ export default function CustomerStores() {
     setSelectedStore(store.id);
     setShowStoreDetails(true);
   };
-
 
   const handleDirections = (store: any) => {
     console.log('Opening directions to:', store.name, store.latitude, store.longitude);
@@ -135,68 +197,18 @@ export default function CustomerStores() {
     );
   };
 
-  // Xử lý tìm kiếm địa điểm
-  const handlePlaceSelect = (data: any, details: any) => {
-    if (details) {
-      const newRegion = {
-        latitude: details.geometry.location.lat,
-        longitude: details.geometry.location.lng,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      };
-      setMapRegion(newRegion);
-      setSearchLocation({
-        latitude: details.geometry.location.lat,
-        longitude: details.geometry.location.lng,
-        name: details.formatted_address || details.name
-      });
-      if (mapRef.current) {
-        mapRef.current.animateToRegion(newRegion, 1000);
+  const handleMapPress = (event: any) => {
+    try {
+      const coordinate = event.nativeEvent?.coordinate;
+      if (coordinate && coordinate.latitude && coordinate.longitude) {
+        setSelectedLocation({
+          name: "Địa điểm được chọn",
+          latitude: coordinate.latitude,
+          longitude: coordinate.longitude
+        });
       }
-    }
-  };
-
-  // Tìm kiếm địa chỉ đơn giản
-  const handleSearchLocation = () => {
-    if (searchTerm.trim()) {
-      // Mock tìm kiếm - trong thực tế sẽ gọi Google Places API
-      const mockLocations = [
-        {
-          name: "Trung tâm TP.HCM",
-          latitude: 10.8231,
-          longitude: 106.6297,
-        },
-        {
-          name: "Sân bay Tân Sơn Nhất",
-          latitude: 10.8188,
-          longitude: 106.6519,
-        },
-        {
-          name: "Chợ Bến Thành",
-          latitude: 10.7720,
-          longitude: 106.6983,
-        }
-      ];
-
-      const foundLocation = mockLocations.find(loc => 
-        loc.name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-
-      if (foundLocation) {
-        setSearchLocation(foundLocation);
-        const newRegion = {
-          latitude: foundLocation.latitude,
-          longitude: foundLocation.longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        };
-        setMapRegion(newRegion);
-        if (mapRef.current) {
-          mapRef.current.animateToRegion(newRegion, 1000);
-        }
-      } else {
-        Alert.alert("Không tìm thấy", "Không tìm thấy địa chỉ phù hợp. Thử tìm: Trung tâm TP.HCM, Sân bay Tân Sơn Nhất, Chợ Bến Thành");
-      }
+    } catch (error) {
+      console.log('Error handling map press:', error);
     }
   };
 
@@ -205,43 +217,34 @@ export default function CustomerStores() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#009900" />
+      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
       
-      {/* Header with gradient background */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <TouchableOpacity style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          <View style={styles.headerTextContainer}>
-            <Text style={styles.headerTitle}>Cửa hàng đối tác</Text>
-            <Text style={styles.headerSubtitle}>Tìm cửa hàng gần bạn</Text>
+      {/* Location Bar with Search */}
+      <View style={styles.locationBar}>
+        <Text style={styles.locationLabel}>Location</Text>
+        <View style={styles.locationContainer}>
+          <Ionicons name="location" size={20} color="#fff" />
+          <Text style={styles.locationText}>{currentLocationName || "Default Location"}</Text>
+          <Ionicons name="chevron-down" size={20} color="#fff" />
+        </View>
+        
+        {/* Search Bar inside green area */}
+        <View style={styles.searchSection}>
+          <View style={styles.searchContainer}>
+            <Ionicons name="search" size={20} color="#6B7280" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search Here"
+              value={searchTerm}
+              onChangeText={setSearchTerm}
+              placeholderTextColor="#9CA3AF"
+            />
           </View>
-          <TouchableOpacity style={styles.filterButton} onPress={() => Alert.alert("Bộ lọc", "Tùy chọn bộ lọc")}>
-            <Ionicons name="options-outline" size={22} color="#FFFFFF" />
+          <TouchableOpacity style={styles.filterButton}>
+            <Ionicons name="options" size={20} color="#6B7280" />
           </TouchableOpacity>
         </View>
       </View>
-
-      {/* Search với design đẹp hơn */}
-      <View style={styles.searchSection}>
-        <View style={styles.searchContainer}>
-          <Ionicons name="search-outline" size={20} color="#6366f1" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Tìm kiếm cửa hàng hoặc địa điểm..."
-            value={searchTerm}
-            onChangeText={setSearchTerm}
-            placeholderTextColor="#94a3b8"
-          />
-          {searchTerm.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchTerm("")} style={styles.clearButton}>
-              <Ionicons name="close-circle" size={20} color="#94a3b8" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
 
       {/* Store List */}
       <ScrollView 
@@ -261,7 +264,28 @@ export default function CustomerStores() {
             showsCompass={true}
             toolbarEnabled={false}
             mapType="standard"
+            zoomEnabled={true}
+            scrollEnabled={true}
+            pitchEnabled={true}
+            rotateEnabled={true}
+            zoomControlEnabled={true}
           >
+            {/* Marker cho vị trí người dùng */}
+            {userLocation && (
+              <Marker
+                coordinate={{
+                  latitude: userLocation.coords.latitude,
+                  longitude: userLocation.coords.longitude,
+                }}
+                title="Vị trí của bạn"
+                description={currentLocationName}
+              >
+                <View style={styles.userMarker}>
+                  <Ionicons name="person" size={20} color="#fff" />
+                </View>
+              </Marker>
+            )}
+
             {/* Marker cho FPT HCM */}
             <Marker
               coordinate={{
@@ -295,6 +319,14 @@ export default function CustomerStores() {
               </Marker>
             ))}
           </MapView>
+          
+          {/* Fullscreen Button */}
+          <TouchableOpacity 
+            style={styles.fullscreenButton}
+            onPress={() => setIsMapFullscreen(true)}
+          >
+            <Ionicons name="expand" size={20} color="#00704A" />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
@@ -452,10 +484,131 @@ export default function CustomerStores() {
           </View>
         </View>
       )}
+
+      {/* Fullscreen Map Modal */}
+      {isMapFullscreen && (
+        <View style={styles.fullscreenMapContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#000" />
+          
+          {/* Header with close button */}
+          <View style={styles.fullscreenHeader}>
+            <TouchableOpacity 
+              style={styles.closeButton}
+              onPress={() => setIsMapFullscreen(false)}
+            >
+              <Ionicons name="close" size={24} color="#fff" />
+            </TouchableOpacity>
+            <Text style={styles.fullscreenTitle}>Map View</Text>
+            <TouchableOpacity 
+              style={styles.directionsButton}
+              onPress={() => {
+                if (userLocation) {
+                  const url = `https://www.google.com/maps/dir/?api=1&destination=${userLocation.coords.latitude},${userLocation.coords.longitude}`;
+                  Linking.openURL(url).catch(() => {
+                    Alert.alert("Lỗi", "Không thể mở Google Maps");
+                  });
+                }
+              }}
+            >
+              <Ionicons name="navigate" size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Fullscreen Map */}
+          <MapView
+            ref={mapRef}
+            style={styles.fullscreenMap}
+            region={mapRegion}
+            onRegionChangeComplete={setMapRegion}
+            onPress={handleMapPress}
+            showsUserLocation={true}
+            showsMyLocationButton={true}
+            showsCompass={true}
+            toolbarEnabled={false}
+            mapType="standard"
+            zoomEnabled={true}
+            scrollEnabled={true}
+            pitchEnabled={true}
+            rotateEnabled={true}
+          >
+            {/* Marker cho vị trí người dùng */}
+            {userLocation && (
+              <Marker
+                coordinate={{
+                  latitude: userLocation.coords.latitude,
+                  longitude: userLocation.coords.longitude,
+                }}
+                title="Vị trí của bạn"
+                description={currentLocationName}
+              >
+                <View style={styles.userMarker}>
+                  <Ionicons name="person" size={20} color="#fff" />
+                </View>
+              </Marker>
+            )}
+
+            {/* Marker cho FPT HCM */}
+            <Marker
+              coordinate={{
+                latitude: FPT_HCM_COORDS.latitude,
+                longitude: FPT_HCM_COORDS.longitude,
+              }}
+              title="Trường Đại học FPT HCM"
+              description="Lô E2a-7, Đường D1, Khu Công nghệ cao, Quận 9, TP.HCM"
+              onPress={() => handleStorePress(nearbyStores[0])}
+            >
+              <View style={styles.fptMarker}>
+                <Ionicons name="school" size={24} color="#fff" />
+              </View>
+            </Marker>
+
+            {/* Markers cho các cửa hàng khác */}
+            {filteredStores.filter(store => store.id !== 'fpt-campus').map((store) => (
+              <Marker
+                key={store.id}
+                coordinate={{
+                  latitude: store.latitude,
+                  longitude: store.longitude,
+                }}
+                title={store.name}
+                description={store.address}
+                onPress={() => handleStorePress(store)}
+              >
+                <View style={styles.customMarker}>
+                  <Ionicons name="location" size={24} color="#fff" />
+                </View>
+              </Marker>
+            ))}
+          </MapView>
+
+          {/* Selected Location Info */}
+          {selectedLocation && (
+            <View style={styles.selectedLocationCard}>
+              <View style={styles.selectedLocationInfo}>
+                <Text style={styles.selectedLocationName}>{selectedLocation.name}</Text>
+                <Text style={styles.selectedLocationCoords}>
+                  {selectedLocation.latitude.toFixed(4)}, {selectedLocation.longitude.toFixed(4)}
+                </Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.directionsButtonCard}
+                onPress={() => {
+                  const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedLocation.latitude},${selectedLocation.longitude}`;
+                  Linking.openURL(url).catch(() => {
+                    Alert.alert("Lỗi", "Không thể mở Google Maps");
+                  });
+                }}
+              >
+                <Ionicons name="navigate" size={20} color="#fff" />
+                <Text style={styles.directionsButtonText}>Chỉ đường</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 }
-
 
 function InfoItem({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
@@ -472,139 +625,79 @@ function InfoItem({ icon, label, value }: { icon: string; label: string; value: 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#F8FAFC",
   },
-  header: {
-    backgroundColor: "#009900",
-    paddingTop: 60,
-    paddingBottom: 20,
+  locationBar: {
+    backgroundColor: "#00704A",
+    paddingTop: 50,
+    paddingBottom: 30,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
-  headerContent: {
+  locationLabel: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.8)",
+    marginBottom: 8,
+  },
+  locationContainer: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 20,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
     backgroundColor: "rgba(255, 255, 255, 0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 16,
-  },
-  headerTextContainer: {
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     flex: 1,
+    minHeight: 48, // Đảm bảo có chiều cao tối thiểu
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#FFFFFF",
-    marginBottom: 4,
+  locationText: {
+    flex: 1,
+    fontSize: 16,
+    color: "#fff",
+    fontWeight: "600",
+    marginLeft: 8,
+    textAlign: "left",
+    lineHeight: 20, // Đảm bảo line height
   },
-  headerSubtitle: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.9)",
-    fontWeight: "500",
-  },
-  filterButton: {
+  notificationButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
     backgroundColor: "rgba(255, 255, 255, 0.2)",
     alignItems: "center",
     justifyContent: "center",
+    marginLeft: 12,
   },
   searchSection: {
-    backgroundColor: "#fff",
-    paddingHorizontal: 20,
-    paddingVertical: 4,
-    marginTop: -12,
-    marginBottom: -8,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f8fafc",
-    borderRadius: 20,
-    paddingHorizontal: 20,
-    height: 56,
-    borderWidth: 2,
-    borderColor: "#e2e8f0",
-    shadowColor: "#6366f1",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 2,
+    paddingHorizontal: 0,
+    paddingVertical: 16,
+    marginTop: 16,
   },
-  searchIcon: {
-    marginRight: 16,
+  searchContainer: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginRight: 12,
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: "#0f172a",
-    fontWeight: "500",
+    color: "#111827",
+    marginLeft: 8,
   },
-  autocompleteContainer: {
-    flex: 0,
-    position: 'relative',
-    zIndex: 1,
-  },
-  autocompleteList: {
-    backgroundColor: '#fff',
+  filterButton: {
+    width: 48,
+    height: 48,
     borderRadius: 12,
-    marginTop: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  autocompleteRow: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  autocompleteDescription: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  clearButton: {
-    padding: 8,
-    borderRadius: 12,
-    backgroundColor: "#e2e8f0",
-  },
-  mapContainer: {
-    height: 240,
-    marginHorizontal: 20,
-    marginVertical: 16,
-    borderRadius: 24,
-    overflow: "hidden",
-    borderWidth: 2,
-    borderColor: "#e2e8f0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  map: {
-    flex: 1,
-  },
-  customMarker: {
-    backgroundColor: "#6366f1",
-    padding: 4,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: "#fff",
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
   },
   scrollView: {
     flex: 1,
@@ -630,6 +723,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#64748b",
     fontWeight: "500",
+  },
+  mapContainer: {
+    height: 240,
+    marginHorizontal: 20,
+    marginVertical: 16,
+    borderRadius: 24,
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "#e2e8f0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  map: {
+    flex: 1,
+  },
+  customMarker: {
+    backgroundColor: "#6366f1",
+    padding: 4,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: "#fff",
   },
   storeCard: {
     backgroundColor: "#fff",
@@ -939,5 +1056,131 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 5,
+  },
+  userMarker: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#10B981",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  fullscreenButton: {
+    position: "absolute",
+    right: 16,
+    top: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  fullscreenMapContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 1, // Cách navigation layout 80px
+    backgroundColor: "#000",
+    zIndex: 1000,
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  fullscreenHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 50,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+    backgroundColor: "rgba(0, 0, 0, 0.8)",
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fullscreenTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#fff",
+  },
+  directionsButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#00704A",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#00704A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  fullscreenMap: {
+    flex: 1,
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  selectedLocationCard: {
+    position: "absolute",
+    bottom: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  selectedLocationInfo: {
+    flex: 1,
+  },
+  selectedLocationName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 4,
+  },
+  selectedLocationCoords: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  directionsButtonCard: {
+    backgroundColor: "#00704A",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  directionsButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });
