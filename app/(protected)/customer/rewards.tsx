@@ -1,7 +1,3 @@
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
-import { Card, CardContent } from '@/components/ui/Card';
-import { Progress } from '@/components/ui/Progress';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
@@ -27,8 +23,8 @@ const { width: screenWidth } = Dimensions.get('window');
 const mockVouchers = [
   {
     id: 'v1',
-    name: 'Giảm 20% Cà phê',
-    description: 'Giảm 20% cho đơn hàng cà phê tại các cửa hàng tham gia',
+    name: '20% Coffee Discount',
+    description: 'Get 20% off on coffee orders at participating stores',
     discountPercent: 20,
     requiredPoints: 100,
     category: 'beverage',
@@ -37,8 +33,8 @@ const mockVouchers = [
   },
   {
     id: 'v2',
-    name: 'Giảm 50% Đồ ăn',
-    description: 'Giảm 50% cho đồ ăn tại các nhà hàng đối tác',
+    name: '50% Food Discount',
+    description: 'Get 50% off on food at partner restaurants',
     discountPercent: 50,
     requiredPoints: 200,
     category: 'food',
@@ -47,8 +43,8 @@ const mockVouchers = [
   },
   {
     id: 'v3',
-    name: 'Miễn phí vận chuyển',
-    description: 'Miễn phí vận chuyển cho đơn hàng tiếp theo',
+    name: 'Free Delivery',
+    description: 'Free delivery for your next order',
     discountPercent: 100,
     requiredPoints: 150,
     category: 'general',
@@ -83,21 +79,21 @@ const mockHistory = [
   {
     id: 'h1',
     points: 50,
-    description: 'Trả cốc cà phê đúng hạn',
+    description: 'Returned coffee cup on time',
     date: '2024-01-20',
     type: 'earn',
   },
   {
     id: 'h2',
     points: -100,
-    description: 'Đổi voucher giảm 20% cà phê',
+    description: 'Redeemed 20% coffee discount voucher',
     date: '2024-01-20',
     type: 'redeem',
   },
   {
     id: 'h3',
     points: 30,
-    description: 'Trả hộp đựng thức ăn đúng hạn',
+    description: 'Returned food container on time',
     date: '2024-01-18',
     type: 'earn',
   },
@@ -146,10 +142,10 @@ export default function RewardsScreen() {
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'available': return 'Có thể sử dụng';
-      case 'used': return 'Đã sử dụng';
-      case 'expired': return 'Hết hạn';
-      default: return 'Không xác định';
+      case 'available': return 'Available';
+      case 'used': return 'Used';
+      case 'expired': return 'Expired';
+      default: return 'Unknown';
     }
   };
 
@@ -178,24 +174,32 @@ export default function RewardsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Points Card */}
-        <Card style={styles.pointsCard}>
-          <CardContent style={styles.pointsContent}>
-            <View style={styles.pointsHeader}>
-              <View style={styles.pointsIcon}>
-                <Ionicons name="trophy" size={24} color="#F59E0B" />
+        {/* Full Screen Points & Ranking */}
+        <View style={styles.fullStatsCard}>
+          <View style={styles.fullStatsContent}>
+            {/* Experience Points - Full Width */}
+            <View style={styles.fullStatItem}>
+              <View style={styles.fullStatIcon}>
+                <Ionicons name="star" size={20} color="#FF6B35" />
               </View>
-              <View style={styles.pointsInfo}>
-                <Text style={styles.pointsLabel}>Điểm của bạn</Text>
-                <Text style={styles.pointsValue}>{userPoints}</Text>
+              <View style={styles.fullStatContent}>
+                <Text style={styles.fullStatNumber}>2300</Text>
+                <Text style={styles.fullStatLabel}>Exp. Points</Text>
               </View>
             </View>
-            <Progress value={(userPoints / 2000) * 100} style={styles.progressBar} />
-            <Text style={styles.progressText}>
-              Còn {2000 - userPoints} điểm để đạt cấp độ tiếp theo
-            </Text>
-          </CardContent>
-        </Card>
+            
+            {/* Ranking - Full Width */}
+            <View style={styles.fullStatItem}>
+              <View style={styles.fullStatIcon}>
+                <Ionicons name="trophy" size={32} color="#FF6B35" />
+              </View>
+              <View style={styles.fullStatContent}>
+                <Text style={styles.fullStatNumber}>8</Text>
+                <Text style={styles.fullStatLabel}>Ranking</Text>
+              </View>
+            </View>
+          </View>
+        </View>
 
         {/* Tab Navigation */}
         <View style={styles.tabContainer}>
@@ -204,7 +208,7 @@ export default function RewardsScreen() {
             onPress={() => setActiveTab('vouchers')}
           >
             <Text style={[styles.tabText, activeTab === 'vouchers' && styles.activeTabText]}>
-              Voucher
+              Vouchers
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -212,7 +216,7 @@ export default function RewardsScreen() {
             onPress={() => setActiveTab('myVouchers')}
           >
             <Text style={[styles.tabText, activeTab === 'myVouchers' && styles.activeTabText]}>
-              Voucher của tôi
+              My Vouchers
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -220,113 +224,121 @@ export default function RewardsScreen() {
             onPress={() => setActiveTab('history')}
           >
             <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>
-              Lịch sử
+              History
             </Text>
           </TouchableOpacity>
         </View>
         {activeTab === 'vouchers' && (
           <View style={styles.tabContent}>
-            <Text style={styles.sectionTitle}>Voucher có sẵn</Text>
+            <Text style={styles.sectionTitle}>Available Vouchers</Text>
             {mockVouchers.map((voucher) => (
-              <Card key={voucher.id} style={styles.voucherCard}>
-                <CardContent style={styles.voucherContent}>
-                  <View style={styles.voucherHeader}>
-                    <View style={styles.voucherIconContainer}>
+              <View key={voucher.id} style={styles.ticketCard}>
+                <View style={styles.ticketContent}>
+                  {/* Left Side - Logo */}
+                  <View style={styles.ticketLeft}>
+                    <View style={styles.ticketLogo}>
                       <Ionicons 
                         name={getVoucherIcon(voucher.category)} 
-                        size={24} 
-                        color="#F59E0B" 
+                        size={32} 
+                        color="#000000" 
                       />
-                    </View>
-                    <View style={styles.voucherInfo}>
-                      <Text style={styles.voucherName}>{voucher.name}</Text>
-                      <Text style={styles.voucherDescription}>{voucher.description}</Text>
-                    </View>
-                    <View style={styles.voucherDiscount}>
-                      <Text style={styles.discountText}>{voucher.discountPercent}%</Text>
-                      <Text style={styles.offText}>OFF</Text>
                     </View>
                   </View>
                   
-                  <View style={styles.voucherFooter}>
-                    <View style={styles.pointsContainer}>
-                      <Ionicons name="star" size={16} color="#F59E0B" />
-                      <Text style={styles.pointsText}>{voucher.requiredPoints} điểm</Text>
+                  {/* Dashed Line Separator */}
+                  <View style={styles.ticketDashedLine} />
+                  
+                  {/* Right Side - Details */}
+                  <View style={styles.ticketRight}>
+                    <Text style={styles.ticketBrand}>{voucher.name.split(' ')[0].toUpperCase()}</Text>
+                    <Text style={styles.ticketOffer}>
+                      {voucher.discountPercent === 100 ? 'BUY 1 GET 1 FREE' : `${voucher.discountPercent}% OFF`}
+                    </Text>
+                    <Text style={styles.ticketValid}>Valid until 31 Dec 2024</Text>
+                    
+                    <View style={styles.ticketFooter}>
+                      <View style={styles.pointsContainer}>
+                        <Ionicons name="star" size={14} color="#FF6B35" />
+                        <Text style={styles.pointsText}>{voucher.requiredPoints} points</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[
+                          styles.redeemButton,
+                          userPoints < voucher.requiredPoints && styles.disabledButton
+                        ]}
+                        disabled={userPoints < voucher.requiredPoints}
+                        onPress={() => handleRedeemVoucher(voucher)}
+                      >
+                        <Text style={[
+                          styles.redeemButtonText,
+                          userPoints < voucher.requiredPoints && styles.disabledText
+                        ]}>
+                          {userPoints >= voucher.requiredPoints ? 'Redeem' : 'Insufficient'}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
-                    <Button
-                      variant={userPoints >= voucher.requiredPoints ? "eco" : "secondary"}
-                      disabled={userPoints < voucher.requiredPoints}
-                      onPress={() => handleRedeemVoucher(voucher)}
-                      style={styles.redeemButton}
-                    >
-                      <Text style={[
-                        styles.redeemButtonText,
-                        userPoints < voucher.requiredPoints && styles.disabledText
-                      ]}>
-                        {userPoints >= voucher.requiredPoints ? 'Đổi ngay' : 'Không đủ điểm'}
-                      </Text>
-                    </Button>
                   </View>
-                </CardContent>
-              </Card>
+                </View>
+              </View>
             ))}
           </View>
         )}
         
         {activeTab === 'myVouchers' && (
           <View style={styles.tabContent}>
-            <Text style={styles.sectionTitle}>Voucher của tôi</Text>
+            <Text style={styles.sectionTitle}>My Vouchers</Text>
             {myVouchers.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="gift-outline" size={64} color="#D1D5DB" />
-                <Text style={styles.emptyTitle}>Chưa có voucher nào</Text>
-                <Text style={styles.emptyDescription}>Đổi điểm để nhận voucher ưu đãi</Text>
+                <Text style={styles.emptyTitle}>No vouchers yet</Text>
+                <Text style={styles.emptyDescription}>Redeem points to get discount vouchers</Text>
               </View>
             ) : (
               myVouchers.map((voucher) => (
-                <Card key={voucher.id} style={styles.myVoucherCard}>
-                  <CardContent style={styles.myVoucherContent}>
-                    <View style={styles.myVoucherHeader}>
-                      <View style={styles.myVoucherIconContainer}>
+                <View key={voucher.id} style={styles.ticketCard}>
+                  <View style={styles.ticketContent}>
+                    {/* Left Side - Logo */}
+                    <View style={styles.ticketLeft}>
+                      <View style={styles.ticketLogo}>
                         <Ionicons 
                           name={getVoucherIcon(voucher.voucher.category)} 
-                          size={20} 
-                          color="#F59E0B" 
+                          size={32} 
+                          color="#000000" 
                         />
                       </View>
-                      <View style={styles.myVoucherInfo}>
-                        <Text style={styles.myVoucherName}>{voucher.voucher.name}</Text>
-                        <Text style={styles.myVoucherDescription}>{voucher.voucher.description}</Text>
-                      </View>
-                      <Badge 
-                        style={[
-                          styles.statusBadge, 
-                          { backgroundColor: getStatusColor(voucher.status) + '20' }
-                        ]}
-                      >
-                        <Text style={[styles.statusText, { color: getStatusColor(voucher.status) }]}>
-                          {getStatusText(voucher.status)}
-                        </Text>
-                      </Badge>
                     </View>
                     
-                    <View style={styles.voucherCodeContainer}>
-                      <Text style={styles.codeLabel}>Mã voucher:</Text>
-                      <View style={styles.codeBox}>
-                        <Text style={styles.codeText}>{voucher.code}</Text>
+                    {/* Dashed Line Separator */}
+                    <View style={styles.ticketDashedLine} />
+                    
+                    {/* Right Side - Details */}
+                    <View style={styles.ticketRight}>
+                      <Text style={styles.ticketBrand}>{voucher.voucher.name.split(' ')[0].toUpperCase()}</Text>
+                      <Text style={styles.ticketOffer}>
+                        {voucher.voucher.discountPercent === 100 ? 'BUY 1 GET 1 FREE' : `${voucher.voucher.discountPercent}% OFF`}
+                      </Text>
+                      <Text style={styles.ticketValid}>Valid until {voucher.expiresAt.toLocaleDateString('en-US')}</Text>
+                      
+                      <View style={styles.ticketFooter}>
+                        <View style={styles.statusContainer}>
+                          <View style={[
+                            styles.statusDot,
+                            { backgroundColor: getStatusColor(voucher.status) }
+                          ]} />
+                          <Text style={[
+                            styles.statusText,
+                            { color: getStatusColor(voucher.status) }
+                          ]}>
+                            {getStatusText(voucher.status)}
+                          </Text>
+                        </View>
+                        <View style={styles.codeContainer}>
+                          <Text style={styles.codeText}>{voucher.code}</Text>
+                        </View>
                       </View>
                     </View>
-                    
-                    <View style={styles.voucherDates}>
-                      <Text style={styles.dateText}>
-                        Đổi: {voucher.redeemedAt.toLocaleDateString('vi-VN')}
-                      </Text>
-                      <Text style={styles.dateText}>
-                        Hết hạn: {voucher.expiresAt.toLocaleDateString('vi-VN')}
-                      </Text>
-                    </View>
-                  </CardContent>
-                </Card>
+                  </View>
+                </View>
               ))
             )}
           </View>
@@ -334,34 +346,51 @@ export default function RewardsScreen() {
         
         {activeTab === 'history' && (
           <View style={styles.tabContent}>
-            <Text style={styles.sectionTitle}>Lịch sử điểm</Text>
+            <Text style={styles.sectionTitle}>Points History</Text>
             {mockHistory.map((item) => (
-              <Card key={item.id} style={styles.historyCard}>
-                <CardContent style={styles.historyContent}>
-                  <View style={styles.historyHeader}>
-                    <View style={styles.historyIconContainer}>
+              <View key={item.id} style={styles.ticketCard}>
+                <View style={styles.ticketContent}>
+                  {/* Left Side - Logo */}
+                  <View style={styles.ticketLeft}>
+                    <View style={styles.ticketLogo}>
                       <Ionicons 
                         name={item.type === 'earn' ? 'add-circle' : 'remove-circle'} 
-                        size={20} 
-                        color={item.type === 'earn' ? '#10B981' : '#EF4444'} 
+                        size={32} 
+                        color="#000000" 
                       />
                     </View>
-                    <View style={styles.historyInfo}>
-                      <Text style={styles.historyDescription}>{item.description}</Text>
-                      <Text style={styles.historyDate}>{item.date}</Text>
-                    </View>
-                    <View style={styles.pointsChangeContainer}>
-                      <Text style={[
-                        styles.pointsChange,
-                        { color: item.type === 'earn' ? '#10B981' : '#EF4444' }
+                  </View>
+                  
+                  {/* Dashed Line Separator */}
+                  <View style={styles.ticketDashedLine} />
+                  
+                  {/* Right Side - Details */}
+                  <View style={styles.ticketRight}>
+                    <Text style={styles.ticketBrand}>{item.type === 'earn' ? 'EARNED' : 'REDEEMED'}</Text>
+                    <Text style={styles.ticketOffer}>{item.description}</Text>
+                    <Text style={styles.ticketValid}>{item.date}</Text>
+                    
+                    <View style={styles.ticketFooter}>
+                      <View style={styles.pointsContainer}>
+                        <Ionicons name="star" size={14} color="#FF6B35" />
+                        <Text style={styles.pointsText}>{item.points > 0 ? '+' : ''}{item.points} points</Text>
+                      </View>
+                      <View style={[
+                        styles.redeemButton,
+                        { 
+                          backgroundColor: item.type === 'earn' ? '#10B981' : '#EF4444',
+                          borderRadius: 50,
+                          overflow: 'hidden'
+                        }
                       ]}>
-                        {item.points > 0 ? '+' : ''}{item.points}
-                      </Text>
-                      <Text style={styles.pointsLabelText}>điểm</Text>
+                        <Text style={styles.redeemButtonText}>
+                          {item.points > 0 ? '+' : ''}{item.points}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                </CardContent>
-              </Card>
+                </View>
+              </View>
             ))}
           </View>
         )}
@@ -391,16 +420,57 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  pointsCard: {
+  fullStatsCard: {
     marginHorizontal: 20,
+    marginTop: 20,
     marginBottom: 20,
-    backgroundColor: '#FEF3C7',
-    borderWidth: 0,
-    elevation: 4,
-    shadowColor: '#F59E0B',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    backgroundColor: '#FF6B35',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+    borderRadius: 24,
+    elevation: 8,
+    shadowColor: '#FF6B35',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+  },
+  fullStatsContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+  },
+  fullStatItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    minWidth: 0,
+  },
+  fullStatIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  fullStatContent: {
+    flex: 1,
+  },
+  fullStatNumber: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginBottom: 2,
+    flexShrink: 0,
+  },
+  fullStatLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.9)',
+    flexShrink: 0,
   },
   pointsContent: {
     padding: 20,
@@ -445,23 +515,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginHorizontal: 20,
     marginBottom: 20,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    padding: 4,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 6,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   tab: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 14,
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: 12,
   },
   activeTab: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FF6B35',
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowColor: '#FF6B35',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
   tabText: {
     fontSize: 14,
@@ -469,11 +546,11 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   activeTabText: {
-    color: '#1F2937',
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   content: {
     flex: 1,
-    paddingHorizontal: 20,
   },
   scrollContent: {
     flexGrow: 1,
@@ -487,17 +564,233 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1F2937',
     marginBottom: 16,
+    marginHorizontal: 20,
   },
-  // Voucher styles
-  voucherCard: {
-    marginBottom: 16,
+  // Ticket styles - giống vé thật
+  ticketCard: {
+    marginHorizontal: 20,
+    marginBottom: 12,
     backgroundColor: '#FFFFFF',
-    borderWidth: 0,
+    borderRadius: 8,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+  },
+  ticketContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  ticketLeft: {
+    width: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ticketLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  ticketDashedLine: {
+    width: 1,
+    height: 60,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    marginHorizontal: 16,
+  },
+  ticketRight: {
+    flex: 1,
+    paddingLeft: 8,
+  },
+  ticketBrand: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#000000',
+    marginBottom: 8,
+  },
+  ticketOffer: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#000000',
+    marginBottom: 4,
+  },
+  ticketValid: {
+    fontSize: 10,
+    color: '#666666',
+    marginBottom: 12,
+  },
+  ticketFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  pointsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pointsText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FF6B35',
+    marginLeft: 4,
+  },
+  redeemButton: {
+    backgroundColor: '#FF6B35',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 50,
+    minHeight: 40,
+    minWidth: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#FF6B35',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+  },
+  redeemButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  disabledButton: {
+    backgroundColor: '#F3F4F6',
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  disabledText: {
+    color: '#9CA3AF',
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  codeContainer: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+  },
+  codeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1F2937',
+    fontFamily: 'monospace',
+  },
+  pointsChangeContainer: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  pointsChangeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  // History styles - đẹp hơn
+  historyCard: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+  },
+  historyContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  historyLeft: {
+    marginRight: 16,
+  },
+  historyIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+  },
+  historyRight: {
+    flex: 1,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  historyTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    flex: 1,
+    marginRight: 12,
+  },
+  historyPointsBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  historyPointsText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  historyDate: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 12,
+  },
+  historyFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  historyTypeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  historyTypeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 6,
+  },
+  historyTypeText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
   },
   voucherContent: {
     padding: 16,

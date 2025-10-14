@@ -154,6 +154,7 @@ export default function CustomerDashboard() {
             <View>
               <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
               <Text style={styles.greetingName}>{user?.name || "User"}</Text>
+              <Text style={styles.greetingNice}>Nice to meet you !</Text>
           </View>
             <View style={styles.avatarLg}>
               <Text style={styles.avatarLgText}>{(user?.name || "U").charAt(0)}</Text>
@@ -450,6 +451,7 @@ const styles = StyleSheet.create({
   greetingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   greetingSub: { color: 'rgba(255,255,255,0.9)', fontSize: 14, marginBottom: 4 },
   greetingName: { color: '#fff', fontWeight: '800', fontSize: 24 },
+  greetingNice: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 2 },
   avatarLg: { height: 64, width: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)' },
   avatarLgText: { color: '#fff', fontWeight: '800', fontSize: 18 },
   pointsCard: { backgroundColor: '#fff', borderRadius: 24, marginTop: 16, padding: 20, overflow: 'hidden' },

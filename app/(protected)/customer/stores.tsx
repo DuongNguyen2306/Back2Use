@@ -74,6 +74,7 @@ export default function CustomerStores() {
   const [currentLocationName, setCurrentLocationName] = useState("Ho Chi Minh City, Vietnam");
   const [isMapFullscreen, setIsMapFullscreen] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<{name: string, latitude: number, longitude: number} | null>(null);
+  const [storeFilter, setStoreFilter] = useState<"all" | "nearby" | "rating" | "distance">("all");
   
   const scrollY = useRef(new Animated.Value(0)).current;
   const lastScrollY = useRef(0);
@@ -84,6 +85,18 @@ export default function CustomerStores() {
   };
 
   const getStoreDistance = (storeId: string) => {
+    if (userLocation) {
+      const store = allStores.find(s => s.id === storeId);
+      if (store) {
+        const distance = calculateDistance(
+          userLocation.coords.latitude,
+          userLocation.coords.longitude,
+          store.latitude,
+          store.longitude
+        );
+        return distance.toFixed(1);
+      }
+    }
     return (Math.random() * 5 + 0.5).toFixed(1);
   };
 
@@ -98,8 +111,8 @@ export default function CustomerStores() {
         
         if (status !== 'granted') {
           console.log('Location permission denied');
-          Alert.alert("Lỗi", "Vui lòng cấp quyền truy cập vị trí trong cài đặt ứng dụng.");
-          setCurrentLocationName("Vị trí không khả dụng");
+          Alert.alert("Error", "Please grant location access in app settings.");
+          setCurrentLocationName("Location unavailable");
           return;
         }
 
@@ -153,8 +166,8 @@ export default function CustomerStores() {
         }
       } catch (error) {
         console.log('Error getting location:', error);
-        Alert.alert("Lỗi", "Không thể lấy vị trí hiện tại. Sử dụng vị trí mặc định.");
-        setCurrentLocationName("Vị trí không xác định");
+        Alert.alert("Error", "Unable to get current location. Using default location.");
+        setCurrentLocationName("Location unknown");
       }
     };
 
@@ -167,10 +180,85 @@ export default function CustomerStores() {
     };
   }, []);
 
-  const filteredStores = allStores.filter((store) => {
-    return store.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  // Function to calculate distance between two coordinates
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Radius of the Earth in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distance = R * c;
+    return distance;
+  };
+
+  // Debug info
+  console.log('Current filter:', storeFilter);
+  console.log('User location:', userLocation ? `${userLocation.coords.latitude}, ${userLocation.coords.longitude}` : 'No location');
+  console.log('Total stores:', allStores.length);
+
+  let filteredStores = allStores.filter((store) => {
+    const matchesSearch = store.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
            store.address.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    if (!matchesSearch) return false;
+    
+    if (storeFilter === "nearby") {
+      if (userLocation) {
+        const distance = calculateDistance(
+          userLocation.coords.latitude,
+          userLocation.coords.longitude,
+          store.latitude,
+          store.longitude
+        );
+        console.log(`Store ${store.name}: ${distance.toFixed(2)}km`);
+        return distance < 5.0; // Tăng lên 5km để có kết quả
+      }
+      // Nếu không có vị trí user, hiển thị tất cả
+      return true;
+    } else if (storeFilter === "rating") {
+      return parseFloat(getStoreRating(store.id)) >= 4.0;
+    } else if (storeFilter === "distance") {
+      // "Closest" - chỉ hiển thị store gần nhất
+      return true; // Sẽ được xử lý sau khi sắp xếp
+    }
+    
+    return true;
   });
+
+  // Sort by distance for "distance" filter and show only closest
+  if (storeFilter === "distance") {
+    if (userLocation) {
+      filteredStores = filteredStores.sort((a, b) => {
+        const distanceA = calculateDistance(
+          userLocation.coords.latitude,
+          userLocation.coords.longitude,
+          a.latitude,
+          a.longitude
+        );
+        const distanceB = calculateDistance(
+          userLocation.coords.latitude,
+          userLocation.coords.longitude,
+          b.latitude,
+          b.longitude
+        );
+        return distanceA - distanceB;
+      });
+    } else {
+      // Nếu không có vị trí user, sắp xếp theo distance giả lập
+      filteredStores = filteredStores.sort((a, b) => {
+        const distanceA = parseFloat(getStoreDistance(a.id));
+        const distanceB = parseFloat(getStoreDistance(b.id));
+        return distanceA - distanceB;
+      });
+    }
+    // Chỉ hiển thị store gần nhất
+    filteredStores = filteredStores.slice(0, 1);
+  }
+
+  console.log('Filtered stores count:', filteredStores.length);
 
   const handleStorePress = (store: any) => {
     setSelectedStore(store.id);
@@ -182,7 +270,7 @@ export default function CustomerStores() {
     const url = `https://www.google.com/maps/dir/?api=1&destination=${store.latitude},${store.longitude}`;
     console.log('Google Maps URL:', url);
     Linking.openURL(url).catch(() => {
-      Alert.alert("Lỗi", "Không thể mở Google Maps");
+      Alert.alert("Error", "Unable to open Google Maps");
     });
   };
 
@@ -202,7 +290,7 @@ export default function CustomerStores() {
       const coordinate = event.nativeEvent?.coordinate;
       if (coordinate && coordinate.latitude && coordinate.longitude) {
         setSelectedLocation({
-          name: "Địa điểm được chọn",
+          name: "Selected Location",
           latitude: coordinate.latitude,
           longitude: coordinate.longitude
         });
@@ -272,6 +360,26 @@ export default function CustomerStores() {
             pitchEnabled={true}
             rotateEnabled={true}
             zoomControlEnabled={true}
+            customMapStyle={[
+              {
+                "featureType": "water",
+                "elementType": "geometry",
+                "stylers": [
+                  {
+                    "color": "#00704A"
+                  }
+                ]
+              },
+              {
+                "featureType": "landscape",
+                "elementType": "geometry",
+                "stylers": [
+                  {
+                    "color": "#f5f5f5"
+                  }
+                ]
+              }
+            ]}
           >
             {/* Marker cho vị trí người dùng */}
             {userLocation && (
@@ -328,14 +436,69 @@ export default function CustomerStores() {
             style={styles.fullscreenButton}
             onPress={() => setIsMapFullscreen(true)}
           >
-            <Ionicons name="expand" size={20} color="#00704A" />
+            <Ionicons name="expand" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Cửa hàng gần đây</Text>
-            <Text style={styles.sectionSubtitle}>{filteredStores.length} cửa hàng được tìm thấy</Text>
+            <Text style={styles.sectionTitle}>Nearby Stores</Text>
+            <Text style={styles.sectionSubtitle}>{filteredStores.length} stores found</Text>
+          </View>
+          
+          {/* Filter Buttons */}
+          <View style={styles.filterContainer}>
+            <TouchableOpacity
+              style={[
+                styles.filterButton,
+                storeFilter === "all" && styles.filterButtonActive
+              ]}
+              onPress={() => setStoreFilter("all")}
+            >
+              <Text style={[
+                styles.filterButtonText,
+                storeFilter === "all" && styles.filterButtonTextActive
+              ]}>All</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.filterButton,
+                storeFilter === "nearby" && styles.filterButtonActive
+              ]}
+              onPress={() => setStoreFilter("nearby")}
+            >
+              <Text style={[
+                styles.filterButtonText,
+                storeFilter === "nearby" && styles.filterButtonTextActive
+              ]}>Nearby</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.filterButton,
+                storeFilter === "rating" && styles.filterButtonActive
+              ]}
+              onPress={() => setStoreFilter("rating")}
+            >
+              <Text style={[
+                styles.filterButtonText,
+                storeFilter === "rating" && styles.filterButtonTextActive
+              ]}>Top Rated</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.filterButton,
+                storeFilter === "distance" && styles.filterButtonActive
+              ]}
+              onPress={() => setStoreFilter("distance")}
+            >
+              <Text style={[
+                styles.filterButtonText,
+                storeFilter === "distance" && styles.filterButtonTextActive
+              ]}>Closest</Text>
+            </TouchableOpacity>
           </View>
           
           {filteredStores.map((store) => (
@@ -357,11 +520,11 @@ export default function CustomerStores() {
                   <Text style={styles.storeName}>{store.name}</Text>
                       <View style={styles.storeBadges}>
                         <View style={styles.distanceBadge}>
-                          <Ionicons name="location" size={12} color="#667eea" />
+                          <Ionicons name="location" size={12} color="#00704A" />
                           <Text style={styles.distanceText}>{getStoreDistance(store.id)} km</Text>
                         </View>
                         <View style={styles.statusBadge}>
-                          <Text style={styles.statusText}>Mở cửa</Text>
+                          <Text style={styles.statusText}>Open</Text>
                         </View>
                       </View>
                     </View>
@@ -370,7 +533,7 @@ export default function CustomerStores() {
                     <View style={styles.storeRating}>
                         <Ionicons name="star" size={14} color="#fbbf24" />
                       <Text style={styles.ratingText}>{getStoreRating(store.id)}</Text>
-                        <Text style={styles.reviewCount}>({Math.floor(Math.random() * 50 + 10)} đánh giá)</Text>
+                        <Text style={styles.reviewCount}>({Math.floor(Math.random() * 50 + 10)} reviews)</Text>
                       </View>
                       <View style={styles.storeHours}>
                         <Ionicons name="time" size={12} color="#6b7280" />
@@ -386,7 +549,7 @@ export default function CustomerStores() {
                   onPress={() => handleDirections(store)}
                 >
                     <Ionicons name="navigate" size={16} color="#fff" />
-                    <Text style={styles.primaryActionText}>Chỉ đường</Text>
+                    <Text style={styles.primaryActionText}>Directions</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                     style={styles.secondaryAction}
@@ -508,12 +671,12 @@ export default function CustomerStores() {
                 if (userLocation) {
                   const url = `https://www.google.com/maps/dir/?api=1&destination=${userLocation.coords.latitude},${userLocation.coords.longitude}`;
                   Linking.openURL(url).catch(() => {
-                    Alert.alert("Lỗi", "Không thể mở Google Maps");
+                    Alert.alert("Error", "Unable to open Google Maps");
                   });
                 }
               }}
             >
-              <Ionicons name="navigate" size={20} color="#fff" />
+              <Ionicons name="navigate" size={24} color="#fff" />
             </TouchableOpacity>
           </View>
 
@@ -533,6 +696,26 @@ export default function CustomerStores() {
             scrollEnabled={true}
             pitchEnabled={true}
             rotateEnabled={true}
+            customMapStyle={[
+              {
+                "featureType": "water",
+                "elementType": "geometry",
+                "stylers": [
+                  {
+                    "color": "#00704A"
+                  }
+                ]
+              },
+              {
+                "featureType": "landscape",
+                "elementType": "geometry",
+                "stylers": [
+                  {
+                    "color": "#f5f5f5"
+                  }
+                ]
+              }
+            ]}
           >
             {/* Marker cho vị trí người dùng */}
             {userLocation && (
@@ -598,12 +781,12 @@ export default function CustomerStores() {
                 onPress={() => {
                   const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedLocation.latitude},${selectedLocation.longitude}`;
                   Linking.openURL(url).catch(() => {
-                    Alert.alert("Lỗi", "Không thể mở Google Maps");
+                    Alert.alert("Error", "Unable to open Google Maps");
                   });
                 }}
               >
-                <Ionicons name="navigate" size={20} color="#fff" />
-                <Text style={styles.directionsButtonText}>Chỉ đường</Text>
+                <Ionicons name="navigate" size={24} color="#fff" />
+                <Text style={styles.directionsButtonText}>Directions</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -739,29 +922,60 @@ const styles = StyleSheet.create({
     color: "#64748b",
     fontWeight: "500",
   },
+  filterContainer: {
+    flexDirection: "row",
+    marginHorizontal: 20,
+    marginBottom: 16,
+    gap: 8,
+  },
+  filterButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  filterButtonActive: {
+    backgroundColor: "#00704A",
+    borderColor: "#00704A",
+  },
+  filterButtonText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#64748b",
+  },
+  filterButtonTextActive: {
+    color: "#fff",
+  },
   mapContainer: {
-    height: 240,
+    height: 280,
     marginHorizontal: 20,
     marginVertical: 16,
-    borderRadius: 24,
+    borderRadius: 28,
     overflow: "hidden",
-    borderWidth: 2,
-    borderColor: "#e2e8f0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
+    borderWidth: 3,
+    borderColor: "#00704A",
+    shadowColor: "#00704A",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
     shadowRadius: 16,
-    elevation: 8,
+    elevation: 12,
   },
   map: {
     flex: 1,
   },
   customMarker: {
-    backgroundColor: "#6366f1",
-    padding: 4,
-    borderRadius: 20,
-    borderWidth: 2,
+    backgroundColor: "#00704A",
+    padding: 8,
+    borderRadius: 24,
+    borderWidth: 3,
     borderColor: "#fff",
+    shadowColor: "#00704A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   storeCard: {
     backgroundColor: "#fff",
@@ -769,18 +983,18 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     marginHorizontal: 20,
     borderWidth: 2,
-    borderColor: "#e2e8f0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
+    borderColor: "#00704A",
+    shadowColor: "#00704A",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
     shadowRadius: 16,
     elevation: 8,
   },
   selectedStoreCard: {
-    borderColor: "#6366f1",
+    borderColor: "#00704A",
     borderWidth: 3,
-    shadowColor: "#6366f1",
-    shadowOpacity: 0.25,
+    shadowColor: "#00704A",
+    shadowOpacity: 0.3,
     shadowRadius: 20,
     elevation: 12,
     transform: [{ scale: 1.02 }],
@@ -797,13 +1011,13 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 20,
-    backgroundColor: "#eef2ff",
+    backgroundColor: "#00704A",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 16,
     borderWidth: 2,
-    borderColor: "#6366f1",
-    shadowColor: "#6366f1",
+    borderColor: "#00704A",
+    shadowColor: "#00704A",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 8,
@@ -833,7 +1047,7 @@ const styles = StyleSheet.create({
   distanceBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f0f4ff",
+    backgroundColor: "#e6f7f7",
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -842,7 +1056,7 @@ const styles = StyleSheet.create({
   distanceText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#667eea",
+    color: "#00704A",
   },
   statusBadge: {
     backgroundColor: "#dcfce7",
@@ -896,12 +1110,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#6366f1",
+    backgroundColor: "#00704A",
     borderRadius: 20,
     paddingVertical: 16,
     paddingHorizontal: 20,
     gap: 10,
-    shadowColor: "#6366f1",
+    shadowColor: "#00704A",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
@@ -1091,17 +1305,19 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 16,
     top: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#fff",
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#00704A",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowColor: "#00704A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 2,
+    borderColor: "#fff",
   },
   fullscreenMapContainer: {
     position: "absolute",
@@ -1137,21 +1353,23 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
   directionsButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: "#00704A",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#00704A",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 2,
+    borderColor: "#fff",
   },
   fullscreenMap: {
     flex: 1,
-    borderRadius: 20,
+    borderRadius: 24,
     overflow: "hidden",
   },
   selectedLocationCard: {
@@ -1160,16 +1378,18 @@ const styles = StyleSheet.create({
     left: 20,
     right: 20,
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 20,
+    padding: 20,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowColor: "#00704A",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: "#00704A",
   },
   selectedLocationInfo: {
     flex: 1,
