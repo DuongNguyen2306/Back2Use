@@ -1,21 +1,18 @@
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
-import { Card, CardContent } from '@/components/ui/Card';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
 import { useToast } from '../../../hooks/use-toast';
@@ -275,10 +272,40 @@ export default function CustomerProfile() {
           <View style={styles.greetingRow}>
             <View>
               <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-              <Text style={styles.greetingName}>Profile</Text>
+              <Text style={styles.greetingName}>My Profile</Text>
           </View>
-            <View style={styles.avatarLg}>
-              <Ionicons name="person" size={24} color="#FFFFFF" />
+        </View>
+        
+        {/* Profile Info in Header */}
+        <View style={styles.headerProfileContent}>
+          {/* Logo in corner */}
+          <View style={styles.headerLogoContainer}>
+            <Image source={require("../../../assets/images/logo2.png")} style={styles.headerLogo} />
+          </View>
+          
+          {/* Profile Info */}
+          <View style={styles.headerProfileInfo}>
+            <View style={styles.headerAvatarContainer}>
+              <View style={styles.headerAvatar}>
+                <Text style={styles.headerAvatarText}>
+                  {(user?.name || formData.name).charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.headerProfileDetails}>
+              <Text style={styles.headerProfileName}>
+                {user?.name || formData.name || "User"}
+              </Text>
+              <Text style={styles.headerProfileHandle}>
+                @{user?.name?.toLowerCase().replace(/\s+/g, '') || "user"}
+              </Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.headerEditButton}
+              onPress={() => setIsEditing(!isEditing)}
+            >
+              <Text style={styles.headerEditButtonText}>Edit</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -287,277 +314,160 @@ export default function CustomerProfile() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Profile Card with gradient */}
-        <Card style={styles.profileCard}>
-          <CardContent style={styles.profileContent}>
-            <View style={styles.avatarContainer}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {(user?.name || formData.name).charAt(0).toUpperCase()}
-                </Text>
-              </View>
-              <TouchableOpacity style={styles.cameraButton}>
-                <Ionicons name="camera" size={20} color="#009900" />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.userName}>{user?.name || formData.name}</Text>
-            <Text style={styles.userEmail}>{user?.email || formData.email}</Text>
-            <View style={styles.badgeContainer}>
-              <Badge style={styles.profileVerifiedBadge}>
-                <Ionicons name="shield-checkmark" size={16} color="#10B981" />
-                <Text style={styles.badgeText}>Đã xác thực</Text>
-              </Badge>
-              <Badge style={styles.levelBadge}>
-                <Text style={styles.levelText}>Gold Member</Text>
-              </Badge>
-            </View>
-            <View style={styles.statsContainer}>
-              <View style={styles.statItem}>
-                <Text style={styles.profileStatValue}>1,250</Text>
-                <Text style={styles.profileStatLabel}>Điểm</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={styles.profileStatValue}>15</Text>
-                <Text style={styles.profileStatLabel}>Giao dịch</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={styles.profileStatValue}>2.5</Text>
-                <Text style={styles.profileStatLabel}>Năm</Text>
-              </View>
-            </View>
-          </CardContent>
-        </Card>
 
-        {/* Personal Information */}
-        <Card style={styles.section}>
-          <CardContent style={styles.sectionContent}>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="person" size={24} color="#009900" />
-              <Text style={styles.sectionTitle}>Thông tin cá nhân</Text>
-            </View>
-          
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Họ và tên *</Text>
-              <View style={[styles.inputContainer, getFieldError('name') && styles.inputError]}>
-                <Ionicons name="person" size={20} color={getFieldError('name') ? "#ef4444" : "#009900"} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, !isEditing && styles.inputDisabled]}
-                  value={formData.name}
-                  onChangeText={(value) => handleInputChange("name", value)}
-                  editable={isEditing}
-                  placeholder="Nhập họ và tên"
-                />
-              </View>
-              {getFieldError('name') && (
-                <Text style={styles.errorText}>{getFieldError('name')}</Text>
-              )}
-            </View>
+        {isEditing ? (
+          /* Edit Form */
+          <View style={styles.editFormContainer}>
+            {/* Personal Information */}
+            <View style={styles.section}>
+              <View style={styles.sectionContent}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="person" size={24} color="#009900" />
+                  <Text style={styles.sectionTitle}>Personal Information</Text>
+                </View>
+              
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Full Name *</Text>
+                  <View style={[styles.inputContainer, getFieldError('name') && styles.inputError]}>
+                    <Ionicons name="person" size={20} color={getFieldError('name') ? "#ef4444" : "#009900"} style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, !isEditing && styles.inputDisabled]}
+                      value={formData.name}
+                      onChangeText={(value) => handleInputChange("name", value)}
+                      editable={isEditing}
+                      placeholder="Enter full name"
+                    />
+                  </View>
+                  {getFieldError('name') && (
+                    <Text style={styles.errorText}>{getFieldError('name')}</Text>
+                  )}
+                </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email</Text>
-              <View style={[styles.inputContainer, styles.inputReadOnly]}>
-                <Ionicons name="mail" size={20} color="#009900" style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, styles.inputReadOnly]}
-                  value={formData.email}
-                  editable={false}
-                  keyboardType="email-address"
-                  placeholder="Email không thể chỉnh sửa"
-                />
-                <Ionicons name="lock-closed" size={16} color="#6B7280" style={styles.lockIcon} />
-              </View>
-              <Text style={styles.helpText}>Email không thể thay đổi. Liên hệ hỗ trợ nếu cần thay đổi email.</Text>
-            </View>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Email</Text>
+                  <View style={[styles.inputContainer, styles.inputReadOnly]}>
+                    <Ionicons name="mail" size={20} color="#009900" style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, styles.inputReadOnly]}
+                      value={formData.email}
+                      editable={false}
+                      keyboardType="email-address"
+                      placeholder="Email cannot be changed"
+                    />
+                    <Ionicons name="lock-closed" size={16} color="#6B7280" style={styles.lockIcon} />
+                  </View>
+                  <Text style={styles.helpText}>Email cannot be changed. Contact support if you need to change email.</Text>
+                </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Số điện thoại</Text>
-              <View style={[styles.inputContainer, getFieldError('phone') && styles.inputError]}>
-                <Ionicons name="call" size={20} color={getFieldError('phone') ? "#ef4444" : "#009900"} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, !isEditing && styles.inputDisabled]}
-                  value={formData.phone}
-                  onChangeText={(value) => handleInputChange("phone", value)}
-                  editable={isEditing}
-                  keyboardType="phone-pad"
-                  placeholder="Nhập số điện thoại (VD: 0987654321)"
-                />
-              </View>
-              {getFieldError('phone') && (
-                <Text style={styles.errorText}>{getFieldError('phone')}</Text>
-              )}
-            </View>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Phone Number</Text>
+                  <View style={[styles.inputContainer, getFieldError('phone') && styles.inputError]}>
+                    <Ionicons name="call" size={20} color={getFieldError('phone') ? "#ef4444" : "#009900"} style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, !isEditing && styles.inputDisabled]}
+                      value={formData.phone}
+                      onChangeText={(value) => handleInputChange("phone", value)}
+                      editable={isEditing}
+                      keyboardType="phone-pad"
+                      placeholder="Enter phone number"
+                    />
+                  </View>
+                  {getFieldError('phone') && (
+                    <Text style={styles.errorText}>{getFieldError('phone')}</Text>
+                  )}
+                </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Ngày sinh</Text>
-              <View style={[styles.inputContainer, getFieldError('dateOfBirth') && styles.inputError]}>
-                <Ionicons name="calendar" size={20} color={getFieldError('dateOfBirth') ? "#ef4444" : "#009900"} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, !isEditing && styles.inputDisabled]}
-                  value={formData.dateOfBirth}
-                  onChangeText={(value) => handleInputChange("dateOfBirth", value)}
-                  editable={isEditing}
-                  placeholder="YYYY-MM-DD"
-                  keyboardType="numeric"
-                  maxLength={10}
-                />
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Date of Birth</Text>
+                  <View style={[styles.inputContainer, getFieldError('dateOfBirth') && styles.inputError]}>
+                    <Ionicons name="calendar" size={20} color={getFieldError('dateOfBirth') ? "#ef4444" : "#009900"} style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, !isEditing && styles.inputDisabled]}
+                      value={formData.dateOfBirth}
+                      onChangeText={(value) => handleInputChange("dateOfBirth", value)}
+                      editable={isEditing}
+                      placeholder="YYYY-MM-DD"
+                      keyboardType="numeric"
+                      maxLength={10}
+                    />
+                  </View>
+                  {getFieldError('dateOfBirth') && (
+                    <Text style={styles.errorText}>{getFieldError('dateOfBirth')}</Text>
+                  )}
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Address</Text>
+                  <View style={[styles.inputContainer, getFieldError('address') && styles.inputError]}>
+                    <Ionicons name="location" size={20} color={getFieldError('address') ? "#ef4444" : "#009900"} style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, !isEditing && styles.inputDisabled]}
+                      value={formData.address}
+                      onChangeText={(value) => handleInputChange("address", value)}
+                      editable={isEditing}
+                      placeholder="Enter address"
+                      multiline
+                    />
+                  </View>
+                  {getFieldError('address') && (
+                    <Text style={styles.errorText}>{getFieldError('address')}</Text>
+                  )}
+                </View>
               </View>
-              {getFieldError('dateOfBirth') && (
-                <Text style={styles.errorText}>{getFieldError('dateOfBirth')}</Text>
-              )}
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Địa chỉ</Text>
-              <View style={[styles.inputContainer, getFieldError('address') && styles.inputError]}>
-                <Ionicons name="location" size={20} color={getFieldError('address') ? "#ef4444" : "#009900"} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, !isEditing && styles.inputDisabled]}
-                  value={formData.address}
-                  onChangeText={(value) => handleInputChange("address", value)}
-                  editable={isEditing}
-                  placeholder="Nhập địa chỉ"
-                  multiline
-                />
+            {/* Action Buttons */}
+            <View style={styles.actionButtons}>
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={handleCancel}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.saveButton}
+                  onPress={handleSave}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.saveButtonText}>Save Changes</Text>
+                  )}
+                </TouchableOpacity>
               </View>
-              {getFieldError('address') && (
-                <Text style={styles.errorText}>{getFieldError('address')}</Text>
-              )}
             </View>
-          </CardContent>
-        </Card>
+          </View>
+        ) : (
+          /* Menu Options */
+          <View style={styles.menuContainer}>
 
-        {/* Notification Preferences */}
-        <Card style={styles.section}>
-          <CardContent style={styles.sectionContent}>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="notifications" size={24} color="#009900" />
-              <Text style={styles.sectionTitle}>Cài đặt thông báo</Text>
-            </View>
-          
-            <View style={styles.switchRow}>
-              <View style={styles.switchInfo}>
-                <Text style={styles.switchTitle}>Thông báo đẩy</Text>
-                <Text style={styles.switchDescription}>Nhận thông báo trong ứng dụng</Text>
-              </View>
-              <Switch
-                value={formData.notifications}
-                onValueChange={(value) => handleInputChange("notifications", value)}
-                disabled={!isEditing}
-                trackColor={{ false: "#E5E7EB", true: "#009900" }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-
-            <View style={styles.switchRow}>
-              <View style={styles.switchInfo}>
-                <Text style={styles.switchTitle}>Cập nhật email</Text>
-                <Text style={styles.switchDescription}>Nhận cập nhật qua email</Text>
-              </View>
-              <Switch
-                value={formData.emailUpdates}
-                onValueChange={(value) => handleInputChange("emailUpdates", value)}
-                disabled={!isEditing}
-                trackColor={{ false: "#E5E7EB", true: "#009900" }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-
-            <View style={styles.switchRow}>
-              <View style={styles.switchInfo}>
-                <Text style={styles.switchTitle}>Cảnh báo SMS</Text>
-                <Text style={styles.switchDescription}>Nhận cảnh báo khẩn cấp qua SMS</Text>
-              </View>
-              <Switch
-                value={formData.smsAlerts}
-                onValueChange={(value) => handleInputChange("smsAlerts", value)}
-                disabled={!isEditing}
-                trackColor={{ false: "#E5E7EB", true: "#009900" }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-          </CardContent>
-        </Card>
-
-        {/* Account Status */}
-        <Card style={styles.section}>
-          <CardContent style={styles.sectionContent}>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="shield-checkmark" size={24} color="#009900" />
-              <Text style={styles.sectionTitle}>Trạng thái tài khoản</Text>
-            </View>
-            <View style={styles.statusCard}>
-              <View style={styles.statusInfo}>
-                <Text style={styles.statusTitle}>Thành viên từ</Text>
-                <Text style={styles.statusValue}>Tháng 1, 2024</Text>
-              </View>
-              <Badge style={styles.verifiedBadge}>
-                <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
-                <Text style={styles.verifiedText}>Đã xác thực</Text>
-              </Badge>
-            </View>
-          </CardContent>
-        </Card>
-
-        {/* Action Buttons */}
-        <View style={styles.actionButtons}>
-          {isEditing ? (
-            <View style={styles.buttonRow}>
-              <Button
-                variant="secondary"
-                onPress={handleCancel}
-                style={styles.cancelButton}
-              >
-                <Text style={styles.cancelButtonText}>Hủy</Text>
-              </Button>
-              <Button
-                variant="eco"
-                onPress={handleSave}
-                style={styles.saveButton}
-                disabled={saving}
-              >
-                {saving ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.saveButtonText}>Lưu thay đổi</Text>
-                )}
-              </Button>
-            </View>
-          ) : (
-            <Button
-              variant="eco"
-              onPress={() => setIsEditing(true)}
-              style={styles.editButton}
-            >
-              <Ionicons name="create-outline" size={20} color="#FFFFFF" />
-              <Text style={styles.editButtonText}>Chỉnh sửa hồ sơ</Text>
-            </Button>
-          )}
-        </View>
-
-        {/* Change Password Button */}
-        <Card style={styles.changePasswordCard}>
-          <CardContent style={styles.changePasswordContent}>
-            <TouchableOpacity 
-              style={styles.changePasswordButton} 
-              onPress={() => router.push("/(protected)/customer/change-password")}
-            >
-              <Ionicons name="lock-closed" size={20} color="#3B82F6" />
-              <Text style={styles.changePasswordText}>Đổi mật khẩu</Text>
+            <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/(protected)/customer/rewards")}>
+              <Ionicons name="trophy-outline" size={24} color="#000000" />
+              <Text style={styles.menuText}>Rank</Text>
+              <Ionicons name="chevron-forward" size={20} color="#000000" />
             </TouchableOpacity>
-          </CardContent>
-        </Card>
 
-        {/* Sign Out Button */}
-        <Card style={styles.signOutCard}>
-          <CardContent style={styles.signOutContent}>
-            <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-              <Ionicons name="log-out" size={20} color="#ef4444" />
-              <Text style={styles.signOutText}>Đăng xuất</Text>
+            <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/(protected)/customer/transaction-history")}>
+              <Ionicons name="time-outline" size={24} color="#000000" />
+              <Text style={styles.menuText}>History</Text>
+              <Ionicons name="chevron-forward" size={20} color="#000000" />
             </TouchableOpacity>
-          </CardContent>
-        </Card>
+
+            <TouchableOpacity style={styles.menuItem} onPress={() => router.push("/(protected)/ai")}>
+              <Ionicons name="chatbubble-outline" size={24} color="#000000" />
+              <Text style={styles.menuText}>AI Chat</Text>
+              <Ionicons name="chevron-forward" size={20} color="#000000" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.menuItem} onPress={handleSignOut}>
+              <Ionicons name="log-out-outline" size={24} color="#000000" />
+              <Text style={styles.menuText}>Logout</Text>
+              <Ionicons name="chevron-forward" size={20} color="#000000" />
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
       
     </View>
@@ -586,8 +496,94 @@ const styles = StyleSheet.create({
   greetingSub: { color: 'rgba(255,255,255,0.9)', fontSize: 14, marginBottom: 4 },
   greetingName: { color: '#fff', fontWeight: '800', fontSize: 24 },
   avatarLg: { height: 56, width: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)' },
+  // Header Profile Styles
+  headerProfileContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    marginTop: 20,
+    marginHorizontal: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+  },
+  headerLogoContainer: {
+    position: 'absolute',
+    right: 16,
+    top: 2,
+    opacity: 0.08,
+  },
+  headerLogo: {
+    width: 80,
+    height: 80,
+  },
+  headerProfileInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  headerAvatarContainer: {
+    marginRight: 12,
+  },
+  headerAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#00704A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  headerAvatarText: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  headerProfileDetails: {
+    flex: 1,
+  },
+  headerProfileName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  headerProfileHandle: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  headerEditButton: {
+    backgroundColor: '#EF4444',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  headerEditButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   scrollContent: {
-    padding: 16,
+    paddingHorizontal: 0,
     paddingBottom: 32,
   },
   profileCard: {
@@ -801,6 +797,11 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 16,
     borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
   },
   cancelButtonText: {
     fontSize: 16,
@@ -811,6 +812,9 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 16,
     borderRadius: 12,
+    backgroundColor: '#00704A',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   saveButtonText: {
     fontSize: 16,
@@ -818,15 +822,15 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   editButton: {
-    paddingVertical: 16,
-    borderRadius: 12,
-    flexDirection: "row",
+    backgroundColor: '#EF4444',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 6,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
   },
   editButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
     color: "#FFFFFF",
   },
@@ -995,5 +999,52 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginLeft: 4,
     fontStyle: "italic",
+  },
+  // New Profile Design Styles
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+    marginBottom: 0,
+  },
+  profileInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  userInfo: {
+    marginLeft: 16,
+    flex: 1,
+  },
+  userHandle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  menuContainer: {
+    backgroundColor: '#FFFFFF',
+    marginTop: 0,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  menuText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#1F2937',
+    marginLeft: 16,
+    flex: 1,
+  },
+  editFormContainer: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
   },
 });

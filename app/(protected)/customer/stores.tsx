@@ -928,14 +928,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     gap: 8,
   },
-  filterButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "#f1f5f9",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
   filterButtonActive: {
     backgroundColor: "#00704A",
     borderColor: "#00704A",

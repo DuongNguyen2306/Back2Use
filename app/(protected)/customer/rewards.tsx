@@ -1,13 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-    Dimensions,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Dimensions,
+  Image,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 const getTimeBasedGreeting = () => {
@@ -166,6 +167,36 @@ export default function RewardsScreen() {
               <Ionicons name="gift" size={24} color="#FFFFFF" />
           </View>
         </View>
+        
+        {/* Points & Ranking in Header */}
+        <View style={styles.headerStatsContent}>
+          {/* Logo in corner */}
+          <View style={styles.headerLogoContainer}>
+            <Image source={require("../../../assets/images/logo2.png")} style={styles.headerLogo} />
+          </View>
+          
+          {/* Experience Points */}
+          <View style={styles.headerStatItem}>
+            <View style={styles.headerStatIcon}>
+              <Ionicons name="star" size={20} color="#FF6B35" />
+            </View>
+            <View style={styles.headerStatContent}>
+              <Text style={styles.headerStatNumber}>2300</Text>
+              <Text style={styles.headerStatLabel}>Exp. Points</Text>
+            </View>
+          </View>
+          
+          {/* Ranking */}
+          <View style={styles.headerStatItem}>
+            <View style={styles.headerStatIcon}>
+              <Ionicons name="trophy" size={32} color="#FF6B35" />
+            </View>
+            <View style={styles.headerStatContent}>
+              <Text style={styles.headerStatNumber}>8</Text>
+              <Text style={styles.headerStatLabel}>Ranking</Text>
+            </View>
+          </View>
+        </View>
       </View>
 
       {/* Content */}
@@ -174,32 +205,6 @@ export default function RewardsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Full Screen Points & Ranking */}
-        <View style={styles.fullStatsCard}>
-          <View style={styles.fullStatsContent}>
-            {/* Experience Points - Full Width */}
-            <View style={styles.fullStatItem}>
-              <View style={styles.fullStatIcon}>
-                <Ionicons name="star" size={20} color="#FF6B35" />
-              </View>
-              <View style={styles.fullStatContent}>
-                <Text style={styles.fullStatNumber}>2300</Text>
-                <Text style={styles.fullStatLabel}>Exp. Points</Text>
-              </View>
-            </View>
-            
-            {/* Ranking - Full Width */}
-            <View style={styles.fullStatItem}>
-              <View style={styles.fullStatIcon}>
-                <Ionicons name="trophy" size={32} color="#FF6B35" />
-              </View>
-              <View style={styles.fullStatContent}>
-                <Text style={styles.fullStatNumber}>8</Text>
-                <Text style={styles.fullStatLabel}>Ranking</Text>
-              </View>
-            </View>
-          </View>
-        </View>
 
         {/* Tab Navigation */}
         <View style={styles.tabContainer}>
@@ -412,6 +417,62 @@ const styles = StyleSheet.create({
   greetingSub: { color: 'rgba(255,255,255,0.9)', fontSize: 14, marginBottom: 4 },
   greetingName: { color: '#fff', fontWeight: '800', fontSize: 24 },
   avatarLg: { height: 56, width: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)' },
+  // Header Stats Styles
+  headerStatsContent: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    marginTop: 20,
+    marginLeft: 40,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginHorizontal: 20,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  headerStatItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  headerStatIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  headerStatContent: {
+    flex: 1,
+  },
+  headerStatNumber: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  headerStatLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  headerLogoContainer: {
+    position: 'absolute',
+    right: 16,
+    top: 2,
+    opacity: 0.08,
+  },
+  headerLogo: {
+    width: 80,
+    height: 80,
+  },
   menuButton: {
     width: 40,
     height: 40,
@@ -420,10 +481,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  fullStatsCard: {
-    marginHorizontal: 20,
-    marginTop: 20,
+  statsWrapper: {
+    backgroundColor: '#00704A',
+    marginHorizontal: 0,
+    marginTop: 0,
     marginBottom: 20,
+    padding: 20,
+    borderRadius: 0,
+    shadowColor: '#00704A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  fullStatsCard: {
+    marginHorizontal: 0,
+    marginTop: 0,
+    marginBottom: 0,
     backgroundColor: '#FF6B35',
     paddingVertical: 40,
     paddingHorizontal: 20,
@@ -514,6 +588,7 @@ const styles = StyleSheet.create({
   tabContainer: {
     flexDirection: 'row',
     marginHorizontal: 20,
+    marginTop: 20,
     marginBottom: 20,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -842,27 +917,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  pointsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  pointsText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#F59E0B',
-    marginLeft: 4,
-  },
-  redeemButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  redeemButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  disabledText: {
-    color: '#9CA3AF',
-  },
   // My Vouchers styles
   myVoucherCard: {
     marginBottom: 16,
@@ -931,13 +985,6 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     borderStyle: 'dashed',
   },
-  codeText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1F2937',
-    fontFamily: 'monospace',
-    textAlign: 'center',
-  },
   voucherDates: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -945,33 +992,6 @@ const styles = StyleSheet.create({
   dateText: {
     fontSize: 12,
     color: '#6B7280',
-  },
-  // History styles
-  historyCard: {
-    marginBottom: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 0,
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-  },
-  historyContent: {
-    padding: 16,
-  },
-  historyHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  historyIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
   },
   historyInfo: {
     flex: 1,
@@ -981,21 +1001,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2937',
     marginBottom: 4,
-  },
-  historyDate: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  pointsChangeContainer: {
-    alignItems: 'flex-end',
-  },
-  pointsChange: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  pointsLabelText: {
-    fontSize: 12,
-    color: '#6B7280',
   },
   // Empty state styles
   emptyState: {
