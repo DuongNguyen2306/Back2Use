@@ -14,9 +14,10 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import AvatarPicker from '../../../components/AvatarPicker';
 import { useAuth } from '../../../context/AuthProvider';
 import { useToast } from '../../../hooks/use-toast';
-import { getCurrentUserProfileWithAutoRefresh, UpdateProfileRequest, updateUserProfileWithAutoRefresh, User } from '../../../lib/api';
+import { getCurrentUserProfileWithAutoRefresh, UpdateProfileRequest, updateUserProfileWithAutoRefresh, uploadAvatarWithAutoRefresh, User } from '../../../lib/api';
 import { validateProfileForm, ValidationError } from '../../../lib/validation';
 
 const getTimeBasedGreeting = () => {
@@ -34,6 +35,7 @@ export default function CustomerProfile() {
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
 
@@ -183,6 +185,81 @@ export default function CustomerProfile() {
     }
   };
 
+  const handleAvatarSelected = async (imageUri: string) => {
+    try {
+      setUploadingAvatar(true);
+      console.log('📸 Uploading avatar:', imageUri);
+      
+      // Validate image URI
+      if (!imageUri || !imageUri.startsWith('file://') && !imageUri.startsWith('content://')) {
+        throw new Error('Invalid image URI');
+      }
+      
+      const response = await uploadAvatarWithAutoRefresh(imageUri);
+      
+          if (response.success && response.data) {
+            // Update user state with new avatar
+            if (user) {
+              const avatarUrl = typeof response.data === 'string' ? response.data : (response.data as any)?.avatarUrl || response.data;
+              console.log('🔄 Updating user avatar:', avatarUrl);
+              const updatedUser = { ...user, avatar: avatarUrl };
+              setUser(updatedUser);
+              console.log('✅ User state updated with new avatar');
+            }
+            
+            toast({
+              title: "✅ Thành công",
+              description: "Avatar đã được cập nhật"
+            });
+          } else {
+            // Check if response has data even if success is false
+            if (response.data) {
+              if (user) {
+                const avatarUrl = typeof response.data === 'string' ? response.data : (response.data as any)?.avatarUrl || response.data;
+                console.log('🔄 Updating user avatar (fallback):', avatarUrl);
+                const updatedUser = { ...user, avatar: avatarUrl };
+                setUser(updatedUser);
+                console.log('✅ User state updated with new avatar (fallback)');
+              }
+              
+              toast({
+                title: "✅ Thành công",
+                description: "Avatar đã được cập nhật"
+              });
+            } else {
+              throw new Error(response.message || 'Upload failed');
+            }
+          }
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      let errorMessage = "Không thể tải lên avatar";
+      
+      if (error instanceof Error) {
+        if (error.message.includes('timeout')) {
+          errorMessage = "Tải lên quá lâu. Vui lòng kiểm tra kết nối mạng và thử lại.";
+        } else if (error.message.includes('413')) {
+          errorMessage = "Kích thước ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn.";
+        } else if (error.message.includes('415')) {
+          errorMessage = "Định dạng ảnh không được hỗ trợ. Vui lòng chọn ảnh JPG hoặc PNG.";
+        } else if (error.message.includes('401')) {
+          errorMessage = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
+        } else if (error.message.includes('Avatar uploaded successfully')) {
+          // This is not actually an error, just a success message
+          return;
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      toast({
+        title: "Lỗi",
+        description: errorMessage
+      });
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const handleInputChange = (field: string, value: string | boolean) => {
     let processedValue = value;
     
@@ -286,11 +363,12 @@ export default function CustomerProfile() {
           {/* Profile Info */}
           <View style={styles.headerProfileInfo}>
             <View style={styles.headerAvatarContainer}>
-              <View style={styles.headerAvatar}>
-                <Text style={styles.headerAvatarText}>
-                  {(user?.name || formData.name).charAt(0).toUpperCase()}
-                </Text>
-              </View>
+              <AvatarPicker
+                currentAvatar={user?.avatar}
+                onAvatarSelected={handleAvatarSelected}
+                size={56}
+                showEditButton={!uploadingAvatar}
+              />
             </View>
             <View style={styles.headerProfileDetails}>
               <Text style={styles.headerProfileName}>
@@ -530,26 +608,6 @@ const styles = StyleSheet.create({
   },
   headerAvatarContainer: {
     marginRight: 12,
-  },
-  headerAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#00704A',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  headerAvatarText: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#FFFFFF',
   },
   headerProfileDetails: {
     flex: 1,

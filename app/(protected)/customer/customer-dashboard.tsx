@@ -3,17 +3,17 @@ import { Camera, CameraView } from "expo-camera";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
-  Alert,
-  Dimensions,
-  Image,
-  Platform,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  Vibration,
-  View
+    Alert,
+    Dimensions,
+    Image,
+    Platform,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    Vibration,
+    View
 } from "react-native";
 import { StandaloneAIChecker } from "../../../components/StandaloneAIChecker";
 import { useAuth } from "../../../context/AuthProvider";
@@ -157,7 +157,11 @@ export default function CustomerDashboard() {
               <Text style={styles.greetingNice}>Nice to meet you !</Text>
           </View>
             <View style={styles.avatarLg}>
-              <Text style={styles.avatarLgText}>{(user?.name || "U").charAt(0)}</Text>
+              {user?.avatar ? (
+                <Image source={{ uri: user.avatar }} style={styles.avatarLgImage} />
+              ) : (
+                <Text style={styles.avatarLgText}>{(user?.name || "U").charAt(0)}</Text>
+              )}
           </View>
         </View>
           <View style={styles.pointsCard}>
@@ -452,7 +456,8 @@ const styles = StyleSheet.create({
   greetingSub: { color: 'rgba(255,255,255,0.9)', fontSize: 14, marginBottom: 4 },
   greetingName: { color: '#fff', fontWeight: '800', fontSize: 24 },
   greetingNice: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 2 },
-  avatarLg: { height: 64, width: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)' },
+  avatarLg: { height: 64, width: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', overflow: 'hidden' },
+  avatarLgImage: { width: 60, height: 60, borderRadius: 30 },
   avatarLgText: { color: '#fff', fontWeight: '800', fontSize: 18 },
   pointsCard: { backgroundColor: '#fff', borderRadius: 24, marginTop: 16, padding: 20, overflow: 'hidden' },
   rewardHeader: { color: '#00704A', fontWeight: '800', fontSize: 11, letterSpacing: 1.2 },

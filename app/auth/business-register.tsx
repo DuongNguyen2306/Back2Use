@@ -3,19 +3,19 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-  Alert,
-  Dimensions,
-  Image,
-  ImageBackground,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    Alert,
+    Dimensions,
+    Image,
+    ImageBackground,
+    KeyboardAvoidingView,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { businessApi, BusinessRegisterRequest } from "../../lib/api";
 
@@ -23,15 +23,17 @@ const { width } = Dimensions.get('window');
 
 export default function BusinessRegister() {
   const [formData, setFormData] = useState({
-    storeName: '',
-    storeMail: '',
-    storeAddress: '',
-    storePhone: '',
+    businessName: '',
+    businessType: '',
+    businessMail: '',
+    businessAddress: '',
+    businessPhone: '',
     taxCode: '',
   });
 
   const [files, setFiles] = useState({
-    foodLicenseFile: null as any,
+    businessLogo: null as any,
+    foodSafetyCertUrl: null as any,
     businessLicenseFile: null as any,
   });
 
@@ -42,7 +44,7 @@ export default function BusinessRegister() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleFilePick = async (fileType: 'foodLicenseFile' | 'businessLicenseFile') => {
+  const handleFilePick = async (fileType: 'businessLogo' | 'foodSafetyCertUrl' | 'businessLicenseFile') => {
     try {
       // Request permission
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -76,19 +78,23 @@ export default function BusinessRegister() {
   };
 
   const validateForm = () => {
-    if (!formData.storeName.trim()) {
-      Alert.alert("Lỗi", "Vui lòng nhập tên cửa hàng");
+    if (!formData.businessName.trim()) {
+      Alert.alert("Lỗi", "Vui lòng nhập tên doanh nghiệp");
       return false;
     }
-    if (!formData.storeMail.trim()) {
-      Alert.alert("Lỗi", "Vui lòng nhập email cửa hàng");
+    if (!formData.businessType.trim()) {
+      Alert.alert("Lỗi", "Vui lòng nhập loại hình doanh nghiệp");
       return false;
     }
-    if (!formData.storeAddress.trim()) {
-      Alert.alert("Lỗi", "Vui lòng nhập địa chỉ cửa hàng");
+    if (!formData.businessMail.trim()) {
+      Alert.alert("Lỗi", "Vui lòng nhập email doanh nghiệp");
       return false;
     }
-    if (!formData.storePhone.trim()) {
+    if (!formData.businessAddress.trim()) {
+      Alert.alert("Lỗi", "Vui lòng nhập địa chỉ doanh nghiệp");
+      return false;
+    }
+    if (!formData.businessPhone.trim()) {
       Alert.alert("Lỗi", "Vui lòng nhập số điện thoại");
       return false;
     }
@@ -96,8 +102,12 @@ export default function BusinessRegister() {
       Alert.alert("Lỗi", "Vui lòng nhập mã số thuế");
       return false;
     }
-    if (!files.foodLicenseFile) {
-      Alert.alert("Lỗi", "Vui lòng tải lên giấy phép kinh doanh thực phẩm");
+    if (!files.businessLogo) {
+      Alert.alert("Lỗi", "Vui lòng tải lên logo doanh nghiệp");
+      return false;
+    }
+    if (!files.foodSafetyCertUrl) {
+      Alert.alert("Lỗi", "Vui lòng tải lên giấy chứng nhận an toàn thực phẩm");
       return false;
     }
     if (!files.businessLicenseFile) {
@@ -113,12 +123,14 @@ export default function BusinessRegister() {
     setLoading(true);
     try {
       const businessData: BusinessRegisterRequest = {
-        storeName: formData.storeName.trim(),
-        storeMail: formData.storeMail.trim(),
-        storeAddress: formData.storeAddress.trim(),
-        storePhone: formData.storePhone.trim(),
+        businessName: formData.businessName.trim(),
+        businessType: formData.businessType.trim(),
+        businessMail: formData.businessMail.trim(),
+        businessAddress: formData.businessAddress.trim(),
+        businessPhone: formData.businessPhone.trim(),
         taxCode: formData.taxCode.trim(),
-        foodLicenseFile: files.foodLicenseFile,
+        businessLogo: files.businessLogo,
+        foodSafetyCertUrl: files.foodSafetyCertUrl,
         businessLicenseFile: files.businessLicenseFile,
       };
 
@@ -226,53 +238,64 @@ export default function BusinessRegister() {
 
             {/* Form Card */}
             <View style={styles.formCard}>
-          <Text style={styles.formTitle}>Thông tin cửa hàng</Text>
+          <Text style={styles.formTitle}>Thông tin doanh nghiệp</Text>
           
-          {/* Store Name */}
+          {/* Business Name */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Tên cửa hàng *</Text>
+            <Text style={styles.inputLabel}>Tên doanh nghiệp *</Text>
             <TextInput
               style={styles.input}
-              placeholder="Nhập tên cửa hàng"
-              value={formData.storeName}
-              onChangeText={(value) => handleInputChange('storeName', value)}
+              placeholder="Nhập tên doanh nghiệp"
+              value={formData.businessName}
+              onChangeText={(value) => handleInputChange('businessName', value)}
             />
           </View>
 
-          {/* Store Email */}
+          {/* Business Type */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Email cửa hàng *</Text>
+            <Text style={styles.inputLabel}>Loại hình doanh nghiệp *</Text>
             <TextInput
               style={styles.input}
-              placeholder="Nhập email cửa hàng"
-              value={formData.storeMail}
-              onChangeText={(value) => handleInputChange('storeMail', value)}
+              placeholder="Ví dụ: Cafe, Nhà hàng, Cửa hàng..."
+              value={formData.businessType}
+              onChangeText={(value) => handleInputChange('businessType', value)}
+            />
+          </View>
+
+          {/* Business Email */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Email doanh nghiệp *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Nhập email doanh nghiệp"
+              value={formData.businessMail}
+              onChangeText={(value) => handleInputChange('businessMail', value)}
               keyboardType="email-address"
               autoCapitalize="none"
             />
           </View>
 
-          {/* Store Address */}
+          {/* Business Address */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Địa chỉ cửa hàng *</Text>
+            <Text style={styles.inputLabel}>Địa chỉ doanh nghiệp *</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
-              placeholder="Nhập địa chỉ cửa hàng"
-              value={formData.storeAddress}
-              onChangeText={(value) => handleInputChange('storeAddress', value)}
+              placeholder="Nhập địa chỉ doanh nghiệp"
+              value={formData.businessAddress}
+              onChangeText={(value) => handleInputChange('businessAddress', value)}
               multiline
               numberOfLines={3}
             />
           </View>
 
-          {/* Store Phone */}
+          {/* Business Phone */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Số điện thoại *</Text>
             <TextInput
               style={styles.input}
               placeholder="Nhập số điện thoại"
-              value={formData.storePhone}
-              onChangeText={(value) => handleInputChange('storePhone', value)}
+              value={formData.businessPhone}
+              onChangeText={(value) => handleInputChange('businessPhone', value)}
               keyboardType="phone-pad"
             />
           </View>
@@ -293,21 +316,40 @@ export default function BusinessRegister() {
           {/* Image Upload Section */}
           <Text style={styles.sectionTitle}>Tài liệu cần thiết (Chụp ảnh)</Text>
 
-          {/* Food License File */}
+          {/* Business Logo */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Giấy phép kinh doanh thực phẩm *</Text>
+            <Text style={styles.inputLabel}>Logo doanh nghiệp *</Text>
             <TouchableOpacity 
               style={styles.fileButton}
-              onPress={() => handleFilePick('foodLicenseFile')}
+              onPress={() => handleFilePick('businessLogo')}
             >
               <Ionicons name="camera-outline" size={20} color="#0F4D3A" />
               <Text style={styles.fileButtonText}>
-                {files.foodLicenseFile ? 'Đã chọn ảnh' : 'Chụp/Chọn ảnh'}
+                {files.businessLogo ? 'Đã chọn ảnh' : 'Chụp/Chọn ảnh'}
               </Text>
             </TouchableOpacity>
-            {files.foodLicenseFile && (
+            {files.businessLogo && (
               <Text style={styles.fileInfo}>
-                Đã chọn: {files.foodLicenseFile.name}
+                Đã chọn: {files.businessLogo.name}
+              </Text>
+            )}
+          </View>
+
+          {/* Food Safety Certificate */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Giấy chứng nhận an toàn thực phẩm *</Text>
+            <TouchableOpacity 
+              style={styles.fileButton}
+              onPress={() => handleFilePick('foodSafetyCertUrl')}
+            >
+              <Ionicons name="camera-outline" size={20} color="#0F4D3A" />
+              <Text style={styles.fileButtonText}>
+                {files.foodSafetyCertUrl ? 'Đã chọn ảnh' : 'Chụp/Chọn ảnh'}
+              </Text>
+            </TouchableOpacity>
+            {files.foodSafetyCertUrl && (
+              <Text style={styles.fileInfo}>
+                Đã chọn: {files.foodSafetyCertUrl.name}
               </Text>
             )}
           </View>

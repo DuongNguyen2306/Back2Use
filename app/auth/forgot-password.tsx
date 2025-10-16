@@ -54,7 +54,7 @@ export default function ForgotPasswordScreen() {
       if (isSuccess || isOtpSent) {
         Alert.alert(
           "Success", 
-          "OTP for password reset sent to email",
+          "OTP for password reset sent to your email",
           [
             {
               text: "OK",

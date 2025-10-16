@@ -26,7 +26,7 @@ type Role = "customer" | "business" | "admin";
 
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -34,7 +34,7 @@ export default function LoginScreen() {
   const { actions } = useAuth();
 
   const handleSignIn = async () => {
-    if (!email || !password) {
+    if (!username || !password) {
       Alert.alert("Error", "Please fill in all fields");
       return;
     }
@@ -46,7 +46,7 @@ export default function LoginScreen() {
     setIsLoading(true);
     try {
       const loginData: LoginRequest = {
-        email: email.trim(),
+        username: username.trim(),
         password,
       };
 
@@ -59,34 +59,25 @@ export default function LoginScreen() {
       
       // Check if login was successful (statusCode 200)
       if (response.statusCode === 200) {
-        // Get role from the correct path: response.data.user.role
-        let role: Role = "customer"; // default role
-        
-        if (response.data?.user?.role) {
-          role = response.data.user.role as Role;
-        }
-        
-        console.log("Login successful, user role:", role);
+        console.log("Login successful");
         console.log("Access token:", response.data?.accessToken ? "***" + response.data.accessToken.slice(-8) : "None");
         console.log("Refresh token:", response.data?.refreshToken ? "***" + response.data.refreshToken.slice(-8) : "None");
         console.log("Full response.data:", JSON.stringify(response.data, null, 2));
         
-        // Sign in with real tokens from API
+        // Sign in with real tokens from API - role will be decoded from JWT token
         await actions.signInWithTokens({
           accessToken: response.data?.accessToken || "",
           refreshToken: response.data?.refreshToken || null,
-          role,
+          // Role will be decoded from JWT token automatically
           tokenExpiry: response.data?.tokenExpiry ? new Date(response.data.tokenExpiry).getTime() : undefined
         });
         console.log("Auth state with real tokens completed");
         
-        // Navigate based on role
-        const destination = response.data.role === "customer" 
-          ? "/(protected)/customer" 
-          : response.data.role === "business" 
-          ? "/(protected)/business" 
-          : "/(protected)/admin";
-        console.log("Navigating to:", destination, "for role:", response.data.role);
+        // Navigate based on role - will be determined by JWT token decode
+        // For now, navigate to customer dashboard as default
+        // The actual role will be available in the auth context after JWT decode
+        const destination = "/(protected)/customer";
+        console.log("Navigating to:", destination, "(role will be determined by JWT token)");
         
         try {
           router.replace(destination);
@@ -157,14 +148,13 @@ export default function LoginScreen() {
             <Text style={styles.title}>Sign in to your account</Text>
 
             <View style={styles.fieldContainer}>
-              <Text style={styles.label}>Email Address</Text>
+              <Text style={styles.label}>Username</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Enter your email address"
+                placeholder="Enter your username"
                 placeholderTextColor="#6B7280"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
+                value={username}
+                onChangeText={setUsername}
                 autoCapitalize="none"
                 autoCorrect={false}
               />

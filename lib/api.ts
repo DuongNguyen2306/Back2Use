@@ -3,6 +3,50 @@ import axios from 'axios';
 import { API_BASE_URL, API_ENDPOINTS, DEFAULT_HEADERS, REQUEST_TIMEOUT } from './constants';
 
 // ============================================================================
+// JWT UTILITIES
+// ============================================================================
+
+// Function to decode JWT token
+export const decodeJWT = (token: string) => {
+  try {
+    // JWT token has 3 parts separated by dots: header.payload.signature
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      throw new Error('Invalid JWT token format');
+    }
+    
+    // Decode the payload (second part)
+    const payload = parts[1];
+    
+    // Add padding if needed
+    const paddedPayload = payload + '='.repeat((4 - payload.length % 4) % 4);
+    
+    // Decode base64
+    const decodedPayload = atob(paddedPayload);
+    
+    // Parse JSON
+    const parsedPayload = JSON.parse(decodedPayload);
+    
+    return parsedPayload;
+  } catch (error) {
+    console.error('Error decoding JWT token:', error);
+    return null;
+  }
+};
+
+// Function to get role from JWT token
+export const getRoleFromToken = (token: string): string | null => {
+  const payload = decodeJWT(token);
+  return payload?.role || null;
+};
+
+// Function to get user ID from JWT token
+export const getUserIdFromToken = (token: string): string | null => {
+  const payload = decodeJWT(token);
+  return payload?._id || payload?.id || null;
+};
+
+// ============================================================================
 // AXIOS CONFIGURATION
 // ============================================================================
 
@@ -63,7 +107,7 @@ apiClient.interceptors.response.use(
 // ============================================================================
 
 export interface RegisterRequest {
-  name: string;
+  username: string;
   email: string;
   password: string;
   confirmPassword: string;
@@ -80,7 +124,7 @@ export interface RegisterResponse {
 }
 
 export interface LoginRequest {
-  email: string;
+  username: string;
   password: string;
 }
 
@@ -183,12 +227,14 @@ export interface GoogleOAuthResponse {
 }
 
 export interface BusinessRegisterRequest {
-  storeName: string;
-  storeMail: string;
-  storeAddress: string;
-  storePhone: string;
+  businessName: string;
+  businessLogo?: any;
+  businessType: string;
+  businessMail: string;
+  businessAddress: string;
+  businessPhone: string;
   taxCode: string;
-  foodLicenseFile?: any;
+  foodSafetyCertUrl?: any;
   businessLicenseFile?: any;
 }
 
@@ -231,6 +277,14 @@ export interface UpdateProfileRequest {
   avatar?: string;
   address?: string;
   yob?: string;
+}
+
+export interface UploadAvatarResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    avatarUrl: string;
+  };
 }
 
 // ============================================================================
@@ -402,17 +456,26 @@ export const businessApi = {
   register: async (businessData: BusinessRegisterRequest): Promise<BusinessRegisterResponse> => {
     const formData = new FormData();
     
-    formData.append('storeName', businessData.storeName);
-    formData.append('storeMail', businessData.storeMail);
-    formData.append('storeAddress', businessData.storeAddress);
-    formData.append('storePhone', businessData.storePhone);
+    formData.append('businessName', businessData.businessName);
+    formData.append('businessType', businessData.businessType);
+    formData.append('businessMail', businessData.businessMail);
+    formData.append('businessAddress', businessData.businessAddress);
+    formData.append('businessPhone', businessData.businessPhone);
     formData.append('taxCode', businessData.taxCode);
     
-    if (businessData.foodLicenseFile) {
-      formData.append('foodLicenseFile', {
-        uri: businessData.foodLicenseFile.uri,
-        type: businessData.foodLicenseFile.type || 'image/jpeg',
-        name: businessData.foodLicenseFile.name || 'food_license.jpg',
+    if (businessData.businessLogo) {
+      formData.append('businessLogo', {
+        uri: businessData.businessLogo.uri,
+        type: businessData.businessLogo.type || 'image/jpeg',
+        name: businessData.businessLogo.name || 'business_logo.jpg',
+      } as any);
+    }
+    
+    if (businessData.foodSafetyCertUrl) {
+      formData.append('foodSafetyCertUrl', {
+        uri: businessData.foodSafetyCertUrl.uri,
+        type: businessData.foodSafetyCertUrl.type || 'image/jpeg',
+        name: businessData.foodSafetyCertUrl.name || 'food_safety_cert.jpg',
       } as any);
     }
     
@@ -605,6 +668,82 @@ export const updateUserProfileWithAutoRefresh = async (updates: UpdateProfileReq
   }
 
   return updateUserProfile(updates, token);
+};
+
+// Upload avatar with auto refresh token
+export const uploadAvatarWithAutoRefresh = async (imageUri: string): Promise<UploadAvatarResponse> => {
+  if (!getCurrentAccessToken) {
+    throw new Error('Token provider not set. Call setTokenProvider first.');
+  }
+
+  const token = await getCurrentAccessToken();
+  if (!token) {
+    throw new Error('No valid access token available');
+  }
+
+  return uploadAvatar(imageUri, token);
+};
+
+// Upload avatar - POST /users/edit-avatar
+export const uploadAvatar = async (imageUri: string, token: string): Promise<UploadAvatarResponse> => {
+  try {
+    console.log('📸 uploadAvatar called with:', {
+      imageUri,
+      tokenPreview: token ? '***' + token.slice(-8) : 'None',
+      tokenLength: token?.length || 0
+    });
+    
+    if (!token) {
+      throw new Error('No access token provided');
+    }
+
+    if (!imageUri) {
+      throw new Error('No image provided');
+    }
+
+    // Create FormData for file upload
+    const formData = new FormData();
+    formData.append('avatar', {
+      uri: imageUri,
+      type: 'image/jpeg',
+      name: 'avatar.jpg',
+    } as any);
+
+    console.log('📤 Sending avatar upload request to: /users/edit-avatar');
+
+    const response = await apiClient.post('/users/edit-avatar', formData, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 30000, // 30 seconds for file upload
+    });
+
+    console.log('📥 Avatar upload response status:', response.status);
+    console.log('📥 Avatar upload response data:', response.data);
+
+    const result = response.data;
+    
+    if (response.status === 201) {
+      console.log('✅ Avatar uploaded successfully');
+      return {
+        success: true,
+        message: 'Avatar uploaded successfully',
+        data: {
+          avatarUrl: result.data?.avatarUrl || result.avatarUrl || ''
+        }
+      };
+    } else {
+      console.log('❌ Unexpected response structure:', result);
+      throw new Error(result.message || 'Failed to upload avatar');
+    }
+  } catch (error: any) {
+    console.error('Error uploading avatar:', error);
+    if (error.code === 'ECONNABORTED') {
+      throw new Error('Upload timeout. Please check your connection and try again.');
+    }
+    throw new Error(`Failed to upload avatar: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+  }
 };
 
 // Update user profile - POST /users/edit-profile

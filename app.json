@@ -40,7 +40,7 @@
       "Poppins_900Black"
     ],
     "extra": {
-      "apiBaseUrl": "http://192.168.1.18:8000",
+      "apiBaseUrl": "http://172.16.22.147:8000",
       "router": {},
       "eas": {
         "projectId": "463bb199-8a7c-4435-aa81-6781c18a49fe"

@@ -12,7 +12,7 @@ export default function CustomerLayout() {
     { id: "wallet", label: "Wallet", icon: "wallet", route: "/(protected)/customer/customer-wallet" },
     { id: "stores", label: "Store", icon: "storefront", route: "/(protected)/customer/stores" },
     { id: "rewards", label: "Rewards", icon: "gift", route: "/(protected)/customer/rewards" },
-    { id: "profile", label: "Profile", icon: "person", route: "/(protected)/customer/customer-profile" },
+    { id: "profile", label: "Profile", icon: "person", route: "/(protected)/customer/my-profile" },
   ];
 
   // Function to get active tab based on pathname
@@ -20,6 +20,7 @@ export default function CustomerLayout() {
     if (path.includes("customer-wallet")) return "wallet";
     if (path.includes("stores")) return "stores";
     if (path.includes("rewards")) return "rewards";
+    if (path.includes("my-profile")) return "profile";
     if (path.includes("customer-profile")) return "profile";
     if (path.includes("customer") || path === "/(protected)/customer") return "dashboard";
     

@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { authApi } from "../lib/api";
+import { authApi, getRoleFromToken, getUserIdFromToken } from "../lib/api";
 
 export type Role = "customer" | "business" | "admin";
 
@@ -322,18 +322,29 @@ export function useAuthCore() {
     console.log("- role:", role);
     console.log("- tokenExpiry:", tokenExpiry);
     
+    // Decode JWT token to get role and user info
+    const decodedRole = getRoleFromToken(accessToken);
+    const userId = getUserIdFromToken(accessToken);
+    
+    console.log("🔍 Decoded from JWT token:");
+    console.log("- Role:", decodedRole);
+    console.log("- User ID:", userId);
+    
+    // Use decoded role if available, otherwise fallback to provided role
+    const finalRole = decodedRole as Role || role || "customer";
+    
     // Ensure refreshToken is properly handled
     const finalRefreshToken = refreshToken || null;
     console.log("- finalRefreshToken:", finalRefreshToken ? '***' + finalRefreshToken.slice(-8) : 'null');
     
     const next: Partial<AuthState> = {
       isAuthenticated: true,
-      role: role ?? "customer",
+      role: finalRole,
       accessToken,
       refreshToken: finalRefreshToken,
       tokenExpiry: tokenExpiry || (Date.now() + 15 * 60 * 1000), // 15 minutes default
     };
-    console.log("Setting auth state with real tokens");
+    console.log("Setting auth state with real tokens and decoded role:", finalRole);
     setState((prev) => ({ ...prev, ...next }));
     await persist(next);
     console.log("Real auth tokens persisted successfully");

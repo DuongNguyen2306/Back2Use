@@ -20,7 +20,7 @@ import { useAuth } from "../../context/AuthProvider";
 import { authApi, RegisterRequest } from "../../lib/api";
 
 export default function RegisterScreen() {
-  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -31,7 +31,7 @@ export default function RegisterScreen() {
   const { actions } = useAuth();
 
   const handleSignUp = async () => {
-    if (!name || !email || !password || !confirmPassword) {
+    if (!username || !email || !password || !confirmPassword) {
       Alert.alert("Error", "Please fill in all fields");
       return;
     }
@@ -47,7 +47,7 @@ export default function RegisterScreen() {
     setIsLoading(true);
     try {
       const userData: RegisterRequest = {
-        name,
+        username,
         email,
         password,
         confirmPassword,
@@ -121,14 +121,14 @@ export default function RegisterScreen() {
             <Text style={styles.title}>Create new account</Text>
 
             <View style={styles.fieldContainer}>
-              <Text style={styles.label}>Full Name</Text>
+              <Text style={styles.label}>Username</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Enter your full name"
+                placeholder="Enter your username"
                 placeholderTextColor="#6B7280"
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
                 autoCorrect={false}
               />
             </View>

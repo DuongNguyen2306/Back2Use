@@ -15,7 +15,10 @@ export default function BusinessWalletPage() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerContent}>
-            <Text style={styles.headerTitle}>Ví của tôi</Text>
+            <View>
+              <Text style={styles.headerGreeting}>Chào buổi tối,</Text>
+              <Text style={styles.headerTitle}>Ví của tôi</Text>
+            </View>
             <TouchableOpacity style={styles.addFundsButton}>
               <Ionicons name="add" size={16} color="#FFFFFF" />
               <Text style={styles.addFundsText}>Nạp tiền</Text>
@@ -24,23 +27,23 @@ export default function BusinessWalletPage() {
 
           {/* Balance Card */}
           <View style={styles.balanceCard}>
-            <Text style={styles.balanceLabel}>Số dư khả dụng</Text>
+            <Text style={styles.balanceLabel}>Total Balance</Text>
             <Text style={styles.balanceAmount}>$1,250.50</Text>
 
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
                 <View style={styles.statIconContainer}>
-                  <Ionicons name="arrow-down" size={16} color="#10B981" />
+                  <Ionicons name="arrow-up" size={16} color="#10B981" />
                 </View>
                 <Text style={styles.statValue}>$1,247</Text>
-                <Text style={styles.statLabel}>Tiền gửi</Text>
+                <Text style={styles.statLabel}>Thu nhập</Text>
               </View>
               <View style={styles.statItem}>
                 <View style={styles.statIconContainer}>
-                  <Ionicons name="arrow-up" size={16} color="#EF4444" />
+                  <Ionicons name="arrow-down" size={16} color="#EF4444" />
                 </View>
                 <Text style={styles.statValue}>$892</Text>
-                <Text style={styles.statLabel}>Hoàn trả</Text>
+                <Text style={styles.statLabel}>Chi tiêu</Text>
               </View>
               <View style={styles.statItem}>
                 <View style={styles.statIconContainer}>
@@ -95,19 +98,29 @@ export default function BusinessWalletPage() {
           {/* Transactions */}
           <View style={styles.transactionsCard}>
             <View style={styles.transactionsHeader}>
-              <Text style={styles.transactionsTitle}>Giao dịch gần đây</Text>
+              <Text style={styles.transactionsTitle}>Lịch sử Giao dịch</Text>
             </View>
             <View style={styles.transactionsContent}>
-              {/* Tab Selector */}
-              <View style={styles.tabSelector}>
-                <TouchableOpacity style={[styles.tabButton, styles.activeTabButton]}>
-                  <Text style={[styles.tabButtonText, styles.activeTabButtonText]}>
-                    Nạp/Rút
+              {/* Filter Selector */}
+              <View style={styles.filterSelector}>
+                <TouchableOpacity style={[styles.filterButton, styles.activeFilterButton]}>
+                  <Text style={[styles.filterButtonText, styles.activeFilterButtonText]}>
+                    Tất cả
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.tabButton}>
-                  <Text style={styles.tabButtonText}>
-                    Nhận/Trả
+                <TouchableOpacity style={styles.filterButton}>
+                  <Text style={styles.filterButtonText}>
+                    Thu nhập
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.filterButton}>
+                  <Text style={styles.filterButtonText}>
+                    Chi tiêu
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.filterButton}>
+                  <Text style={styles.filterButtonText}>
+                    Rút tiền
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -116,11 +129,11 @@ export default function BusinessWalletPage() {
               <View style={styles.transactionsList}>
                 <View style={styles.transactionItem}>
                   <View style={styles.transactionInfo}>
-                    <View style={[styles.transactionIcon, styles.addFundsIcon]}>
-                      <Ionicons name="add" size={20} color="#FFFFFF" />
+                    <View style={[styles.transactionIcon, styles.incomeIcon]}>
+                      <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
                     </View>
                     <View>
-                      <Text style={styles.transactionDescription}>Added funds to wallet</Text>
+                      <Text style={styles.transactionDescription}>Salary Payment</Text>
                       <Text style={styles.transactionDate}>1/15/2024</Text>
                     </View>
                   </View>
@@ -131,16 +144,46 @@ export default function BusinessWalletPage() {
                 
                 <View style={styles.transactionItem}>
                   <View style={styles.transactionInfo}>
-                    <View style={[styles.transactionIcon, styles.withdrawIcon]}>
-                      <Ionicons name="remove" size={20} color="#FFFFFF" />
+                    <View style={[styles.transactionIcon, styles.expenseIcon]}>
+                      <Ionicons name="arrow-down" size={20} color="#FFFFFF" />
                     </View>
                     <View>
-                      <Text style={styles.transactionDescription}>Withdrew funds</Text>
+                      <Text style={styles.transactionDescription}>Netflix Subscription</Text>
                       <Text style={styles.transactionDate}>1/14/2024</Text>
                     </View>
                   </View>
                   <Text style={[styles.transactionAmount, styles.negativeAmount]}>
+                    -$15.99
+                  </Text>
+                </View>
+
+                <View style={styles.transactionItem}>
+                  <View style={styles.transactionInfo}>
+                    <View style={[styles.transactionIcon, styles.withdrawIcon]}>
+                      <Ionicons name="card" size={20} color="#FFFFFF" />
+                    </View>
+                    <View>
+                      <Text style={styles.transactionDescription}>ATM Withdrawal</Text>
+                      <Text style={styles.transactionDate}>1/13/2024</Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.transactionAmount, styles.negativeAmount]}>
                     -$200.00
+                  </Text>
+                </View>
+
+                <View style={styles.transactionItem}>
+                  <View style={styles.transactionInfo}>
+                    <View style={[styles.transactionIcon, styles.refundIcon]}>
+                      <Ionicons name="refresh" size={20} color="#FFFFFF" />
+                    </View>
+                    <View>
+                      <Text style={styles.transactionDescription}>Refund from Store</Text>
+                      <Text style={styles.transactionDate}>1/12/2024</Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.transactionAmount, styles.positiveAmount]}>
+                    +$45.50
                   </Text>
                 </View>
               </View>
@@ -171,6 +214,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 20,
+  },
+  headerGreeting: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.8)',
+    marginBottom: 4,
   },
   headerTitle: {
     fontSize: 24,
@@ -225,6 +273,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
+    paddingHorizontal: 4,
   },
   statValue: {
     fontSize: 18,
@@ -364,27 +413,34 @@ const styles = StyleSheet.create({
   transactionsContent: {
     padding: 0,
   },
-  tabSelector: {
+  filterSelector: {
     flexDirection: 'row',
     backgroundColor: '#F1F5F9',
-    borderRadius: 0,
+    borderRadius: 8,
+    margin: 16,
+    padding: 4,
   },
-  tabButton: {
+  filterButton: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     alignItems: 'center',
+    borderRadius: 6,
   },
-  activeTabButton: {
+  activeFilterButton: {
     backgroundColor: '#FFFFFF',
-    borderBottomWidth: 2,
-    borderBottomColor: '#4F46E5',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  tabButtonText: {
-    fontSize: 14,
+  filterButtonText: {
+    fontSize: 12,
     fontWeight: '500',
     color: '#6B7280',
   },
-  activeTabButtonText: {
+  activeFilterButtonText: {
     color: '#4F46E5',
     fontWeight: '600',
   },
@@ -413,11 +469,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-  addFundsIcon: {
+  incomeIcon: {
     backgroundColor: '#10B981',
   },
-  withdrawIcon: {
+  expenseIcon: {
     backgroundColor: '#EF4444',
+  },
+  withdrawIcon: {
+    backgroundColor: '#8B5CF6',
+  },
+  refundIcon: {
+    backgroundColor: '#F59E0B',
+  },
+  addFundsIcon: {
+    backgroundColor: '#10B981',
   },
   receiveIcon: {
     backgroundColor: '#3B82F6',
