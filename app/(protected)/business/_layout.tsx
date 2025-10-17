@@ -1,28 +1,29 @@
-"use client"
-
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack, usePathname } from "expo-router";
 import { useEffect, useState } from "react";
-import { StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Image, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
-const bottomNavItems = [
-  { id: "overview", label: "Tổng quan", icon: "home", route: "/(protected)/business" },
-  { id: "wallet", label: "Ví", icon: "wallet", route: "/(protected)/business/wallet" },
-  { id: "inventory", label: "Kho", icon: "cube", route: "/(protected)/business/inventory" },
-  { id: "more", label: "Thêm", icon: "settings", route: "/(protected)/business/more" },
-];
-
-export default function BusinessLayout({ children }: { children: React.ReactNode }) {
+export default function BusinessLayout() {
   const pathname = usePathname();
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState("dashboard");
+  
+  const navigationItems = [
+    { id: "dashboard", label: "Home", icon: "home-button", route: "/(protected)/business" },
+    { id: "wallet", label: "Wallet", icon: "wallet", route: "/(protected)/business/wallet" },
+    { id: "transaction", label: "Transaction", icon: "receipt", route: "/(protected)/business/transaction" },
+    { id: "redeem", label: "Redeem", icon: "gift", route: "/(protected)/business/redeem" },
+    { id: "settings", label: "Settings", icon: "settings", route: "/(protected)/business/settings" },
+  ];
 
   // Function to get active tab based on pathname
   const getActiveTab = (path: string) => {
     if (path.includes("wallet")) return "wallet";
-    if (path.includes("inventory")) return "inventory";
-    if (path.includes("more")) return "more";
-    if (path.includes("business") || path === "/(protected)/business") return "overview";
-    return "overview"; // default
+    if (path.includes("transaction")) return "transaction";
+    if (path.includes("redeem")) return "redeem";
+    if (path.includes("settings")) return "settings";
+    if (path.includes("business") || path === "/(protected)/business") return "dashboard";
+    
+    return "dashboard"; // default
   };
 
   // Update active tab based on current path
@@ -32,50 +33,67 @@ export default function BusinessLayout({ children }: { children: React.ReactNode
   }, [pathname]);
 
   const handleNavigation = (route: string, itemId: string) => {
+    // Always navigate to the new tab, no reload needed
     router.push(route);
   };
 
-  // Check if current page is overview (tương tự dashboard trong CustomerLayout)
-  const isOverview = activeTab === "overview";
+  // Check if current page is dashboard
+  const isDashboard = activeTab === "dashboard";
 
   return (
     <View style={styles.container}>
-      {/* Status Bar - Different for overview vs other pages */}
+      {/* Status Bar - Different for dashboard vs other pages */}
       <StatusBar 
-        barStyle={isOverview ? "light-content" : "dark-content"} 
-        backgroundColor={isOverview ? "transparent" : "#ffffff"} 
+        barStyle={isDashboard ? "light-content" : "dark-content"} 
+        backgroundColor={isDashboard ? "transparent" : "#ffffff"} 
         translucent={false}
       />
     
-      {/* Main Content */}
-      <View style={styles.content}>
-        <Stack screenOptions={{ headerShown: false }} />
-      </View>
+    {/* Main Content */}
+    <View style={styles.content}>
+      <Stack screenOptions={{ headerShown: false }} />
+    </View>
+    
 
-      {/* Bottom Navigation */}
+    {/* Bottom Navigation */}
+    <View style={styles.navWrapper}>
       <View style={styles.navigation}>
-        {bottomNavItems.map((item) => {
-          const isActive = activeTab === item.id;
-          return (
-            <TouchableOpacity
-              key={item.id}
-              style={[styles.navItem, isActive && styles.activeNavItem]}
-              onPress={() => handleNavigation(item.route, item.id)}
-            >
-              <View style={styles.navItemContent}>
+      {navigationItems.map((item) => {
+        const isActive = activeTab === item.id;
+        return (
+          <TouchableOpacity
+            key={item.id}
+            style={[styles.navItem, isActive && styles.activeNavItem]}
+            onPress={() => handleNavigation(item.route, item.id)}
+          >
+            <View style={styles.navItemContent}>
+              {item.icon === "home-button" ? (
+                <Image
+                  source={require("../../../assets/images/home-button.png")}
+                  style={{ 
+                    width: 18, 
+                    height: 18,
+                    tintColor: isActive ? "#00704A" : "#FFFFFF"
+                  }}
+                />
+              ) : (
                 <Ionicons
                   name={item.icon as any}
                   size={18}
-                  color={isActive ? "#FFFFFF" : "#6B7280"}
+                  color={isActive ? "#00704A" : "#FFFFFF"}
                 />
-                <Text style={[styles.navText, isActive && styles.activeNavText]}>
+              )}
+              {isActive && (
+                <Text style={[styles.navText, styles.activeNavText]}>
                   {item.label}
                 </Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+              )}
+            </View>
+          </TouchableOpacity>
+        );
+      })}
       </View>
+    </View>
     </View>
   );
 }
@@ -88,34 +106,42 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  navWrapper: {
+    paddingBottom: 8,
+  },
   navigation: {
     flexDirection: "row",
-    backgroundColor: "#fff",
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
+    backgroundColor: "#00704A",
     paddingHorizontal: 16,
     paddingVertical: 8,
-    paddingBottom: 12,
-    justifyContent: "space-around",
-    alignItems: "center",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    paddingBottom: 24,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 24,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 10,
   },
   navItem: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    borderRadius: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    position: "relative",
   },
   activeNavItem: {
-    backgroundColor: "#6366f1",
-    shadowColor: "#6366f1",
+    backgroundColor: "#A8E063",
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 6,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 4,
   },
@@ -123,14 +149,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   navText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "600",
-    color: "#6B7280",
-    marginTop: 4,
+    color: "rgba(255, 255, 255, 0.7)",
+    marginTop: 2,
     textAlign: "center",
   },
   activeNavText: {
-    color: "#FFFFFF",
+    color: "#00704A",
     fontWeight: "700",
+    marginTop: 2,
+    fontSize: 9,
   },
 });

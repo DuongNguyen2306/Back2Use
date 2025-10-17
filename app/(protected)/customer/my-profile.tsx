@@ -15,6 +15,7 @@ import {
 import AvatarPicker from '../../../components/AvatarPicker';
 import { useAuth } from '../../../context/AuthProvider';
 import { useToast } from '../../../hooks/use-toast';
+import { useI18n } from '../../../hooks/useI18n';
 import { getCurrentUserProfileWithAutoRefresh, UpdateProfileRequest, updateUserProfileWithAutoRefresh, uploadAvatarWithAutoRefresh, User } from '../../../lib/api';
 import { validateProfileForm, ValidationError } from '../../../lib/validation';
 
@@ -35,6 +36,7 @@ interface MenuSection {
 
 export default function MyProfile() {
   const auth = useAuth();
+  const { t, language, changeLanguage } = useI18n();
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -138,28 +140,43 @@ export default function MyProfile() {
 
   const menuSections: MenuSection[] = [
     {
-      title: 'General Settings',
+      title: t('profile').settings,
       items: [
         {
-          id: 'account',
-          title: 'Account Settings',
-          subtitle: 'Update information and edit profile',
-          icon: 'person-circle',
-          onPress: () => console.log('Navigate to Account Settings'),
-        },
-        {
-          id: 'security',
-          title: 'Security',
-          subtitle: 'Password, 2FA authentication and privacy',
-          icon: 'shield-checkmark',
-          onPress: () => console.log('Navigate to Security'),
+          id: 'language',
+          title: t('profile').language,
+          subtitle: language === 'vi' ? 'Tiếng Việt' : 'English',
+          icon: 'language',
+          onPress: () => {
+            const newLanguage = language === 'vi' ? 'en' : 'vi';
+            changeLanguage(newLanguage);
+          },
         },
         {
           id: 'notifications',
-          title: 'Notifications',
-          subtitle: 'Manage notifications and sound settings',
+          title: t('profile').notifications,
+          subtitle: 'Quản lý thông báo ứng dụng',
           icon: 'notifications',
           onPress: () => console.log('Navigate to Notifications'),
+        },
+        {
+          id: 'security',
+          title: t('profile').security,
+          subtitle: 'Mật khẩu và xác thực',
+          icon: 'shield-checkmark',
+          onPress: () => console.log('Navigate to Security'),
+        },
+      ]
+    },
+    {
+      title: t('profile').generalSettings,
+      items: [
+        {
+          id: 'account',
+          title: t('profile').accountSettings,
+          subtitle: 'Update information and edit profile',
+          icon: 'person-circle',
+          onPress: () => console.log('Navigate to Account Settings'),
         },
       ]
     },
@@ -168,28 +185,28 @@ export default function MyProfile() {
       items: [
         {
           id: 'rank',
-          title: 'View Rankings',
+          title: t('profile').viewRankings,
           subtitle: 'Leaderboard and your ranking position',
           icon: 'trophy',
           onPress: () => router.push('/(protected)/customer/leaderboard'),
         },
         {
           id: 'history',
-          title: 'Activity History',
+          title: t('profile').transactionHistory,
           subtitle: 'View transaction and activity history',
           icon: 'time',
           onPress: () => console.log('Navigate to History'),
         },
         {
           id: 'rewards',
-          title: 'Rewards',
+          title: t('rewards').title,
           subtitle: 'Points, vouchers and special offers',
           icon: 'gift',
           onPress: () => router.push('/(protected)/customer/rewards'),
         },
         {
           id: 'ai-chat',
-          title: 'AI Chat',
+          title: t('profile').aiChat,
           subtitle: 'Chat with smart AI Assistant',
           icon: 'chatbubble-ellipses',
                         onPress: () => router.push('/(protected)/customer/ai-chat'),
@@ -201,14 +218,14 @@ export default function MyProfile() {
       items: [
         {
           id: 'help',
-          title: 'Help',
+          title: t('profile').help,
           subtitle: 'FAQ, guides and contact support',
           icon: 'help-circle',
           onPress: () => console.log('Navigate to Help'),
         },
         {
           id: 'about',
-          title: 'About App',
+          title: t('profile').aboutApp,
           subtitle: 'Version, terms and policies',
           icon: 'information-circle',
           onPress: () => console.log('Navigate to About'),
@@ -327,7 +344,7 @@ export default function MyProfile() {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>My Account</Text>
+          <Text style={styles.headerTitle}>{t('profile').myAccount}</Text>
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#00704A" />
@@ -341,7 +358,7 @@ export default function MyProfile() {
     <View style={styles.container}>
       {/* Unified Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Account</Text>
+        <Text style={styles.headerTitle}>{t('profile').myAccount}</Text>
         <TouchableOpacity style={styles.editIconButton} onPress={handleEditProfile}>
           <Ionicons name="pencil" size={20} color="#FFFFFF" />
         </TouchableOpacity>
@@ -352,14 +369,14 @@ export default function MyProfile() {
           /* Edit Profile Form */
           <View style={styles.editFormCard}>
             <View style={styles.editFormHeader}>
-              <Text style={styles.editFormTitle}>Edit Profile</Text>
+              <Text style={styles.editFormTitle}>{t('profile').editProfile}</Text>
               <View style={styles.editFormActions}>
                 <TouchableOpacity 
                   style={styles.cancelButton} 
                   onPress={handleCancelEdit}
                   disabled={saving}
                 >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                  <Text style={styles.cancelButtonText}>{t('common').cancel}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={[styles.saveButton, saving && styles.saveButtonDisabled]} 
@@ -369,7 +386,7 @@ export default function MyProfile() {
                   {saving ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
-                    <Text style={styles.saveButtonText}>Save</Text>
+                    <Text style={styles.saveButtonText}>{t('common').save}</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -377,6 +394,7 @@ export default function MyProfile() {
 
             {/* Avatar Upload */}
             <View style={styles.avatarUploadSection}>
+              <Text style={styles.avatarLabel}>{t('profile').avatar}</Text>
               <AvatarPicker
                 currentAvatar={user?.avatar}
                 onAvatarSelected={handleAvatarUpload}
@@ -386,7 +404,7 @@ export default function MyProfile() {
             {/* Form Fields */}
             <View style={styles.formFields}>
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Name</Text>
+                <Text style={styles.inputLabel}>{t('profile').name}</Text>
                 <TextInput
                   style={[styles.textInput, validationErrors.find(e => e.field === 'name') && styles.inputError]}
                   value={formData.name}
@@ -400,7 +418,7 @@ export default function MyProfile() {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Email</Text>
+                <Text style={styles.inputLabel}>{t('profile').email}</Text>
                 <TextInput
                   style={[styles.textInput, validationErrors.find(e => e.field === 'email') && styles.inputError]}
                   value={formData.email}
@@ -416,7 +434,7 @@ export default function MyProfile() {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Phone</Text>
+                <Text style={styles.inputLabel}>{t('profile').phone}</Text>
                 <TextInput
                   style={[styles.textInput, validationErrors.find(e => e.field === 'phone') && styles.inputError]}
                   value={formData.phone}
@@ -431,7 +449,7 @@ export default function MyProfile() {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Address</Text>
+                <Text style={styles.inputLabel}>{t('profile').address}</Text>
                 <TextInput
                   style={[styles.textInput, validationErrors.find(e => e.field === 'address') && styles.inputError]}
                   value={formData.address}
@@ -447,7 +465,7 @@ export default function MyProfile() {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Date of Birth</Text>
+                <Text style={styles.inputLabel}>{t('profile').dateOfBirth}</Text>
                 <TextInput
                   style={[styles.textInput, validationErrors.find(e => e.field === 'dateOfBirth') && styles.inputError]}
                   value={formData.dateOfBirth}
@@ -544,7 +562,7 @@ export default function MyProfile() {
         {/* Separated Logout Button */}
         <View style={styles.logoutSection}>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutButtonText}>Logout</Text>
+            <Text style={styles.logoutButtonText}>{t('profile').logout}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -838,6 +856,12 @@ const styles = StyleSheet.create({
   avatarUploadSection: {
     alignItems: 'center',
     marginBottom: 24,
+  },
+  avatarLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 12,
   },
   formFields: {
     gap: 16,

@@ -2,17 +2,19 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, Stack, usePathname } from "expo-router";
 import { useEffect, useState } from "react";
 import { Image, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useI18n } from "../../../hooks/useI18n";
 
 export default function CustomerLayout() {
   const pathname = usePathname();
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState("dashboard");
   
   const navigationItems = [
-    { id: "dashboard", label: "Home", icon: "home-button", route: "/(protected)/customer" },
-    { id: "wallet", label: "Wallet", icon: "wallet", route: "/(protected)/customer/customer-wallet" },
-    { id: "stores", label: "Store", icon: "storefront", route: "/(protected)/customer/stores" },
-    { id: "rewards", label: "Rewards", icon: "gift", route: "/(protected)/customer/rewards" },
-    { id: "profile", label: "Profile", icon: "person", route: "/(protected)/customer/my-profile" },
+    { id: "dashboard", label: t('navigation').home, icon: "home-button", route: "/(protected)/customer" },
+    { id: "wallet", label: t('navigation').wallet, icon: "wallet", route: "/(protected)/customer/customer-wallet" },
+    { id: "stores", label: t('navigation').store, icon: "storefront", route: "/(protected)/customer/stores" },
+    { id: "rewards", label: t('navigation').rewards, icon: "gift", route: "/(protected)/customer/rewards" },
+    { id: "profile", label: t('navigation').profile, icon: "person", route: "/(protected)/customer/my-profile" },
   ];
 
   // Function to get active tab based on pathname
@@ -154,13 +156,11 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.7)",
     marginTop: 2,
     textAlign: "center",
-    numberOfLines: 1,
   },
   activeNavText: {
     color: "#00704A",
     fontWeight: "700",
     marginTop: 2,
     fontSize: 9,
-    numberOfLines: 1,
   },
 });

@@ -1,256 +1,162 @@
-"use client"
-
-import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useState } from "react";
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import React, { useState } from 'react';
 import {
-  Dimensions,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  Alert,
-  Switch
-} from "react-native";
-import { useAuth } from "../../../context/AuthProvider";
-
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
-interface StoreData {
-  name: string;
-  phone: string;
-  email: string;
-  address: string;
-  operatingHours: string;
-}
-
-interface NotificationSettings {
-  lowInventory: boolean;
-  overdueReturns: boolean;
-  newBorrows: boolean;
-  dailyReports: boolean;
-}
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import { useAuth } from '../../../context/AuthProvider';
 
 export default function BusinessSettings() {
-  const { actions } = useAuth();
-  const [storeData, setStoreData] = useState<StoreData>({
-    name: "Cửa hàng Back2Use",
-    phone: "0123456789",
-    email: "store@back2use.com",
-    address: "123 Đường ABC, Quận 1, TP.HCM",
-    operatingHours: "Thứ 2-6: 8:00-18:00, Thứ 7-CN: 9:00-17:00"
-  });
-
-  const [notifications, setNotifications] = useState<NotificationSettings>({
-    lowInventory: true,
-    overdueReturns: true,
-    newBorrows: false,
-    dailyReports: true,
-  });
-
-  const handleSave = () => {
-    Alert.alert(
-      "Thành công",
-      "Cài đặt đã được lưu!",
-      [{ text: "OK" }]
-    );
-    console.log("Saving store settings:", storeData);
-    console.log("Saving notification settings:", notifications);
-  };
+  const { actions: authActions } = useAuth();
+  const [selectedLanguage, setSelectedLanguage] = useState('vi'); // 'vi' for Vietnamese, 'en' for English
 
   const handleLogout = () => {
-    Alert.alert(
-      "Đăng xuất",
-      "Bạn có chắc chắn muốn đăng xuất?",
-      [
-        {
-          text: "Hủy",
-          style: "cancel"
-        },
-        {
-          text: "Đăng xuất",
-          style: "destructive",
-          onPress: () => {
-            actions.logout();
-            router.replace("/auth");
-          }
-        }
-      ]
-    );
+    authActions.signOut();
+    router.replace('/welcome');
   };
 
-  const renderStoreInfoCard = () => (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={styles.cardHeaderContent}>
-          <Ionicons name="storefront" size={24} color="#FFFFFF" />
-          <Text style={styles.cardTitle}>Thông tin cửa hàng</Text>
-        </View>
-      </View>
-      <View style={styles.cardContent}>
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Tên cửa hàng</Text>
-          <TextInput
-            style={styles.input}
-            value={storeData.name}
-            onChangeText={(text) => setStoreData({ ...storeData, name: text })}
-            placeholder="Nhập tên cửa hàng"
-            placeholderTextColor="#9CA3AF"
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Số điện thoại</Text>
-          <TextInput
-            style={styles.input}
-            value={storeData.phone}
-            onChangeText={(text) => setStoreData({ ...storeData, phone: text })}
-            placeholder="Nhập số điện thoại"
-            placeholderTextColor="#9CA3AF"
-            keyboardType="phone-pad"
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            style={styles.input}
-            value={storeData.email}
-            onChangeText={(text) => setStoreData({ ...storeData, email: text })}
-            placeholder="Nhập email"
-            placeholderTextColor="#9CA3AF"
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Địa chỉ</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={storeData.address}
-            onChangeText={(text) => setStoreData({ ...storeData, address: text })}
-            placeholder="Nhập địa chỉ"
-            placeholderTextColor="#9CA3AF"
-            multiline
-            numberOfLines={3}
-            textAlignVertical="top"
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Giờ làm việc</Text>
-          <TextInput
-            style={styles.input}
-            value={storeData.operatingHours}
-            onChangeText={(text) => setStoreData({ ...storeData, operatingHours: text })}
-            placeholder="VD: Thứ 2-6: 8:00-18:00, Thứ 7-CN: 9:00-17:00"
-            placeholderTextColor="#9CA3AF"
-          />
-        </View>
-      </View>
-    </View>
-  );
-
-  const renderNotificationCard = () => (
-    <View style={styles.card}>
-      <View style={[styles.cardHeader, { backgroundColor: '#F59E0B' }]}>
-        <View style={styles.cardHeaderContent}>
-          <Ionicons name="notifications" size={24} color="#FFFFFF" />
-          <Text style={styles.cardTitle}>Thông báo</Text>
-        </View>
-      </View>
-      <View style={styles.cardContent}>
-        <View style={styles.notificationItem}>
-          <View style={styles.notificationInfo}>
-            <Text style={styles.notificationTitle}>Cảnh báo tồn kho thấp</Text>
-            <Text style={styles.notificationDesc}>Nhận thông báo khi hàng sắp hết</Text>
-          </View>
-          <Switch
-            value={notifications.lowInventory}
-            onValueChange={(value) => setNotifications({ ...notifications, lowInventory: value })}
-            trackColor={{ false: '#E5E7EB', true: '#10B981' }}
-            thumbColor={notifications.lowInventory ? '#FFFFFF' : '#9CA3AF'}
-          />
-        </View>
-
-        <View style={styles.notificationItem}>
-          <View style={styles.notificationInfo}>
-            <Text style={styles.notificationTitle}>Cảnh báo quá hạn</Text>
-            <Text style={styles.notificationDesc}>Thông báo về đơn quá hạn</Text>
-          </View>
-          <Switch
-            value={notifications.overdueReturns}
-            onValueChange={(value) => setNotifications({ ...notifications, overdueReturns: value })}
-            trackColor={{ false: '#E5E7EB', true: '#10B981' }}
-            thumbColor={notifications.overdueReturns ? '#FFFFFF' : '#9CA3AF'}
-          />
-        </View>
-
-        <View style={styles.notificationItem}>
-          <View style={styles.notificationInfo}>
-            <Text style={styles.notificationTitle}>Thông báo mượn mới</Text>
-            <Text style={styles.notificationDesc}>Nhận thông báo khi có đơn mượn mới</Text>
-          </View>
-          <Switch
-            value={notifications.newBorrows}
-            onValueChange={(value) => setNotifications({ ...notifications, newBorrows: value })}
-            trackColor={{ false: '#E5E7EB', true: '#10B981' }}
-            thumbColor={notifications.newBorrows ? '#FFFFFF' : '#9CA3AF'}
-          />
-        </View>
-
-        <View style={styles.notificationItem}>
-          <View style={styles.notificationInfo}>
-            <Text style={styles.notificationTitle}>Báo cáo hàng ngày</Text>
-            <Text style={styles.notificationDesc}>Nhận báo cáo tổng hợp</Text>
-          </View>
-          <Switch
-            value={notifications.dailyReports}
-            onValueChange={(value) => setNotifications({ ...notifications, dailyReports: value })}
-            trackColor={{ false: '#E5E7EB', true: '#10B981' }}
-            thumbColor={notifications.dailyReports ? '#FFFFFF' : '#9CA3AF'}
-          />
-        </View>
-      </View>
-    </View>
-  );
+  const handleLanguageChange = (language: 'vi' | 'en') => {
+    setSelectedLanguage(language);
+  };
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#8B5CF6" />
+      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
       
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Cài đặt</Text>
-        <Text style={styles.headerSubtitle}>Quản lý cửa hàng của bạn</Text>
-      </View>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {renderStoreInfoCard()}
-        {renderNotificationCard()}
-
-        {/* Action Buttons */}
-        <View style={styles.actionButtons}>
-          <TouchableOpacity 
-            style={styles.saveButton}
-            onPress={handleSave}
-          >
-            <Ionicons name="save" size={20} color="#FFFFFF" />
-            <Text style={styles.saveButtonText}>Lưu thay đổi</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.logoutButton}
-            onPress={handleLogout}
-          >
-            <Ionicons name="log-out" size={20} color="#FFFFFF" />
-            <Text style={styles.logoutButtonText}>Đăng xuất</Text>
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>Cài đặt</Text>
+          <TouchableOpacity style={styles.profileIcon}>
+            <Ionicons name="person-circle" size={32} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* Main Content */}
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Language Settings Card */}
+        <View style={styles.settingsCard}>
+          <Text style={styles.cardTitle}>Ngôn ngữ</Text>
+          <View style={styles.languageButtons}>
+            <TouchableOpacity
+              style={[
+                styles.languageButton,
+                selectedLanguage === 'vi' ? styles.languageButtonActive : styles.languageButtonInactive
+              ]}
+              onPress={() => handleLanguageChange('vi')}
+            >
+              <Text style={[
+                styles.languageButtonText,
+                selectedLanguage === 'vi' ? styles.languageButtonTextActive : styles.languageButtonTextInactive
+              ]}>
+                Tiếng Việt
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.languageButton,
+                selectedLanguage === 'en' ? styles.languageButtonActive : styles.languageButtonInactive
+              ]}
+              onPress={() => handleLanguageChange('en')}
+            >
+              <Text style={[
+                styles.languageButtonText,
+                selectedLanguage === 'en' ? styles.languageButtonTextActive : styles.languageButtonTextInactive
+              ]}>
+                English
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Other Settings */}
+        <View style={styles.settingsCard}>
+          <TouchableOpacity style={styles.settingItem}>
+            <View style={styles.settingItemLeft}>
+              <View style={styles.settingIconContainer}>
+                <Ionicons name="notifications" size={24} color="#00704A" />
+              </View>
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingTitle}>Thông báo</Text>
+                <Text style={styles.settingSubtitle}>Quản lý thông báo ứng dụng</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#999999" />
+          </TouchableOpacity>
+
+          <View style={styles.settingDivider} />
+
+          <TouchableOpacity style={styles.settingItem}>
+            <View style={styles.settingItemLeft}>
+              <View style={styles.settingIconContainer}>
+                <Ionicons name="shield-checkmark" size={24} color="#00704A" />
+              </View>
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingTitle}>Bảo mật</Text>
+                <Text style={styles.settingSubtitle}>Mật khẩu và xác thực</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#999999" />
+          </TouchableOpacity>
+
+          <View style={styles.settingDivider} />
+
+          <TouchableOpacity style={styles.settingItem}>
+            <View style={styles.settingItemLeft}>
+              <View style={styles.settingIconContainer}>
+                <Ionicons name="business" size={24} color="#00704A" />
+              </View>
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingTitle}>Thông tin doanh nghiệp</Text>
+                <Text style={styles.settingSubtitle}>Cập nhật thông tin cửa hàng</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#999999" />
+          </TouchableOpacity>
+
+          <View style={styles.settingDivider} />
+
+          <TouchableOpacity style={styles.settingItem}>
+            <View style={styles.settingItemLeft}>
+              <View style={styles.settingIconContainer}>
+                <Ionicons name="help-circle" size={24} color="#00704A" />
+              </View>
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingTitle}>Trợ giúp</Text>
+                <Text style={styles.settingSubtitle}>FAQ và hỗ trợ</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#999999" />
+          </TouchableOpacity>
+
+          <View style={styles.settingDivider} />
+
+          <TouchableOpacity style={styles.settingItem}>
+            <View style={styles.settingItemLeft}>
+              <View style={styles.settingIconContainer}>
+                <Ionicons name="information-circle" size={24} color="#00704A" />
+              </View>
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingTitle}>Về ứng dụng</Text>
+                <Text style={styles.settingSubtitle}>Phiên bản và thông tin</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#999999" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Logout Button */}
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Ionicons name="log-out" size={24} color="#FFFFFF" />
+          <Text style={styles.logoutText}>Đăng xuất</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -259,146 +165,133 @@ export default function BusinessSettings() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F8F9FA',
   },
   header: {
-    backgroundColor: '#8B5CF6',
+    backgroundColor: '#00704A',
     paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
-  headerSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginTop: 4,
+  profileIcon: {
+    padding: 8,
   },
   content: {
     flex: 1,
     paddingHorizontal: 20,
+    paddingTop: 20,
   },
-  card: {
+  settingsCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    marginTop: 20,
+    padding: 20,
+    marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  cardHeader: {
-    backgroundColor: '#3B82F6',
-    padding: 16,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-  },
-  cardHeaderContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    shadowRadius: 8,
+    elevation: 3,
   },
   cardTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginLeft: 12,
-  },
-  cardContent: {
-    padding: 16,
-  },
-  inputGroup: {
+    fontWeight: '700',
+    color: '#1A1A1A',
     marginBottom: 16,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 8,
+  languageButtons: {
+    flexDirection: 'row',
+    gap: 12,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 12,
-    paddingHorizontal: 16,
+  languageButton: {
+    flex: 1,
     paddingVertical: 12,
-    fontSize: 16,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  languageButtonActive: {
+    backgroundColor: '#00704A',
+  },
+  languageButtonInactive: {
     backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#00704A',
   },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
+  languageButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
-  notificationItem: {
+  languageButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  languageButtonTextInactive: {
+    color: '#00704A',
+  },
+  settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    marginBottom: 12,
+    paddingVertical: 16,
   },
-  notificationInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  notificationTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 2,
-  },
-  notificationDesc: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  actionButtons: {
-    marginTop: 20,
-    marginBottom: 40,
-  },
-  saveButton: {
+  settingItemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#10B981',
-    paddingVertical: 16,
-    borderRadius: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    flex: 1,
   },
-  saveButtonText: {
-    color: '#FFFFFF',
+  settingIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E8F5E9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  settingTextContainer: {
+    flex: 1,
+  },
+  settingTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginLeft: 8,
+    color: '#1A1A1A',
+    marginBottom: 4,
+  },
+  settingSubtitle: {
+    fontSize: 14,
+    color: '#666666',
+  },
+  settingDivider: {
+    height: 1,
+    backgroundColor: '#F0F0F0',
+    marginLeft: 56,
   },
   logoutButton: {
+    backgroundColor: '#DC3545',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EF4444',
     paddingVertical: 16,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 20,
+    marginBottom: 40,
+    gap: 8,
   },
-  logoutButtonText: {
+  logoutText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-    marginLeft: 8,
   },
 });

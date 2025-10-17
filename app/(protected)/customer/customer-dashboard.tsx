@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import { StandaloneAIChecker } from "../../../components/StandaloneAIChecker";
 import { useAuth } from "../../../context/AuthProvider";
+import { useI18n } from "../../../hooks/useI18n";
 import { useTokenRefresh } from "../../../hooks/useTokenRefresh";
 import { getCurrentUserProfileWithAutoRefresh } from "../../../lib/api";
 import { mockTransactions } from "../../../lib/mock-data";
@@ -25,6 +26,7 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function CustomerDashboard() {
   const { state } = useAuth();
+  const { t } = useI18n();
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [userData, setUserData] = useState<any>(null);
@@ -38,9 +40,9 @@ export default function CustomerDashboard() {
 
   const getTimeBasedGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return "Good Morning";
-    if (hour < 18) return "Good Afternoon";
-    return "Good Evening";
+    if (hour < 12) return t('dashboard').greeting;
+    if (hour < 18) return t('dashboard').greeting;
+    return t('dashboard').greeting;
   };
 
   useEffect(() => {
@@ -174,7 +176,7 @@ export default function CustomerDashboard() {
               <Text style={styles.pointsValue}>{user?.rank || 8}</Text>
             </View>
             <TouchableOpacity onPress={startScanning}>
-              <Text style={styles.pointsCta}>Scan to borrow more to rank up</Text>
+              <Text style={styles.pointsCta}>{t('dashboard').scanToBorrow}</Text>
             </TouchableOpacity>
         </View>
       </View>
@@ -233,7 +235,7 @@ export default function CustomerDashboard() {
 
             <View style={styles.sectionPad}>
               <View style={styles.recoHeader}>
-                <Text style={styles.recoTitle}>Quick Actions</Text>
+                <Text style={styles.recoTitle}>{t('dashboard').quickActions}</Text>
                 <TouchableOpacity>
                   <Text style={styles.recoCta}>View All</Text>
                 </TouchableOpacity>
@@ -300,7 +302,7 @@ export default function CustomerDashboard() {
 
             <View style={styles.sectionPad}>
               <View style={styles.recoHeader}>
-                <Text style={styles.recoTitle}>Recommended</Text>
+                <Text style={styles.recoTitle}>{t('dashboard').recommended}</Text>
                 <TouchableOpacity>
                   <Text style={styles.recoCta}>View All</Text>
                 </TouchableOpacity>
@@ -335,7 +337,7 @@ export default function CustomerDashboard() {
                 <View style={styles.cardHeaderRow}>
                   <View style={styles.cardHeaderLeft}>
                     <Ionicons name="cube" size={16} color="#111827" />
-                    <Text style={styles.cardHeaderTitle}>Currently Borrowing</Text>
+                    <Text style={styles.cardHeaderTitle}>{t('dashboard').currentlyBorrowing}</Text>
                 </View>
                   <View style={styles.badgeSmall}><Text style={styles.badgeSmallText}>{activeBorrows.length}</Text></View>
             </View>

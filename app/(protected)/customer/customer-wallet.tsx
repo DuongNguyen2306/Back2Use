@@ -13,6 +13,7 @@ import {
     View
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
+import { useI18n } from '../../../hooks/useI18n';
 import { getCurrentUserProfileWithAutoRefresh, User } from '../../../lib/api';
 
 const { width } = Dimensions.get('window');
@@ -39,6 +40,7 @@ interface DepositTransaction {
 
 export default function CustomerWallet() {
   const auth = useAuth();
+  const { t } = useI18n();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'subscriptions' | 'deposits'>('subscriptions');
@@ -232,7 +234,7 @@ export default function CustomerWallet() {
               <View style={styles.patternCircle3} />
             </View>
             <View style={styles.cardHeader}>
-              <Text style={styles.cardAccountNumber}>Total Balance</Text>
+              <Text style={styles.cardAccountNumber}>{t('wallet').totalBalance}</Text>
               <TouchableOpacity 
                 style={styles.eyeButton}
                 onPress={() => setShowBalance(!showBalance)}
@@ -307,7 +309,7 @@ export default function CustomerWallet() {
             <View style={styles.patternCircle3} />
           </View>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardAccountNumber}>Total Balance</Text>
+            <Text style={styles.cardAccountNumber}>{t('wallet').totalBalance}</Text>
             <TouchableOpacity 
               style={styles.eyeButton}
               onPress={() => setShowBalance(!showBalance)}
@@ -353,7 +355,7 @@ export default function CustomerWallet() {
         <View style={styles.summarySection}>
           <View style={styles.summaryCard}>
             <View style={styles.summaryHeader}>
-              <Text style={styles.summaryLabel}>Income</Text>
+              <Text style={styles.summaryLabel}>{t('wallet').income}</Text>
               <Ionicons name="arrow-up" size={16} color="#fff" />
                 </View>
             <Text style={styles.summaryAmount}>
@@ -365,7 +367,7 @@ export default function CustomerWallet() {
                 </View>
           <View style={[styles.summaryCard, styles.expenseCard]}>
             <View style={styles.summaryHeader}>
-              <Text style={styles.summaryLabel}>Expenses</Text>
+              <Text style={styles.summaryLabel}>{t('wallet').expenses}</Text>
               <Ionicons name="arrow-down" size={16} color="#fff" />
               </View>
             <Text style={styles.summaryAmount}>
@@ -417,7 +419,7 @@ export default function CustomerWallet() {
                 >
                   <Ionicons name="arrow-up" size={14} color={subscriptionFilter === "plus" ? "#fff" : "#3B9797"} />
                   <Text style={[styles.filterText, subscriptionFilter === "plus" && styles.activeFilterText]}>
-                    Income
+                    {t('wallet').income}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -426,7 +428,7 @@ export default function CustomerWallet() {
                 >
                   <Ionicons name="arrow-down" size={14} color={subscriptionFilter === "minus" ? "#fff" : "#BF092F"} />
                   <Text style={[styles.filterText, subscriptionFilter === "minus" && styles.activeFilterText]}>
-                    Expenses
+                    {t('wallet').expenses}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -463,7 +465,7 @@ export default function CustomerWallet() {
                       {transaction.type === "add_fund" ? "+" : "-"} {(transaction.amount * 25000).toLocaleString('vi-VN')} VND
                     </Text>
                     <Text style={styles.subscriptionLabel}>
-                      {transaction.type === "add_fund" ? "Income" : transaction.type === "subscription" ? "Subscription" : "Withdrawal"}
+                      {transaction.type === "add_fund" ? t('wallet').income : transaction.type === "subscription" ? "Subscription" : "Withdrawal"}
                       </Text>
                   </View>
                 </View>

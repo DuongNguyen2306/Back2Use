@@ -2,16 +2,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  Dimensions,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 // import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../../context/AuthProvider';
+import { useI18n } from '../../../hooks/useI18n';
 import { getCurrentUserProfileWithAutoRefresh, User } from '../../../lib/api';
 
 const { width } = Dimensions.get('window');
@@ -29,6 +30,7 @@ interface Voucher {
 
 export default function Rewards() {
   const auth = useAuth();
+  const { t } = useI18n();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'vouchers' | 'my-vouchers' | 'history'>('vouchers');
@@ -137,10 +139,10 @@ export default function Rewards() {
               Valid until: {voucher.validUntil}
             </Text>
             {voucher.isUsed ? (
-              <Text style={styles.usedLabel}>Used</Text>
+              <Text style={styles.usedLabel}>{t('rewards').used}</Text>
             ) : (
               <TouchableOpacity style={styles.useButton}>
-                <Text style={styles.useButtonText}>Use Now</Text>
+                <Text style={styles.useButtonText}>{t('rewards').useNow}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -233,7 +235,7 @@ export default function Rewards() {
                 <Text style={styles.statIconText}>⭐</Text>
               </View>
               <Text style={styles.statValue}>{userStats.points.toLocaleString()}</Text>
-              <Text style={styles.statLabel}>Exp. Points</Text>
+              <Text style={styles.statLabel}>{t('rewards').expPoints}</Text>
             </View>
             <TouchableOpacity 
               style={styles.statItem}
@@ -243,9 +245,9 @@ export default function Rewards() {
                 <Text style={styles.statIconText}>🏆</Text>
               </View>
               <Text style={styles.statValue}>{userStats.ranking}</Text>
-              <Text style={styles.statLabel}>Ranking</Text>
+              <Text style={styles.statLabel}>{t('rewards').ranking}</Text>
               <View style={styles.viewRankingContainer}>
-                <Text style={styles.viewRankingText}>Xem hạng</Text>
+                <Text style={styles.viewRankingText}>{t('rewards').viewRankings}</Text>
                 <Ionicons name="chevron-forward" size={12} color="#0F4D3A" />
             </View>
             </TouchableOpacity>
@@ -259,7 +261,7 @@ export default function Rewards() {
             onPress={() => setActiveTab('vouchers')}
           >
             <Text style={[styles.tabText, activeTab === 'vouchers' && styles.activeTabText]}>
-              Vouchers
+              {t('rewards').vouchers}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -267,7 +269,7 @@ export default function Rewards() {
             onPress={() => setActiveTab('my-vouchers')}
           >
             <Text style={[styles.tabText, activeTab === 'my-vouchers' && styles.activeTabText]}>
-              My Vouchers
+              {t('rewards').myVouchers}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -275,7 +277,7 @@ export default function Rewards() {
             onPress={() => setActiveTab('history')}
           >
             <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>
-              History
+              {t('rewards').history}
             </Text>
           </TouchableOpacity>
         </View>

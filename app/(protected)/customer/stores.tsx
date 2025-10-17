@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { useAuth } from '../../../context/AuthProvider';
+import { useI18n } from '../../../hooks/useI18n';
 import { getCurrentUserProfileWithAutoRefresh, User } from '../../../lib/api';
 
 const { width } = Dimensions.get('window');
@@ -29,6 +30,7 @@ interface Store {
 
 export default function Stores() {
   const auth = useAuth();
+  const { t } = useI18n();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<'all' | 'nearby' | 'top-rated' | 'closest'>('all');
@@ -141,7 +143,7 @@ export default function Stores() {
             <Text style={styles.distance}>{store.distance}</Text>
             <View style={[styles.statusBadge, { backgroundColor: store.isOpen ? '#10B981' : '#EF4444' }]}>
               <Text style={styles.statusText}>
-                {store.isOpen ? 'Open' : 'Closed'}
+                {store.isOpen ? t('stores').open : t('stores').closed}
               </Text>
                     </View>
                   </View>
@@ -150,7 +152,7 @@ export default function Stores() {
                 
               <View style={styles.storeActions}>
         <TouchableOpacity style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Get Directions</Text>
+          <Text style={styles.primaryButtonText}>{t('stores').getDirections}</Text>
                 </TouchableOpacity>
         
         <View style={styles.secondaryButtons}>
@@ -221,7 +223,7 @@ export default function Stores() {
           <View style={styles.searchBar}>
             <TextInput
               style={styles.searchInput}
-              placeholder="Search Here"
+              placeholder={t('stores').searchPlaceholder}
               value={searchText}
               onChangeText={setSearchText}
               placeholderTextColor="#9CA3AF"
@@ -267,7 +269,7 @@ export default function Stores() {
           
         {/* Store List Section */}
         <View style={styles.storeListSection}>
-          <Text style={styles.nearbyStoresTitle}>Nearby Stores</Text>
+          <Text style={styles.nearbyStoresTitle}>{t('stores').nearbyStores}</Text>
           
           {/* Filter Tabs */}
           <View style={styles.filterTabs}>
@@ -276,7 +278,7 @@ export default function Stores() {
               onPress={() => setActiveFilter('all')}
             >
               <Text style={[styles.filterTabText, activeFilter === 'all' && styles.activeFilterTabText]}>
-                All
+                {t('stores').all}
                 </Text>
             </TouchableOpacity>
               <TouchableOpacity 
@@ -284,7 +286,7 @@ export default function Stores() {
               onPress={() => setActiveFilter('nearby')}
             >
               <Text style={[styles.filterTabText, activeFilter === 'nearby' && styles.activeFilterTabText]}>
-                Nearby
+                {t('stores').nearby}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -292,7 +294,7 @@ export default function Stores() {
               onPress={() => setActiveFilter('top-rated')}
             >
               <Text style={[styles.filterTabText, activeFilter === 'top-rated' && styles.activeFilterTabText]}>
-                Top Rated
+                {t('stores').topRated}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -300,7 +302,7 @@ export default function Stores() {
               onPress={() => setActiveFilter('closest')}
             >
               <Text style={[styles.filterTabText, activeFilter === 'closest' && styles.activeFilterTabText]}>
-                Closest
+                {t('stores').closest}
               </Text>
               </TouchableOpacity>
             </View>
