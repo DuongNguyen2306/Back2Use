@@ -21,7 +21,6 @@ export default function CustomerLayout() {
     if (path.includes("stores")) return "stores";
     if (path.includes("rewards")) return "rewards";
     if (path.includes("my-profile")) return "profile";
-    if (path.includes("customer-profile")) return "profile";
     if (path.includes("customer") || path === "/(protected)/customer") return "dashboard";
     
     return "dashboard"; // default

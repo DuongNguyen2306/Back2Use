@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Dimensions,
     ScrollView,
@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { useAuth } from '../../../context/AuthProvider';
+import { getCurrentUserProfileWithAutoRefresh, User } from '../../../lib/api';
 
 const { width } = Dimensions.get('window');
 
@@ -28,9 +29,27 @@ interface Store {
 
 export default function Stores() {
   const auth = useAuth();
-  const user = { name: "John Doe" }; // Mock user for now
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<'all' | 'nearby' | 'top-rated' | 'closest'>('all');
   const [searchText, setSearchText] = useState('');
+
+  // Load user data
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        setLoading(true);
+        const userData = await getCurrentUserProfileWithAutoRefresh();
+        setUser(userData);
+      } catch (error) {
+        console.error('Error loading user data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadUserData();
+  }, []);
 
   const getTimeBasedGreeting = () => {
     const hour = new Date().getHours();
@@ -109,42 +128,60 @@ export default function Stores() {
   const renderStoreCard = (store: Store) => (
     <View key={store.id} style={styles.storeCard}>
       <View style={styles.storeHeader}>
-        <View style={styles.storeIcon}>
+                <View style={styles.storeIcon}>
           <Ionicons name="storefront" size={20} color="#FFFFFF" />
-        </View>
+                </View>
         <View style={styles.storeInfo}>
-          <Text style={styles.storeName}>{store.name}</Text>
+                  <Text style={styles.storeName}>{store.name}</Text>
           <Text style={styles.storeAddress}>{store.address}</Text>
           <View style={styles.storeDetails}>
             <View style={styles.ratingContainer}>
               <Text style={styles.ratingText}>⭐ {store.rating}</Text>
-            </View>
+                        </View>
             <Text style={styles.distance}>{store.distance}</Text>
             <View style={[styles.statusBadge, { backgroundColor: store.isOpen ? '#10B981' : '#EF4444' }]}>
               <Text style={styles.statusText}>
                 {store.isOpen ? 'Open' : 'Closed'}
               </Text>
-            </View>
-          </View>
-        </View>
-      </View>
-      
-      <View style={styles.storeActions}>
+                    </View>
+                  </View>
+                </View>
+              </View>
+                
+              <View style={styles.storeActions}>
         <TouchableOpacity style={styles.primaryButton}>
           <Text style={styles.primaryButtonText}>Get Directions</Text>
-        </TouchableOpacity>
+                </TouchableOpacity>
         
         <View style={styles.secondaryButtons}>
           <TouchableOpacity style={styles.secondaryButton}>
             <Ionicons name="call" size={16} color="#0F4D3A" />
-          </TouchableOpacity>
+                  </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton}>
             <Ionicons name="eye" size={16} color="#0F4D3A" />
-          </TouchableOpacity>
+                </TouchableOpacity>
+                </View>
+              </View>
         </View>
-      </View>
-    </View>
   );
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.heroHeaderArea}>
+          <View style={styles.topBar}>
+            <Text style={styles.brandTitle}>BACK2USE</Text>
+            </View>
+          <View style={styles.greetingRow}>
+            <View>
+              <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
+              <Text style={styles.greetingName}>Loading...</Text>
+                </View>
+                  </View>
+                </View>
+              </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -152,24 +189,24 @@ export default function Stores() {
       <View style={styles.heroHeaderArea}>
         <View style={styles.topBar}>
           <Text style={styles.brandTitle}>BACK2USE</Text>
-        </View>
-        
+              </View>
+
         <View style={styles.greetingRow}>
           <View>
             <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-            <Text style={styles.greetingName}>{user.name}</Text>
-          </View>
+            <Text style={styles.greetingName}>{(user as any)?.fullName || user?.name || "User"}</Text>
+                    </View>
           <View style={styles.avatarLg}>
-            <Text style={styles.avatarLgText}>{(user?.name || "U").charAt(0)}</Text>
-          </View>
-        </View>
-      </View>
+            <Text style={styles.avatarLgText}>{((user as any)?.fullName || user?.name || "U").charAt(0).toUpperCase()}</Text>
+                    </View>
+                </View>
+              </View>
 
       <ScrollView style={styles.scrollContent}>
         {/* Section Title */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Stores</Text>
-        </View>
+              </View>
 
         {/* Search & Map Section */}
         <View style={styles.searchSection}>
@@ -189,45 +226,45 @@ export default function Stores() {
               onChangeText={setSearchText}
               placeholderTextColor="#9CA3AF"
             />
-            <TouchableOpacity style={styles.filterButton}>
+          <TouchableOpacity style={styles.filterButton}>
               <Ionicons name="filter" size={20} color="#6B7280" />
             </TouchableOpacity>
           </View>
 
           {/* Map View */}
-          <View style={styles.mapContainer}>
-            <MapView
-              style={styles.map}
+        <View style={styles.mapContainer}>
+          <MapView
+            style={styles.map}
               initialRegion={{
                 latitude: 10.7769,
                 longitude: 106.7009,
                 latitudeDelta: 0.05,
                 longitudeDelta: 0.05,
               }}
-              showsUserLocation={true}
-              showsMyLocationButton={true}
+            showsUserLocation={true}
+            showsMyLocationButton={true}
             >
               {filteredStores.map((store) => (
-                <Marker
-                  key={store.id}
-                  coordinate={{
-                    latitude: store.latitude,
-                    longitude: store.longitude,
-                  }}
-                  title={store.name}
-                  description={store.address}
+              <Marker
+                key={store.id}
+                coordinate={{
+                  latitude: store.latitude,
+                  longitude: store.longitude,
+                }}
+                title={store.name}
+                description={store.address}
                 >
                   <View style={styles.markerContainer}>
                     <View style={[styles.markerIcon, { backgroundColor: store.isOpen ? '#10B981' : '#EF4444' }]}>
                       <Ionicons name="storefront" size={16} color="#FFFFFF" />
                     </View>
-                  </View>
-                </Marker>
-              ))}
-            </MapView>
-          </View>
+                </View>
+              </Marker>
+            ))}
+          </MapView>
         </View>
-
+          </View>
+          
         {/* Store List Section */}
         <View style={styles.storeListSection}>
           <Text style={styles.nearbyStoresTitle}>Nearby Stores</Text>
@@ -240,9 +277,9 @@ export default function Stores() {
             >
               <Text style={[styles.filterTabText, activeFilter === 'all' && styles.activeFilterTabText]}>
                 All
-              </Text>
+                </Text>
             </TouchableOpacity>
-            <TouchableOpacity
+              <TouchableOpacity 
               style={[styles.filterTab, activeFilter === 'nearby' && styles.activeFilterTab]}
               onPress={() => setActiveFilter('nearby')}
             >
@@ -265,15 +302,15 @@ export default function Stores() {
               <Text style={[styles.filterTabText, activeFilter === 'closest' && styles.activeFilterTabText]}>
                 Closest
               </Text>
-            </TouchableOpacity>
-          </View>
+              </TouchableOpacity>
+            </View>
 
           {/* Store Cards */}
           <View style={styles.storeList}>
             {filteredStores.map(renderStoreCard)}
-          </View>
-        </View>
-      </ScrollView>
+      </View>
+              </View>
+            </ScrollView>
     </View>
   );
 }
@@ -291,16 +328,16 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
   },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+  topBar: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
     marginBottom: 4,
   },
-  brandTitle: {
-    color: '#fff',
-    fontWeight: '800',
-    letterSpacing: 2,
+  brandTitle: { 
+    color: '#fff', 
+    fontWeight: '800', 
+    letterSpacing: 2, 
     fontSize: 14,
   },
   greetingRow: {

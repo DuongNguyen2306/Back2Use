@@ -257,22 +257,27 @@ export interface ApiError {
 
 // User interface
 export interface User {
-  _id: string;
+  _id?: string;
   email: string;
-  name: string;
-  role: 'customer' | 'business' | 'admin';
-  isActive: boolean;
-  isBlocked: boolean;
-  createdAt: string;
-  updatedAt: string;
+  name?: string;
+  fullName?: string;
+  role?: 'customer' | 'business' | 'admin';
+  isActive?: boolean;
+  isBlocked?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
   phone?: string;
   avatar?: string;
   address?: string;
   yob?: string;
+  rewardPoints?: number;
+  legitPoints?: number;
+  wallet?: number;
 }
 
 export interface UpdateProfileRequest {
   name?: string;
+  fullName?: string;
   phone?: string;
   avatar?: string;
   address?: string;
@@ -642,8 +647,8 @@ export const getCurrentUserProfile = async (token: string): Promise<User> => {
 
     const result = response.data;
     
-    if (result.statusCode === 200 && result.data && result.data.user) {
-      return result.data.user;
+    if (result.statusCode === 200 && result.data) {
+      return result.data;
     } else {
       throw new Error(result.message || 'Failed to get user profile');
     }
@@ -778,7 +783,10 @@ export const updateUserProfile = async (updates: UpdateProfileRequest, token: st
       if (result.data && result.data.user) {
         console.log('✅ Profile updated successfully (with user data)');
         return result.data.user;
-      } else if (result.message === 'User updated successfully') {
+      } else if (result.data) {
+        console.log('✅ Profile updated successfully (with data)');
+        return result.data;
+      } else if (result.message === 'Profile updated' || result.message === 'User updated successfully') {
         console.log('✅ Profile updated successfully (fetching updated data)');
         const updatedUser = await getCurrentUserProfile(token);
         return updatedUser;

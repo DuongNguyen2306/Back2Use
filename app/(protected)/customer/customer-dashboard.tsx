@@ -30,6 +30,7 @@ export default function CustomerDashboard() {
   const [userData, setUserData] = useState<any>(null);
   const [showAIQualityCheck, setShowAIQualityCheck] = useState(false);
   const [scannedItem, setScannedItem] = useState<any>(null);
+  const [showBalance, setShowBalance] = useState(false); // Mặc định ẩn số tiền
   // use layout navigation; no local tab state here
   const scanLock = useRef(false);
 
@@ -153,7 +154,7 @@ export default function CustomerDashboard() {
           <View style={styles.greetingRow}>
             <View>
               <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-              <Text style={styles.greetingName}>{user?.name || "User"}</Text>
+              <Text style={styles.greetingName}>{(user as any)?.fullName || user?.name || "User"}</Text>
               <Text style={styles.greetingNice}>Nice to meet you !</Text>
           </View>
             <View style={styles.avatarLg}>
@@ -185,7 +186,23 @@ export default function CustomerDashboard() {
             <View style={styles.sectionPad}>
               <View style={styles.balanceRow}>
                 <Text style={styles.balanceLabel}>Card Balance</Text>
-                <Text style={styles.balanceValue}>{(user?.walletBalance ?? 0 * 25000).toLocaleString('vi-VN')} VND</Text>
+                <View style={styles.balanceContainer}>
+                  {showBalance ? (
+                    <Text style={styles.balanceValue}>{(user?.walletBalance ?? 0 * 25000).toLocaleString('vi-VN')} VND</Text>
+                  ) : (
+                    <Text style={styles.balanceHidden}>•••••••• VND</Text>
+                  )}
+                  <TouchableOpacity 
+                    style={styles.eyeButton}
+                    onPress={() => setShowBalance(!showBalance)}
+                  >
+                    <Ionicons 
+                      name={showBalance ? "eye" : "eye-off"} 
+                      size={16} 
+                      color="#00704A" 
+                    />
+                  </TouchableOpacity>
+                </View>
               </View>
               <ScrollView 
                 horizontal 
@@ -485,7 +502,10 @@ const styles = StyleSheet.create({
   sectionPad: { paddingHorizontal: 16 },
   balanceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   balanceLabel: { fontSize: 14, fontWeight: '600', color: '#111827' },
+  balanceContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   balanceValue: { fontSize: 16, fontWeight: '800', color: '#00704A' },
+  balanceHidden: { fontSize: 16, fontWeight: '800', color: '#00704A', letterSpacing: 2 },
+  eyeButton: { padding: 4 },
   cardGrid: { flexDirection: 'row', gap: 10 },
   cardScrollContainer: {
     paddingHorizontal: 0,

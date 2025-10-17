@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Alert,
     Dimensions,
+    Image,
     Modal,
     ScrollView,
     StyleSheet,
@@ -12,6 +13,7 @@ import {
     View
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
+import { getCurrentUserProfileWithAutoRefresh, User } from '../../../lib/api';
 
 const { width } = Dimensions.get('window');
 
@@ -37,14 +39,36 @@ interface DepositTransaction {
 
 export default function CustomerWallet() {
   const auth = useAuth();
-  const user = { name: "John Doe" }; // Mock user for now
-  const setUser = () => {}; // Mock setUser for now
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'subscriptions' | 'deposits'>('subscriptions');
   const [subscriptionFilter, setSubscriptionFilter] = useState<'all' | 'plus' | 'minus'>('all');
   const [depositFilter, setDepositFilter] = useState<'all' | 'plus' | 'minus'>('all');
   const [showAddFunds, setShowAddFunds] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [showDepositWithdraw, setShowDepositWithdraw] = useState(false);
+  const [isDepositMode, setIsDepositMode] = useState(true); // true = deposit, false = withdraw
   const [amount, setAmount] = useState('');
-  const [showBalance, setShowBalance] = useState(true);
+  const [showBalance, setShowBalance] = useState(false); // Mặc định ẩn số tiền
+
+  // Load user data
+  useEffect(() => {
+    const loadUserData = async () => {
+        try {
+        setLoading(true);
+        const userData = await getCurrentUserProfileWithAutoRefresh();
+        console.log('🔍 Wallet User Data:', userData);
+        console.log('💰 Wallet Balance:', (userData as any)?.wallet);
+        setUser(userData);
+        } catch (error) {
+        console.error('Error loading user data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadUserData();
+  }, []);
 
   // Mock data
   const subscriptionTransactions: Transaction[] = [
@@ -166,32 +190,40 @@ export default function CustomerWallet() {
     }
     // Handle add funds logic here
     setShowAddFunds(false);
+    setShowDepositWithdraw(false);
     setAmount('');
   };
 
-  const quickAmounts = [50, 100, 200, 500];
+  const handleWithdraw = () => {
+    if (!amount || parseFloat(amount) <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid amount');
+      return;
+    }
+    
+    // Handle withdraw logic here
+    setShowWithdraw(false);
+    setShowDepositWithdraw(false);
+    setAmount('');
+  };
 
-  return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.heroHeaderArea}>
-        <View style={styles.topBar}>
-          <Text style={styles.brandTitle}>BACK2USE</Text>
+  const quickAmounts = [10000, 50000, 100000, 200000];
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.heroHeaderArea}>
+          <View style={styles.topBar}>
+            <Text style={styles.brandTitle}>BACK2USE</Text>
+          </View>
+          <View style={styles.greetingRow}>
+            <View>
+              <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
+              <Text style={styles.greetingName}>Loading...</Text>
+            </View>
+          </View>
         </View>
         
-        <View style={styles.greetingRow}>
-          <View>
-            <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-            <Text style={styles.greetingName}>{user.name}</Text>
-          </View>
-          <View style={styles.avatarLg}>
-            <Text style={styles.avatarLgText}>{(user?.name || "U").charAt(0)}</Text>
-          </View>
-        </View>
-      </View>
-
-      <ScrollView style={styles.scrollContent}>
-        {/* Credit Card Section */}
+        {/* Credit Card Section - Show even when loading */}
         <View style={styles.cardSection}>
           <View style={styles.creditCard}>
             <View style={styles.cardPattern}>
@@ -201,19 +233,121 @@ export default function CustomerWallet() {
             </View>
             <View style={styles.cardHeader}>
               <Text style={styles.cardAccountNumber}>Total Balance</Text>
-            </View>
-            <Text style={styles.cardName}>{user.name}</Text>
-            <View style={styles.cardActions}>
               <TouchableOpacity 
-                style={styles.cardActionButton}
-                onPress={() => setShowAddFunds(true)}
+                style={styles.eyeButton}
+                onPress={() => setShowBalance(!showBalance)}
               >
-                <Ionicons name="add" size={16} color="#00704A" />
-                <Text style={styles.cardActionText}>Add Funds</Text>
+                <Ionicons 
+                  name={showBalance ? "eye" : "eye-off"} 
+                  size={20} 
+                  color="#FFFFFF" 
+                />
+              </TouchableOpacity>
+            </View>
+            
+            {/* Balance Display */}
+            <View style={styles.balanceContainer}>
+              {showBalance ? (
+                <Text style={styles.balanceAmount}>
+                  Loading...
+                </Text>
+              ) : (
+                <Text style={styles.balanceHidden}>•••••••• VND</Text>
+              )}
+            </View>
+            
+            <Text style={styles.cardName}>Loading...</Text>
+            
+            {/* Action Button - Right aligned */}
+            <View style={styles.cardActionsRight}>
+              <TouchableOpacity 
+                style={styles.depositWithdrawButton}
+                onPress={() => setShowDepositWithdraw(true)}
+              >
+                <Ionicons name="card" size={16} color="#FFFFFF" />
+                <Text style={styles.depositWithdrawText}>Deposit/Withdraw</Text>
+                <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
           </View>
         </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.heroHeaderArea}>
+          <View style={styles.topBar}>
+            <Text style={styles.brandTitle}>BACK2USE</Text>
+          </View>
+        
+          <View style={styles.greetingRow}>
+            <View>
+              <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
+            <Text style={styles.greetingName}>{(user as any)?.fullName || user?.name || "User"}</Text>
+          </View>
+            <View style={styles.avatarLg}>
+              {user?.avatar && user.avatar.trim() !== "" ? (
+                <Image source={{ uri: user.avatar }} style={styles.avatarLgImage} />
+              ) : (
+                <Text style={styles.avatarLgText}>{((user as any)?.fullName || user?.name || "U").charAt(0).toUpperCase()}</Text>
+              )}
+          </View>
+        </View>
+      </View>
+
+      {/* Credit Card Section - Outside ScrollView */}
+      <View style={styles.cardSection}>
+        <View style={styles.creditCard}>
+          <View style={styles.cardPattern}>
+            <View style={styles.patternCircle1} />
+            <View style={styles.patternCircle2} />
+            <View style={styles.patternCircle3} />
+          </View>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardAccountNumber}>Total Balance</Text>
+            <TouchableOpacity 
+              style={styles.eyeButton}
+              onPress={() => setShowBalance(!showBalance)}
+            >
+              <Ionicons 
+                name={showBalance ? "eye" : "eye-off"} 
+                size={20} 
+                color="#FFFFFF" 
+              />
+            </TouchableOpacity>
+          </View>
+          
+          {/* Balance Display */}
+          <View style={styles.balanceContainer}>
+            {showBalance ? (
+              <Text style={styles.balanceAmount}>
+                {((user as any)?.wallet || 0).toLocaleString('vi-VN')} VND
+              </Text>
+            ) : (
+              <Text style={styles.balanceHidden}>•••••••• VND</Text>
+            )}
+          </View>
+          
+          <Text style={styles.cardName}>{(user as any)?.fullName || user?.name || "User"}</Text>
+          
+          {/* Action Button - Right aligned */}
+          <View style={styles.cardActionsRight}>
+            <TouchableOpacity 
+              style={styles.depositWithdrawButton}
+              onPress={() => setShowDepositWithdraw(true)}
+            >
+              <Ionicons name="card" size={16} color="#FFFFFF" />
+              <Text style={styles.depositWithdrawText}>Deposit/Withdraw</Text>
+              <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
+      <ScrollView style={styles.scrollContent}>
 
         {/* Summary Section */}
         <View style={styles.summarySection}>
@@ -221,26 +355,26 @@ export default function CustomerWallet() {
             <View style={styles.summaryHeader}>
               <Text style={styles.summaryLabel}>Income</Text>
               <Ionicons name="arrow-up" size={16} color="#fff" />
-            </View>
+                </View>
             <Text style={styles.summaryAmount}>
               {subscriptionTransactions
                 .filter(t => t.type === "add_fund")
                 .reduce((sum, t) => sum + (t.amount * 25000), 0)
                 .toLocaleString('vi-VN')} VND
             </Text>
-          </View>
+                </View>
           <View style={[styles.summaryCard, styles.expenseCard]}>
             <View style={styles.summaryHeader}>
               <Text style={styles.summaryLabel}>Expenses</Text>
               <Ionicons name="arrow-down" size={16} color="#fff" />
-            </View>
+              </View>
             <Text style={styles.summaryAmount}>
               {subscriptionTransactions
                 .filter(t => t.type === "subscription" || t.type === "withdrawal")
                 .reduce((sum, t) => sum + (t.amount * 25000), 0)
                 .toLocaleString('vi-VN')} VND
-            </Text>
-          </View>
+                  </Text>
+                </View>
         </View>
 
         {/* Transaction Tabs */}
@@ -311,11 +445,11 @@ export default function CustomerWallet() {
                     ) : transaction.description === "Cash Withdrawal" ? (
                       <Ionicons name="card" size={18} color={transaction.type === "add_fund" ? "#3B9797" : "#BF092F"} />
                     ) : (
-                      <Ionicons 
+                    <Ionicons 
                         name={transaction.type === "add_fund" ? "arrow-up" : "arrow-down"} 
-                        size={18} 
-                        color={transaction.type === "add_fund" ? "#3B9797" : "#BF092F"} 
-                      />
+                      size={18} 
+                      color={transaction.type === "add_fund" ? "#3B9797" : "#BF092F"} 
+                    />
                     )}
                   </View>
                   <View style={styles.subscriptionInfo}>
@@ -381,11 +515,11 @@ export default function CustomerWallet() {
                     ) : transaction.itemName?.includes("Plastic") ? (
                       <Ionicons name="cube" size={18} color={transaction.type === "refund" ? "#3B9797" : "#BF092F"} />
                     ) : (
-                      <Ionicons
+                    <Ionicons
                         name={transaction.type === "refund" ? "arrow-up" : "arrow-down"}
-                        size={18}
-                        color={transaction.type === "refund" ? "#3B9797" : "#BF092F"}
-                      />
+                      size={18}
+                      color={transaction.type === "refund" ? "#3B9797" : "#BF092F"}
+                    />
                     )}
                   </View>
                   <View style={styles.transactionInfo}>
@@ -429,27 +563,27 @@ export default function CustomerWallet() {
           animationType="fade"
           onRequestClose={() => setShowAddFunds(false)}
         >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Add Funds</Text>
-                <TouchableOpacity onPress={() => setShowAddFunds(false)}>
+              <TouchableOpacity onPress={() => setShowAddFunds(false)}>
                   <Ionicons name="close" size={24} color="#6B7280" />
-                </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
+            </View>
               
-              <View style={styles.modalBody}>
+            <View style={styles.modalBody}>
                 <Text style={styles.modalLabel}>Amount (VND)</Text>
-                <TextInput
-                  style={styles.modalInput}
+              <TextInput
+                style={styles.modalInput}
                   placeholder="Enter amount"
                   value={amount}
                   onChangeText={setAmount}
-                  keyboardType="numeric"
-                />
+                keyboardType="numeric"
+              />
                 
                 <Text style={styles.modalLabel}>Quick Amounts</Text>
-                <View style={styles.quickAmounts}>
+              <View style={styles.quickAmounts}>
                   {quickAmounts.map((quickAmount) => (
                     <TouchableOpacity
                       key={quickAmount}
@@ -457,16 +591,144 @@ export default function CustomerWallet() {
                       onPress={() => setAmount(quickAmount.toString())}
                     >
                       <Text style={styles.quickAmountText}>{quickAmount.toLocaleString('vi-VN')} VND</Text>
-                    </TouchableOpacity>
+                </TouchableOpacity>
                   ))}
-                </View>
               </View>
+            </View>
               
               <TouchableOpacity style={styles.modalButton} onPress={handleAddFunds}>
                 <Text style={styles.modalButtonText}>Add Funds</Text>
               </TouchableOpacity>
             </View>
-          </View>
+              </View>
+        </Modal>
+      )}
+
+      {/* Withdraw Modal */}
+      {showWithdraw && (
+        <Modal
+          visible={showWithdraw}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowWithdraw(false)}
+        >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Withdraw Money</Text>
+              <TouchableOpacity onPress={() => setShowWithdraw(false)}>
+                  <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+              
+            <View style={styles.modalBody}>
+                <Text style={styles.modalLabel}>Withdrawal Amount (VND)</Text>
+              <TextInput
+                style={styles.modalInput}
+                  placeholder="Enter amount"
+                  value={amount}
+                  onChangeText={setAmount}
+                keyboardType="numeric"
+              />
+                
+                <Text style={styles.modalLabel}>Quick Amounts</Text>
+              <View style={styles.quickAmounts}>
+                  {quickAmounts.map((quickAmount) => (
+                    <TouchableOpacity
+                      key={quickAmount}
+                      style={styles.quickAmountButton}
+                      onPress={() => setAmount(quickAmount.toString())}
+                    >
+                      <Text style={styles.quickAmountText}>{quickAmount.toLocaleString('vi-VN')} VND</Text>
+                </TouchableOpacity>
+                  ))}
+              </View>
+            </View>
+              
+              <TouchableOpacity style={styles.modalButton} onPress={handleWithdraw}>
+                <Text style={styles.modalButtonText}>Withdraw</Text>
+              </TouchableOpacity>
+            </View>
+              </View>
+        </Modal>
+      )}
+
+      {/* Deposit/Withdraw Modal */}
+      {showDepositWithdraw && (
+        <Modal
+          visible={showDepositWithdraw}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowDepositWithdraw(false)}
+        >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  {isDepositMode ? 'Deposit Money' : 'Withdraw Money'}
+                </Text>
+              <TouchableOpacity onPress={() => setShowDepositWithdraw(false)}>
+                  <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+              
+            {/* Toggle Switch */}
+            <View style={styles.toggleContainer}>
+              <TouchableOpacity 
+                style={[styles.toggleButton, isDepositMode && styles.toggleButtonActive]}
+                onPress={() => setIsDepositMode(true)}
+              >
+                <Text style={[styles.toggleText, isDepositMode && styles.toggleTextActive]}>
+                  Deposit
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.toggleButton, !isDepositMode && styles.toggleButtonActive]}
+                onPress={() => setIsDepositMode(false)}
+              >
+                <Text style={[styles.toggleText, !isDepositMode && styles.toggleTextActive]}>
+                  Withdraw
+                </Text>
+              </TouchableOpacity>
+            </View>
+              
+            <View style={styles.modalBody}>
+                <Text style={styles.modalLabel}>
+                  {isDepositMode ? 'Deposit Amount (VND)' : 'Withdrawal Amount (VND)'}
+                </Text>
+              <TextInput
+                style={styles.modalInput}
+                  placeholder="Enter amount"
+                  value={amount}
+                  onChangeText={setAmount}
+                keyboardType="numeric"
+              />
+                
+                <Text style={styles.modalLabel}>Quick Amounts</Text>
+              <View style={styles.quickAmounts}>
+                  {quickAmounts.map((quickAmount) => (
+                    <TouchableOpacity
+                      key={quickAmount}
+                      style={styles.quickAmountButton}
+                      onPress={() => setAmount(quickAmount.toString())}
+                    >
+                      <Text style={styles.quickAmountText}>{quickAmount.toLocaleString('vi-VN')} VND</Text>
+                </TouchableOpacity>
+                  ))}
+              </View>
+            </View>
+              
+              <TouchableOpacity 
+                style={[styles.modalButton, isDepositMode ? styles.depositModalButton : styles.withdrawModalButton]} 
+                onPress={isDepositMode ? handleAddFunds : handleWithdraw}
+              >
+                <Text style={styles.modalButtonText}>
+                  {isDepositMode ? 'Deposit' : 'Withdraw'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+              </View>
         </Modal>
       )}
     </View>
@@ -536,6 +798,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
   },
+  avatarLgImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
   notificationButton: {
     width: 40,
     height: 40,
@@ -545,14 +812,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   scrollContent: {
-    padding: 20,
+    paddingHorizontal: 20,
     paddingBottom: 100,
   },
   cardSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-    gap: 16,
+    paddingHorizontal: 20,
+    marginBottom: 20,
+    marginTop: 10,
   },
   addCardButton: {
     width: 60,
@@ -566,8 +832,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   creditCard: {
-    flex: 1,
-    height: 200,
+    width: '100%',
+    height: 250,
     backgroundColor: '#0F4D3A',
     borderRadius: 16,
     padding: 20,
@@ -1013,11 +1279,6 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     marginBottom: 8,
   },
-  balanceAmount: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#00704A',
-  },
   addFundsButton: {
     backgroundColor: '#00704A',
     paddingVertical: 12,
@@ -1035,18 +1296,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  withdrawButton: {
-    backgroundColor: '#6B7280',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
   withdrawText: {
     color: '#fff',
     fontSize: 16,
@@ -1062,26 +1311,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
   },
-  balanceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  eyeButton: {
-    padding: 4,
-  },
   cardActions: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 16,
+    marginTop: 20,
+  },
+  cardActionsRight: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 20,
   },
   cardActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 20,
+    borderRadius: 16,
     gap: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -1091,8 +1337,96 @@ const styles = StyleSheet.create({
   },
   cardActionText: {
     color: '#00704A',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '500',
+  },
+  eyeButton: {
+    padding: 8,
+    zIndex: 10,
+    elevation: 10,
+  },
+  balanceContainer: {
+    marginVertical: 15,
+  },
+  balanceAmount: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  balanceHidden: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 4,
+  },
+  depositButton: {
+    backgroundColor: '#10B981',
+    flex: 1,
+    marginRight: 8,
+  },
+  withdrawButton: {
+    backgroundColor: '#EF4444',
+    flex: 1,
+    marginLeft: 8,
+  },
+  depositButtonText: {
+    color: '#FFFFFF',
+  },
+  withdrawButtonText: {
+    color: '#FFFFFF',
+  },
+  depositWithdrawButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 16,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  depositWithdrawText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 4,
+    marginVertical: 16,
+  },
+  toggleButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  toggleButtonActive: {
+    backgroundColor: '#00704A',
+  },
+  toggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  toggleTextActive: {
+    color: '#FFFFFF',
+  },
+  depositModalButton: {
+    backgroundColor: '#10B981',
+  },
+  withdrawModalButton: {
+    backgroundColor: '#EF4444',
   },
   statusBadge: {
     paddingHorizontal: 8,

@@ -1,16 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-    Dimensions,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Dimensions,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 // import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../../context/AuthProvider';
+import { getCurrentUserProfileWithAutoRefresh, User } from '../../../lib/api';
 
 const { width } = Dimensions.get('window');
 
@@ -27,8 +29,26 @@ interface Voucher {
 
 export default function Rewards() {
   const auth = useAuth();
-  const user = { name: "John Doe" }; // Mock user for now
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'vouchers' | 'my-vouchers' | 'history'>('vouchers');
+
+  // Load user data
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        setLoading(true);
+        const userData = await getCurrentUserProfileWithAutoRefresh();
+        setUser(userData);
+      } catch (error) {
+        console.error('Error loading user data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadUserData();
+  }, []);
 
 // Mock data
   const vouchers: Voucher[] = [
@@ -75,8 +95,8 @@ export default function Rewards() {
   ];
 
   const userStats = {
-    points: 2300,
-    ranking: 8,
+    points: (user as any)?.rewardPoints || 0,
+    ranking: 8, // Mock ranking for now
   };
 
   const renderVoucherCard = (voucher: Voucher) => (
@@ -145,6 +165,24 @@ export default function Rewards() {
     });
   };
 
+  if (loading) {
+  return (
+    <View style={styles.container}>
+      <View style={styles.heroHeaderArea}>
+          <View style={styles.topBar}>
+            <Text style={styles.brandTitle}>BACK2USE</Text>
+          </View>
+          <View style={styles.greetingRow}>
+            <View>
+              <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
+              <Text style={styles.greetingName}>Loading...</Text>
+            </View>
+          </View>
+          </View>
+        </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -155,28 +193,32 @@ export default function Rewards() {
           <View style={styles.statusIcons}>
             <View style={styles.statusIcon}>
               <Ionicons name="arrow-up" size={12} color="#FFFFFF" />
-            </View>
+          </View>
             <View style={styles.statusIcon}>
               <Text style={styles.signalText}>A</Text>
             </View>
+            </View>
           </View>
-        </View>
-
+          
           <View style={styles.topBar}>
             <Text style={styles.brandTitle}>BACK2USE</Text>
-          </View>
+            </View>
         
           <View style={styles.greetingRow}>
             <View>
               <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-            <Text style={styles.greetingName}>{user.name}</Text>
-          </View>
+            <Text style={styles.greetingName}>{(user as any)?.fullName || user?.name || "User"}</Text>
+            </View>
             <View style={styles.avatarLg}>
-            <Text style={styles.avatarLgText}>{(user?.name || "U").charAt(0)}</Text>
+              {user?.avatar && user.avatar.trim() !== "" ? (
+                <Image source={{ uri: user.avatar }} style={styles.avatarLgImage} />
+              ) : (
+                <Text style={styles.avatarLgText}>{((user as any)?.fullName || user?.name || "U").charAt(0).toUpperCase()}</Text>
+              )}
           </View>
         </View>
-          </View>
-          
+      </View>
+
       <ScrollView style={styles.scrollContent}>
         {/* Section Title */}
         <View style={styles.sectionHeader}>
@@ -355,6 +397,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: '#00704A',
+  },
+  avatarLgImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
   },
   scrollContent: {
     flex: 1,
