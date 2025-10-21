@@ -1,5 +1,5 @@
 // API Configuration Constants
-export const API_BASE_URL = 'http://172.16.22.147:8000';
+export const API_BASE_URL = 'http://172.16.23.154:8000';
 
 // API Endpoints
 export const API_ENDPOINTS = {
@@ -39,6 +39,14 @@ export const API_ENDPOINTS = {
   PAYMENTS: {
     VNPAY_CREATE: '/vnpay/create',
   },
+      WALLET: {
+        DEPOSIT: '/wallets/{walletId}/deposit', // POST
+        WITHDRAW: '/wallets/{walletId}/withdraw', // POST
+        GET_BY_ID: '/wallets/{walletId}', // GET
+      },
+      WALLET_TRANSACTIONS: {
+        GET_MY: '/wallet-transactions/my', // GET ?typeGroup=&direction=&page=&limit=
+      },
   MATERIALS: {
     CREATE: '/materials', // POST
     LIST_APPROVED: '/materials/approved', // GET ?page=&limit=

@@ -272,7 +272,10 @@ export interface User {
   yob?: string;
   rewardPoints?: number;
   legitPoints?: number;
-  wallet?: number;
+  wallet?: {
+    _id: string;
+    balance: number;
+  };
 }
 
 export interface UpdateProfileRequest {
@@ -565,6 +568,103 @@ export const materialsApi = {
     return apiCall<PaginatedResponse<MaterialItem>>(API_ENDPOINTS.MATERIALS.LIST_MY, {
       method: 'GET',
       params: { status, page, limit },
+    });
+  },
+};
+
+// ============================================================================
+// WALLET API
+// ============================================================================
+
+export interface WalletDetails {
+  _id: string;
+  balance: number;
+  transactions?: any[];
+}
+
+export const walletApi = {
+  // Get wallet by ID - GET /wallets/{walletId}
+  getById: async (walletId: string): Promise<WalletDetails> => {
+    return apiCall<WalletDetails>(`/wallets/${walletId}`, {
+      method: 'GET',
+    });
+  },
+  
+  // Get wallet details with auto refresh token
+  getByIdWithAutoRefresh: async (walletId: string): Promise<WalletDetails> => {
+    if (!getCurrentAccessToken) {
+      throw new Error('Token provider not set. Call setTokenProvider first.');
+    }
+
+    const token = await getCurrentAccessToken();
+    if (!token) {
+      throw new Error('No valid access token available');
+    }
+
+    return walletApi.getById(walletId);
+  },
+
+  // Deposit money into wallet - POST /wallets/{walletId}/deposit
+  deposit: async (walletId: string, amount: number): Promise<{ url?: string; payUrl?: string } & Record<string, any>> => {
+    const endpoint = API_ENDPOINTS.WALLET.DEPOSIT.replace('{walletId}', walletId);
+    console.log('🔗 Deposit endpoint:', endpoint);
+    return apiCall<any>(endpoint, {
+      method: 'POST',
+      data: { amount },
+    });
+  },
+
+  // Withdraw money from wallet - POST /wallets/{walletId}/withdraw
+  withdraw: async (walletId: string, amount: number): Promise<WalletDetails> => {
+    const endpoint = API_ENDPOINTS.WALLET.WITHDRAW.replace('{walletId}', walletId);
+    console.log('🔗 Withdraw endpoint:', endpoint);
+    return apiCall<WalletDetails>(endpoint, {
+      method: 'POST',
+      data: { amount },
+    });
+  },
+};
+
+export interface WalletTransaction {
+  _id: string;
+  walletId: string;
+  userId: string;
+  amount: number;
+  transactionType: 'deposit' | 'withdraw' | 'subscription_fee' | 'borrow_deposit' | 'return_refund';
+  direction: 'in' | 'out';
+  status: 'processing' | 'completed' | 'failed';
+  description: string;
+  referenceType: string;
+  createdAt: string;
+  updatedAt: string;
+  __v: number;
+}
+
+export interface WalletTransactionsResponse {
+  statusCode: number;
+  message: string;
+  data: WalletTransaction[];
+}
+
+export const walletTransactionsApi = {
+  // Get my wallet transactions - GET /wallet-transactions/my
+  getMy: async (params?: {
+    typeGroup?: 'personal' | 'deposit_refund';
+    direction?: 'in' | 'out';
+    page?: number;
+    limit?: number;
+  }): Promise<WalletTransactionsResponse> => {
+    const queryParams = new URLSearchParams();
+    if (params?.typeGroup) queryParams.append('typeGroup', params.typeGroup);
+    if (params?.direction) queryParams.append('direction', params.direction);
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    
+    const endpoint = `${API_ENDPOINTS.WALLET_TRANSACTIONS.GET_MY}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    console.log('🔗 Get transactions endpoint:', endpoint);
+    
+    return apiCall<WalletTransactionsResponse>(endpoint, {
+      method: 'GET',
     });
   },
 };

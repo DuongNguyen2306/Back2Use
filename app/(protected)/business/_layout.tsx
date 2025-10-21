@@ -10,16 +10,16 @@ export default function BusinessLayout() {
   const navigationItems = [
     { id: "dashboard", label: "Home", icon: "home-button", route: "/(protected)/business" },
     { id: "wallet", label: "Wallet", icon: "wallet", route: "/(protected)/business/wallet" },
+    { id: "materials", label: "Materials", icon: "cube", route: "/(protected)/business/materials" },
     { id: "transaction", label: "Transaction", icon: "receipt", route: "/(protected)/business/transaction" },
-    { id: "redeem", label: "Redeem", icon: "gift", route: "/(protected)/business/redeem" },
     { id: "settings", label: "Settings", icon: "settings", route: "/(protected)/business/settings" },
   ];
 
   // Function to get active tab based on pathname
   const getActiveTab = (path: string) => {
     if (path.includes("wallet")) return "wallet";
+    if (path.includes("materials")) return "materials";
     if (path.includes("transaction")) return "transaction";
-    if (path.includes("redeem")) return "redeem";
     if (path.includes("settings")) return "settings";
     if (path.includes("business") || path === "/(protected)/business") return "dashboard";
     
