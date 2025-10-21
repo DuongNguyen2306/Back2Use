@@ -2,18 +2,30 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
+    Modal,
     ScrollView,
     StatusBar,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
+import { changePasswordApi } from '../../../lib/api';
 
 export default function BusinessSettings() {
   const { actions: authActions } = useAuth();
   const [selectedLanguage, setSelectedLanguage] = useState('vi'); // 'vi' for Vietnamese, 'en' for English
+
+  // Change password states
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
 
   const handleLogout = () => {
     authActions.signOut();
@@ -22,6 +34,49 @@ export default function BusinessSettings() {
 
   const handleLanguageChange = (language: 'vi' | 'en') => {
     setSelectedLanguage(language);
+  };
+
+  const handleChangePassword = async () => {
+    try {
+      setChangingPassword(true);
+
+      // Validation
+      if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+        alert('Please fill in all fields');
+        return;
+      }
+
+      if (passwordData.newPassword !== passwordData.confirmPassword) {
+        alert('New passwords do not match');
+        return;
+      }
+
+      if (passwordData.newPassword.length < 6) {
+        alert('New password must be at least 6 characters');
+        return;
+      }
+
+      // Call API to change password
+      await changePasswordApi.changePassword({
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword,
+      });
+      
+      alert('Password changed successfully');
+
+      // Reset form
+      setPasswordData({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      setShowChangePasswordModal(false);
+    } catch (error: any) {
+      console.error("Error changing password:", error);
+      alert(error.message || "Failed to change password");
+    } finally {
+      setChangingPassword(false);
+    }
   };
 
   return (
@@ -93,14 +148,17 @@ export default function BusinessSettings() {
 
           <View style={styles.settingDivider} />
 
-          <TouchableOpacity style={styles.settingItem}>
+          <TouchableOpacity 
+            style={styles.settingItem}
+            onPress={() => setShowChangePasswordModal(true)}
+          >
             <View style={styles.settingItemLeft}>
               <View style={styles.settingIconContainer}>
-                <Ionicons name="shield-checkmark" size={24} color="#00704A" />
+                <Ionicons name="lock-closed" size={24} color="#00704A" />
               </View>
               <View style={styles.settingTextContainer}>
-                <Text style={styles.settingTitle}>Bảo mật</Text>
-                <Text style={styles.settingSubtitle}>Mật khẩu và xác thực</Text>
+                <Text style={styles.settingTitle}>Đổi mật khẩu</Text>
+                <Text style={styles.settingSubtitle}>Cập nhật mật khẩu tài khoản</Text>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#999999" />
@@ -158,6 +216,73 @@ export default function BusinessSettings() {
           <Text style={styles.logoutText}>Đăng xuất</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Change Password Modal */}
+      <Modal
+        visible={showChangePasswordModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowChangePasswordModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Đổi mật khẩu</Text>
+              <TouchableOpacity onPress={() => setShowChangePasswordModal(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalBody}>
+              <Text style={styles.modalLabel}>Mật khẩu hiện tại</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Nhập mật khẩu hiện tại"
+                value={passwordData.currentPassword}
+                onChangeText={(text) => setPasswordData(prev => ({ ...prev, currentPassword: text }))}
+                secureTextEntry
+              />
+              
+              <Text style={styles.modalLabel}>Mật khẩu mới</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Nhập mật khẩu mới"
+                value={passwordData.newPassword}
+                onChangeText={(text) => setPasswordData(prev => ({ ...prev, newPassword: text }))}
+                secureTextEntry
+              />
+              
+              <Text style={styles.modalLabel}>Xác nhận mật khẩu mới</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Xác nhận mật khẩu mới"
+                value={passwordData.confirmPassword}
+                onChangeText={(text) => setPasswordData(prev => ({ ...prev, confirmPassword: text }))}
+                secureTextEntry
+              />
+            </View>
+            
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={styles.modalCancelButton}
+                onPress={() => setShowChangePasswordModal(false)}
+              >
+                <Text style={styles.modalCancelButtonText}>Hủy</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.modalSaveButton}
+                onPress={handleChangePassword}
+                disabled={changingPassword}
+              >
+                <Text style={styles.modalSaveButtonText}>
+                  {changingPassword ? 'Đang xử lý...' : 'Đổi mật khẩu'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -293,5 +418,78 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxWidth: 400,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  modalBody: {
+    marginBottom: 24,
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginBottom: 8,
+    marginTop: 16,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    backgroundColor: '#FFFFFF',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  modalCancelButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFFFFF',
+  },
+  modalCancelButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  modalSaveButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#00704A',
+  },
+  modalSaveButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

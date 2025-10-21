@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Image,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,7 +17,7 @@ import AvatarPicker from '../../../components/AvatarPicker';
 import { useAuth } from '../../../context/AuthProvider';
 import { useToast } from '../../../hooks/use-toast';
 import { useI18n } from '../../../hooks/useI18n';
-import { getCurrentUserProfileWithAutoRefresh, UpdateProfileRequest, updateUserProfileWithAutoRefresh, uploadAvatarWithAutoRefresh, User } from '../../../lib/api';
+import { getCurrentUserProfileWithAutoRefresh, UpdateProfileRequest, updateUserProfileWithAutoRefresh, uploadAvatarWithAutoRefresh, User, changePasswordApi } from '../../../lib/api';
 import { validateProfileForm, ValidationError } from '../../../lib/validation';
 
 const { width } = Dimensions.get('window');
@@ -44,6 +45,15 @@ export default function MyProfile() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+
+  // Change password states
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -178,6 +188,13 @@ export default function MyProfile() {
           icon: 'person-circle',
           onPress: () => console.log('Navigate to Account Settings'),
         },
+        {
+          id: 'password',
+          title: 'Change Password',
+          subtitle: 'Update your account password',
+          icon: 'lock-closed',
+          onPress: () => setShowChangePasswordModal(true),
+        },
       ]
     },
     {
@@ -294,6 +311,68 @@ export default function MyProfile() {
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    try {
+      setChangingPassword(true);
+
+      // Validation
+      if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+        toast({
+          title: "Error",
+          description: "Please fill in all fields",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (passwordData.newPassword !== passwordData.confirmPassword) {
+        toast({
+          title: "Error",
+          description: "New passwords do not match",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (passwordData.newPassword.length < 6) {
+        toast({
+          title: "Error",
+          description: "New password must be at least 6 characters",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Call API to change password
+      await changePasswordApi.changePassword({
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword,
+      });
+      
+      toast({
+        title: "Success",
+        description: "Password changed successfully",
+      });
+
+      // Reset form
+      setPasswordData({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      setShowChangePasswordModal(false);
+    } catch (error: any) {
+      console.error("Error changing password:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to change password",
+        variant: "destructive",
+      });
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -566,6 +645,68 @@ export default function MyProfile() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Change Password Modal */}
+      {showChangePasswordModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Change Password</Text>
+              <TouchableOpacity onPress={() => setShowChangePasswordModal(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalBody}>
+              <Text style={styles.modalLabel}>Current Password</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Enter current password"
+                value={passwordData.currentPassword}
+                onChangeText={(text) => setPasswordData(prev => ({ ...prev, currentPassword: text }))}
+                secureTextEntry
+              />
+              
+              <Text style={styles.modalLabel}>New Password</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Enter new password"
+                value={passwordData.newPassword}
+                onChangeText={(text) => setPasswordData(prev => ({ ...prev, newPassword: text }))}
+                secureTextEntry
+              />
+              
+              <Text style={styles.modalLabel}>Confirm New Password</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Confirm new password"
+                value={passwordData.confirmPassword}
+                onChangeText={(text) => setPasswordData(prev => ({ ...prev, confirmPassword: text }))}
+                secureTextEntry
+              />
+            </View>
+            
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={styles.modalCancelButton}
+                onPress={() => setShowChangePasswordModal(false)}
+              >
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.modalSaveButton}
+                onPress={handleChangePassword}
+                disabled={changingPassword}
+              >
+                <Text style={styles.modalSaveButtonText}>
+                  {changingPassword ? 'Changing...' : 'Change Password'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -902,5 +1043,83 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6B7280',
     marginTop: 12,
+  },
+  // Modal styles
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxWidth: 400,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  modalBody: {
+    marginBottom: 24,
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginBottom: 8,
+    marginTop: 16,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    backgroundColor: '#FFFFFF',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  modalCancelButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFFFFF',
+  },
+  modalCancelButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  modalSaveButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#3B82F6',
+  },
+  modalSaveButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });
