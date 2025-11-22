@@ -1,24 +1,29 @@
+import { authApi } from '@/services/api/authService';
+import { businessApi } from '@/services/api/businessService';
+import { getCurrentUserProfileWithAutoRefresh, updateUserProfileWithAutoRefresh, uploadAvatarWithAutoRefresh } from '@/services/api/userService';
+import { UpdateProfileRequest, User } from '@/types/auth.types';
+import { validateProfileForm, ValidationError } from '@/utils/validation';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
   Image,
-  Modal,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
-import AvatarPicker from '../../../components/AvatarPicker';
+import BusinessRegisterHistoryModal from '../../../components/BusinessRegisterHistoryModal';
+import BusinessRegisterModal from '../../../components/BusinessRegisterModal';
 import { useAuth } from '../../../context/AuthProvider';
 import { useToast } from '../../../hooks/use-toast';
 import { useI18n } from '../../../hooks/useI18n';
-import { getCurrentUserProfileWithAutoRefresh, UpdateProfileRequest, updateUserProfileWithAutoRefresh, uploadAvatarWithAutoRefresh, User, changePasswordApi } from '../../../lib/api';
-import { validateProfileForm, ValidationError } from '../../../lib/validation';
 
 const { width } = Dimensions.get('window');
 
@@ -45,13 +50,19 @@ export default function MyProfile() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [showBusinessRegisterModal, setShowBusinessRegisterModal] = useState(false);
+  const [showBusinessHistoryModal, setShowBusinessHistoryModal] = useState(false);
+  const [hasPendingBusiness, setHasPendingBusiness] = useState(false);
+  const [hasBusinessRole, setHasBusinessRole] = useState(false);
+  const [businessHistory, setBusinessHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Change password states
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [passwordData, setPasswordData] = useState({
-    currentPassword: "",
+    oldPassword: "",
     newPassword: "",
-    confirmPassword: "",
+    confirmNewPassword: "",
   });
   const [changingPassword, setChangingPassword] = useState(false);
 
@@ -127,26 +138,173 @@ export default function MyProfile() {
           emailUpdates: true,
           smsAlerts: false,
         });
-      } catch (error) {
-        console.error('Error loading user data:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load profile data",
-        });
+
+        // Check for pending business registration
+        await checkPendingBusiness();
+        
+        // Check if user already has business role
+        if (userData.role === 'business' || auth.state.role === 'business') {
+          setHasBusinessRole(true);
+          console.log('⚠️ User already has business role');
+        } else {
+          setHasBusinessRole(false);
+        }
+      } catch (error: any) {
+        // Don't show toast for network errors - they're expected when offline
+        const isNetworkError = error?.message?.toLowerCase().includes('network') ||
+                               error?.message?.toLowerCase().includes('timeout') ||
+                               error?.message?.toLowerCase().includes('connection');
+        
+        if (!isNetworkError) {
+          console.error('Error loading user data:', error);
+          toast({
+            title: "Lỗi",
+            description: "Không thể tải dữ liệu hồ sơ. Vui lòng thử lại.",
+          });
+        } else {
+          console.warn('⚠️ Network error loading user data (will retry later):', error.message);
+          // Don't show toast for network errors - user can still use the form
+        }
       } finally {
         setLoading(false);
       }
     };
 
     loadUserData();
-  }, [toast]);
+  }, [toast, auth.state.role]);
 
-  const achievements = [
-    { id: 'loyalty', icon: 'star', color: '#FFD700', title: 'VIP Member' },
-    { id: 'points', icon: 'diamond', color: '#FF6B6B', title: '1000 Points' },
-    { id: 'streak', icon: 'flame', color: '#FF8C00', title: '7 Day Streak' },
-    { id: 'eco', icon: 'leaf', color: '#32CD32', title: 'Eco Warrior' },
+  // Check if user has pending business registration and load history
+  const checkPendingBusiness = async () => {
+    try {
+      setLoadingHistory(true);
+      // Load all business history
+      const response = await businessApi.getHistory({ page: 1, limit: 10 });
+      
+      console.log('📋 Business history response:', response);
+      
+      // Handle different response formats
+      let historyData: any[] = [];
+      const responseAny = response as any;
+      
+      if (Array.isArray(responseAny)) {
+        // If response is directly an array
+        historyData = responseAny;
+      } else if (responseAny.data && Array.isArray(responseAny.data)) {
+        // If response has data property with array
+        historyData = responseAny.data;
+      } else if (responseAny.data && responseAny.data.data && Array.isArray(responseAny.data.data)) {
+        // If response is nested
+        historyData = responseAny.data.data;
+      }
+      
+      console.log('📋 Extracted history data:', historyData);
+      
+      if (historyData && historyData.length > 0) {
+        console.log('✅ Found business history:', historyData.length, 'items');
+        setBusinessHistory(historyData);
+        // Check if there's any pending business
+        const hasPending = historyData.some((item: any) => item.status === 'pending');
+        setHasPendingBusiness(hasPending);
+        console.log('📊 Has pending business:', hasPending);
+        
+        // Check if there's any approved business (user already has business role)
+        const hasApproved = historyData.some((item: any) => item.status === 'approved');
+        console.log('📊 Has approved business:', hasApproved);
+        if (hasApproved) {
+          console.log('✅ Found approved business, user has business role - hiding register button');
+          setHasBusinessRole(true);
+        } else {
+          setHasBusinessRole(false);
+        }
+      } else {
+        console.log('ℹ️ No business history found');
+        setBusinessHistory([]);
+        setHasPendingBusiness(false);
+        setHasBusinessRole(false);
+      }
+    } catch (error) {
+      console.error('❌ Error checking pending business:', error);
+      // If error, assume no pending business
+      setHasPendingBusiness(false);
+      setBusinessHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  // Handle business register button press
+  const handleBusinessRegisterPress = () => {
+    // Prevent registration if user already has business role
+    if (auth.state.role === 'business' || user?.role === 'business') {
+      toast({
+        title: "Thông báo",
+        description: "Bạn đã có tài khoản doanh nghiệp. Vui lòng chuyển sang chế độ doanh nghiệp để sử dụng.",
+      });
+      return;
+    }
+
+    // If user has business history, show history modal instead of register form
+    if (businessHistory.length > 0) {
+      setShowBusinessHistoryModal(true);
+      return;
+    }
+
+    if (hasPendingBusiness) {
+      // Show history modal if there's a pending business
+      setShowBusinessHistoryModal(true);
+    } else {
+      // Show register modal if no pending business and no history
+      setShowBusinessRegisterModal(true);
+    }
+  };
+
+  const shortcuts = [
+    {
+      id: 'wallet',
+      icon: 'wallet-outline',
+      label: 'My Wallet',
+      color: '#10B981',
+      onPress: () => router.push('/(protected)/customer/customer-wallet'),
+    },
+    {
+      id: 'stores',
+      icon: 'storefront-outline',
+      label: 'Stores',
+      color: '#3B82F6',
+      onPress: () => router.push('/(protected)/customer/stores'),
+    },
+    {
+      id: 'rewards',
+      icon: 'gift-outline',
+      label: 'Rewards',
+      color: '#F59E0B',
+      onPress: () => router.push('/(protected)/customer/rewards'),
+    },
+    {
+      id: 'history',
+      icon: 'time-outline',
+      label: 'History',
+      color: '#8B5CF6',
+      onPress: () => console.log('Navigate to History'),
+    },
+    {
+      id: 'leaderboard',
+      icon: 'trophy-outline',
+      label: 'Leaderboard',
+      color: '#EF4444',
+      onPress: () => router.push('/(protected)/customer/leaderboard'),
+    },
+    {
+      id: 'ai-chat',
+      icon: 'chatbubble-ellipses-outline',
+      label: 'AI Chat',
+      color: '#06B6D4',
+      onPress: () => router.push('/(protected)/customer/ai-chat'),
+    },
   ];
+
+  const [expandedHelp, setExpandedHelp] = useState(false);
+  const [expandedSettings, setExpandedSettings] = useState(false);
 
   const menuSections: MenuSection[] = [
     {
@@ -194,6 +352,13 @@ export default function MyProfile() {
           subtitle: 'Update your account password',
           icon: 'lock-closed',
           onPress: () => setShowChangePasswordModal(true),
+        },
+        {
+          id: 'switch-to-business',
+          title: 'Chuyển sang tài khoản doanh nghiệp',
+          subtitle: 'Chuyển đổi sang chế độ doanh nghiệp',
+          icon: 'business',
+          onPress: () => handleSwitchRole('business'),
         },
       ]
     },
@@ -251,17 +416,58 @@ export default function MyProfile() {
     }
   ];
 
+  // Replace logout handler to use auth.actions.logout
   const handleLogout = async () => {
     try {
-      console.log('Logout pressed');
-      // Clear auth state using auth context
-      await auth.actions.signOut();
-      // Navigate to welcome screen
-      router.replace('/welcome');
-    } catch (error) {
-      console.error('Logout error:', error);
-      // Still navigate to welcome even if logout fails
-      router.replace('/welcome');
+      await auth.actions.logout();
+      router.replace('/auth');
+    } catch (e) {
+      console.error('Logout error:', e);
+    }
+  };
+
+  // Switch role handler
+  const handleSwitchRole = async (targetRole: 'customer' | 'business') => {
+    try {
+      console.log(`🔄 Switching role to: ${targetRole}`);
+      
+      const response = await authApi.switchRole({ role: targetRole });
+      
+      if (response.data?.accessToken && response.data?.refreshToken) {
+        // Save new tokens
+        await AsyncStorage.setItem('ACCESS_TOKEN', response.data.accessToken);
+        await AsyncStorage.setItem('REFRESH_TOKEN', response.data.refreshToken);
+        
+        // Update role in auth state
+        const newRole = response.data.user?.role as 'customer' | 'business' | 'admin';
+        if (newRole) {
+          await auth.actions.updateRole(newRole);
+        }
+        
+        // Calculate token expiry (1 hour from now)
+        const tokenExpiry = Date.now() + (60 * 60 * 1000);
+        await AsyncStorage.setItem('TOKEN_EXPIRY', tokenExpiry.toString());
+        
+        toast({
+          title: "Thành công",
+          description: `Đã chuyển sang tài khoản ${targetRole === 'business' ? 'doanh nghiệp' : 'khách hàng'}`,
+        });
+        
+        // Redirect to appropriate dashboard
+        if (targetRole === 'business') {
+          router.replace('/(protected)/business');
+        } else {
+          router.replace('/(protected)/customer');
+        }
+      } else {
+        throw new Error('Không nhận được token từ server');
+      }
+    } catch (error: any) {
+      console.error('❌ Switch role error:', error);
+      toast({
+        title: "Lỗi",
+        description: error.message || "Không thể chuyển đổi tài khoản. Vui lòng thử lại.",
+      });
     }
   };
 
@@ -286,12 +492,34 @@ export default function MyProfile() {
         return;
       }
 
-      // Prepare update data
-      const updateData: UpdateProfileRequest = {
-        fullName: formData.name,
-        phone: formData.phone,
-        address: formData.address,
-      };
+      // Prepare update data - only include fields that have actually changed
+      const updateData: UpdateProfileRequest = {};
+      
+      // Only include fields that are different from the original user data
+      if (user && formData.name !== (user.fullName || user.name || "")) {
+        updateData.fullName = formData.name;
+      }
+      if (user && formData.phone !== (user.phone || "")) {
+        updateData.phone = formData.phone;
+      }
+      if (user && formData.address !== (user.address || "")) {
+        updateData.address = formData.address;
+      }
+      if (user && formData.dateOfBirth !== formatDateString(user.yob || "")) {
+        updateData.yob = formData.dateOfBirth ? formatDateString(formData.dateOfBirth) : undefined;
+      }
+
+      // Check if there are any changes to save
+      if (Object.keys(updateData).length === 0) {
+        toast({
+          title: "No Changes",
+          description: "No changes detected to save",
+        });
+        setIsEditing(false);
+        return;
+      }
+
+      console.log('📝 Sending only changed fields:', updateData);
 
       // Update profile
       const updatedUser = await updateUserProfileWithAutoRefresh(updateData);
@@ -319,20 +547,18 @@ export default function MyProfile() {
       setChangingPassword(true);
 
       // Validation
-      if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+      if (!passwordData.oldPassword || !passwordData.newPassword || !passwordData.confirmNewPassword) {
         toast({
           title: "Error",
           description: "Please fill in all fields",
-          variant: "destructive",
         });
         return;
       }
 
-      if (passwordData.newPassword !== passwordData.confirmPassword) {
+      if (passwordData.newPassword !== passwordData.confirmNewPassword) {
         toast({
           title: "Error",
           description: "New passwords do not match",
-          variant: "destructive",
         });
         return;
       }
@@ -341,15 +567,15 @@ export default function MyProfile() {
         toast({
           title: "Error",
           description: "New password must be at least 6 characters",
-          variant: "destructive",
         });
         return;
       }
 
       // Call API to change password
-      await changePasswordApi.changePassword({
-        currentPassword: passwordData.currentPassword,
+      await authApi.changePassword({
+        oldPassword: passwordData.oldPassword,
         newPassword: passwordData.newPassword,
+        confirmNewPassword: passwordData.confirmNewPassword,
       });
       
       toast({
@@ -359,9 +585,9 @@ export default function MyProfile() {
 
       // Reset form
       setPasswordData({
-        currentPassword: "",
+        oldPassword: "",
         newPassword: "",
-        confirmPassword: "",
+        confirmNewPassword: "",
       });
       setShowChangePasswordModal(false);
     } catch (error: any) {
@@ -369,7 +595,6 @@ export default function MyProfile() {
       toast({
         title: "Error",
         description: error.message || "Failed to change password",
-        variant: "destructive",
       });
     } finally {
       setChangingPassword(false);
@@ -433,217 +658,220 @@ export default function MyProfile() {
     );
   }
 
+  const userName = (user as any)?.fullName || user?.name || 'User Name';
+  const userAvatar = user?.avatar || null;
+
   return (
     <View style={styles.container}>
-      {/* Unified Header */}
+      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
+      
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{t('profile').myAccount}</Text>
-        <TouchableOpacity style={styles.editIconButton} onPress={handleEditProfile}>
-          <Ionicons name="pencil" size={20} color="#FFFFFF" />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Profile</Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity 
+            style={styles.headerIconButton}
+            onPress={() => router.push('/(protected)/customer/settings')}
+          >
+            <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {isEditing ? (
-          /* Edit Profile Form */
-          <View style={styles.editFormCard}>
-            <View style={styles.editFormHeader}>
-              <Text style={styles.editFormTitle}>{t('profile').editProfile}</Text>
-              <View style={styles.editFormActions}>
-                <TouchableOpacity 
-                  style={styles.cancelButton} 
-                  onPress={handleCancelEdit}
-                  disabled={saving}
-                >
-                  <Text style={styles.cancelButtonText}>{t('common').cancel}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.saveButton, saving && styles.saveButtonDisabled]} 
-                  onPress={handleSaveProfile}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.saveButtonText}>{t('common').save}</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Avatar Upload */}
-            <View style={styles.avatarUploadSection}>
-              <Text style={styles.avatarLabel}>{t('profile').avatar}</Text>
-              <AvatarPicker
-                currentAvatar={user?.avatar}
-                onAvatarSelected={handleAvatarUpload}
-              />
-            </View>
-
-            {/* Form Fields */}
-            <View style={styles.formFields}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>{t('profile').name}</Text>
-                <TextInput
-                  style={[styles.textInput, validationErrors.find(e => e.field === 'name') && styles.inputError]}
-                  value={formData.name}
-                  onChangeText={(text) => setFormData(prev => ({ ...prev, name: text }))}
-                  placeholder="Enter your name"
-                  placeholderTextColor="#9CA3AF"
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* User Profile Card */}
+        <TouchableOpacity 
+          style={styles.profileCard}
+          onPress={() => router.push('/(protected)/customer/profile-detail')}
+        >
+          <View style={styles.profileCardContent}>
+            <View style={styles.profileLeft}>
+              {userAvatar ? (
+                <Image
+                  source={{ uri: userAvatar }}
+                  style={styles.profileAvatar}
                 />
-                {validationErrors.find(e => e.field === 'name') && (
-                  <Text style={styles.errorText}>{validationErrors.find(e => e.field === 'name')?.message}</Text>
-                )}
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>{t('profile').email}</Text>
-                <TextInput
-                  style={[styles.textInput, validationErrors.find(e => e.field === 'email') && styles.inputError]}
-                  value={formData.email}
-                  onChangeText={(text) => setFormData(prev => ({ ...prev, email: text }))}
-                  placeholder="Enter your email"
-                  placeholderTextColor="#9CA3AF"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-                {validationErrors.find(e => e.field === 'email') && (
-                  <Text style={styles.errorText}>{validationErrors.find(e => e.field === 'email')?.message}</Text>
-                )}
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>{t('profile').phone}</Text>
-                <TextInput
-                  style={[styles.textInput, validationErrors.find(e => e.field === 'phone') && styles.inputError]}
-                  value={formData.phone}
-                  onChangeText={(text) => setFormData(prev => ({ ...prev, phone: text }))}
-                  placeholder="Enter your phone number"
-                  placeholderTextColor="#9CA3AF"
-                  keyboardType="phone-pad"
-                />
-                {validationErrors.find(e => e.field === 'phone') && (
-                  <Text style={styles.errorText}>{validationErrors.find(e => e.field === 'phone')?.message}</Text>
-                )}
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>{t('profile').address}</Text>
-                <TextInput
-                  style={[styles.textInput, validationErrors.find(e => e.field === 'address') && styles.inputError]}
-                  value={formData.address}
-                  onChangeText={(text) => setFormData(prev => ({ ...prev, address: text }))}
-                  placeholder="Enter your address"
-                  placeholderTextColor="#9CA3AF"
-                  multiline
-                  numberOfLines={2}
-                />
-                {validationErrors.find(e => e.field === 'address') && (
-                  <Text style={styles.errorText}>{validationErrors.find(e => e.field === 'address')?.message}</Text>
-                )}
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>{t('profile').dateOfBirth}</Text>
-                <TextInput
-                  style={[styles.textInput, validationErrors.find(e => e.field === 'dateOfBirth') && styles.inputError]}
-                  value={formData.dateOfBirth}
-                  onChangeText={(text) => setFormData(prev => ({ ...prev, dateOfBirth: formatDateInput(text) }))}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor="#9CA3AF"
-                  keyboardType="numeric"
-                  maxLength={10}
-                />
-                {validationErrors.find(e => e.field === 'dateOfBirth') && (
-                  <Text style={styles.errorText}>{validationErrors.find(e => e.field === 'dateOfBirth')?.message}</Text>
-                )}
-              </View>
-            </View>
-          </View>
-        ) : (
-          /* Large User Information Card */
-          <View style={styles.userInfoCard}>
-            {/* Background decorative shapes */}
-            <View style={styles.backgroundShapes}>
-              <View style={[styles.shape, styles.shape1]} />
-              <View style={[styles.shape, styles.shape2]} />
-              <View style={[styles.shape, styles.shape3]} />
-            </View>
-            
-            {/* Avatar */}
-            <View style={styles.avatarContainer}>
-              {user?.avatar && user.avatar.trim() !== "" ? (
-                <Image source={{ uri: user.avatar }} style={styles.avatar} />
               ) : (
-                <View style={styles.avatarPlaceholder}>
-                  <Text style={styles.avatarText}>
-                    {((user as any)?.fullName || user?.name || "U").charAt(0).toUpperCase()}
+                <View style={styles.profileAvatarPlaceholder}>
+                  <Text style={styles.profileAvatarText}>
+                    {userName.charAt(0).toUpperCase()}
                   </Text>
                 </View>
               )}
+              <Text style={styles.profileName}>{userName}</Text>
             </View>
-            
-            {/* User Details */}
-            <View style={styles.userDetails}>
-              <View style={styles.nameContainer}>
-                <Text style={styles.userName}>{(user as any)?.fullName || user?.name || "User Name"}</Text>
-                <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" style={styles.verifiedIcon} />
+            <TouchableOpacity 
+              style={styles.switchRoleButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleSwitchRole('business');
+              }}
+            >
+              <Ionicons name="swap-horizontal" size={20} color="#00704A" />
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+
+        {/* Shortcuts Grid */}
+        <View style={styles.shortcutsGrid}>
+          {shortcuts.map((shortcut) => (
+            <TouchableOpacity
+              key={shortcut.id}
+              style={styles.shortcutCard}
+              onPress={shortcut.onPress}
+            >
+              <View style={[styles.shortcutIconContainer, { backgroundColor: `${shortcut.color}15` }]}>
+                <Ionicons name={shortcut.icon as any} size={32} color={shortcut.color} />
               </View>
-              <Text style={styles.userEmail}>{user?.email || "email@example.com"}</Text>
+              <Text style={styles.shortcutLabel}>{shortcut.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Collapsible Settings List */}
+        <View style={styles.settingsList}>
+          <TouchableOpacity
+            style={styles.settingsListItem}
+            onPress={() => setExpandedHelp(!expandedHelp)}
+          >
+            <View style={styles.settingsListItemLeft}>
+              <Ionicons name="help-circle-outline" size={24} color="#00704A" />
+              <Text style={styles.settingsListItemText}>Help & Support</Text>
             </View>
-            
-            {/* Achievement Badges */}
-            <View style={styles.achievementsContainer}>
-              {achievements.map((achievement, index) => (
-                <View key={achievement.id} style={styles.achievementBadge}>
-                  <View style={[styles.achievementIcon, { backgroundColor: achievement.color }]}>
-                    <Ionicons name={achievement.icon as any} size={16} color="#FFFFFF" />
+            <Ionicons 
+              name={expandedHelp ? "chevron-up" : "chevron-down"} 
+              size={20} 
+              color="#6B7280" 
+            />
+          </TouchableOpacity>
+          {expandedHelp && (
+            <View style={styles.expandedContent}>
+              <TouchableOpacity 
+                style={styles.expandedItem}
+                onPress={() => router.push('/(protected)/customer/help')}
+              >
+                <Text style={styles.expandedItemText}>FAQ</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.expandedItem}
+                onPress={() => router.push('/(protected)/customer/contact')}
+              >
+                <Text style={styles.expandedItemText}>Contact Support</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={styles.settingsListItem}
+            onPress={() => setExpandedSettings(!expandedSettings)}
+          >
+            <View style={styles.settingsListItemLeft}>
+              <Ionicons name="settings-outline" size={24} color="#00704A" />
+              <Text style={styles.settingsListItemText}>Settings & Privacy</Text>
+            </View>
+            <Ionicons 
+              name={expandedSettings ? "chevron-up" : "chevron-down"} 
+              size={20} 
+              color="#6B7280" 
+            />
+          </TouchableOpacity>
+          {expandedSettings && (
+            <View style={styles.expandedContent}>
+              <TouchableOpacity 
+                style={styles.expandedItem}
+                onPress={() => router.push('/(protected)/customer/settings')}
+              >
+                <Text style={styles.expandedItemText}>Settings</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.expandedItem}
+                onPress={() => router.push('/(protected)/customer/privacy')}
+              >
+                <Text style={styles.expandedItemText}>Privacy</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* Business Registration Section - Only show if user doesn't have business role */}
+        {!hasBusinessRole && auth.state.role !== 'business' && user?.role !== 'business' && (
+          <View style={styles.businessRegisterSection}>
+            {businessHistory.length > 0 ? (
+              <View style={styles.businessHistoryContainer}>
+                <Text style={styles.businessHistoryTitle}>Business Registration History</Text>
+                {businessHistory.slice(0, 1).map((item: any, index: number) => (
+                  <View key={item._id || index} style={styles.businessHistoryCard}>
+                    <View style={styles.businessHistoryHeader}>
+                      <Text style={styles.businessHistoryName}>{item.businessName}</Text>
+                      <View style={[
+                        styles.statusBadge,
+                        item.status === 'approved' && styles.statusBadgeApproved,
+                        item.status === 'rejected' && styles.statusBadgeRejected,
+                        item.status === 'pending' && styles.statusBadgePending,
+                      ]}>
+                        <Text style={[
+                          styles.statusBadgeText,
+                          item.status === 'approved' && styles.statusBadgeTextApproved,
+                          item.status === 'rejected' && styles.statusBadgeTextRejected,
+                          item.status === 'pending' && styles.statusBadgeTextPending,
+                        ]}>
+                          {item.status === 'approved' ? 'Approved' : 
+                           item.status === 'rejected' ? 'Rejected' : 
+                           'Pending'}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
-                  <Text style={styles.achievementTitle}>{achievement.title}</Text>
-                </View>
-              ))}
-            </View>
+                ))}
+                <TouchableOpacity 
+                  style={styles.businessRegisterButton} 
+                  onPress={() => setShowBusinessHistoryModal(true)}
+                >
+                  <Ionicons name="time-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                  <Text style={styles.businessRegisterButtonText}>View History Details</Text>
+                </TouchableOpacity>
+                {!businessHistory.some((item: any) => item.status === 'approved') && !hasPendingBusiness && (
+                  <TouchableOpacity 
+                    style={[styles.businessRegisterButton, { marginTop: 12, backgroundColor: '#00704A' }]} 
+                    onPress={() => setShowBusinessRegisterModal(true)}
+                  >
+                    <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                    <Text style={styles.businessRegisterButtonText}>Register New Business</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              <TouchableOpacity 
+                style={styles.businessRegisterButton} 
+                onPress={() => {
+                  if (hasPendingBusiness) {
+                    setShowBusinessHistoryModal(true);
+                  } else {
+                    setShowBusinessRegisterModal(true);
+                  }
+                }}
+              >
+                <Ionicons name="business-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={styles.businessRegisterButtonText}>Register Business</Text>
+                {hasPendingBusiness && (
+                  <View style={styles.pendingBadge}>
+                    <Ionicons name="time" size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
+                    <Text style={styles.pendingBadgeText}>Pending</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
-        {/* Menu Sections */}
-        {menuSections.map((section, sectionIndex) => (
-          <View key={section.title} style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            <View style={styles.menuContainer}>
-              {section.items.map((item, itemIndex) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[
-                    styles.menuItem,
-                    itemIndex === section.items.length - 1 && styles.lastMenuItem
-                  ]}
-                  onPress={item.onPress}
-                >
-                  <View style={styles.menuItemLeft}>
-                    <View style={styles.menuIconContainer}>
-                      <Ionicons name={item.icon} size={20} color="#0F4D3A" />
-                    </View>
-                    <View style={styles.menuTextContainer}>
-                      <Text style={styles.menuTitle}>{item.title}</Text>
-                      {item.subtitle && (
-                        <Text style={styles.menuSubtitle}>{item.subtitle}</Text>
-                      )}
-                    </View>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        ))}
+        {/* Logout Button */}
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Text style={styles.logoutText}>Logout</Text>
+        </TouchableOpacity>
 
-        {/* Separated Logout Button */}
-        <View style={styles.logoutSection}>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutButtonText}>{t('profile').logout}</Text>
-          </TouchableOpacity>
-        </View>
+
+        {/* Bottom spacing */}
+        <View style={styles.bottomSpacing} />
       </ScrollView>
 
       {/* Change Password Modal */}
@@ -662,8 +890,8 @@ export default function MyProfile() {
               <TextInput
                 style={styles.modalInput}
                 placeholder="Enter current password"
-                value={passwordData.currentPassword}
-                onChangeText={(text) => setPasswordData(prev => ({ ...prev, currentPassword: text }))}
+                value={passwordData.oldPassword}
+                onChangeText={(text) => setPasswordData(prev => ({ ...prev, oldPassword: text }))}
                 secureTextEntry
               />
               
@@ -680,8 +908,8 @@ export default function MyProfile() {
               <TextInput
                 style={styles.modalInput}
                 placeholder="Confirm new password"
-                value={passwordData.confirmPassword}
-                onChangeText={(text) => setPasswordData(prev => ({ ...prev, confirmPassword: text }))}
+                value={passwordData.confirmNewPassword}
+                onChangeText={(text) => setPasswordData(prev => ({ ...prev, confirmNewPassword: text }))}
                 secureTextEntry
               />
             </View>
@@ -707,6 +935,26 @@ export default function MyProfile() {
           </View>
         </View>
       )}
+
+      {/* Business Register Modal */}
+      <BusinessRegisterModal
+        visible={showBusinessRegisterModal}
+        onClose={() => setShowBusinessRegisterModal(false)}
+        onSuccess={async () => {
+          toast({
+            title: "Success",
+            description: "Business registration submitted successfully",
+          });
+          // Check for pending business after registration
+          await checkPendingBusiness();
+        }}
+      />
+
+      {/* Business Register History Modal */}
+      <BusinessRegisterHistoryModal
+        visible={showBusinessHistoryModal}
+        onClose={() => setShowBusinessHistoryModal(false)}
+      />
     </View>
   );
 }
@@ -717,26 +965,190 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
   },
   header: {
-    backgroundColor: '#0F4D3A',
+    backgroundColor: '#00704A',
     paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 32,
+    fontWeight: 'bold',
     color: '#FFFFFF',
     flex: 1,
   },
-  editIconButton: {
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerIconButton: {
     padding: 8,
   },
-  scrollContent: {
+  content: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
+  },
+  profileCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginTop: -40,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  profileCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  profileLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  profileAvatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    marginRight: 16,
+    borderWidth: 3,
+    borderColor: '#00704A',
+  },
+  profileAvatarPlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    marginRight: 16,
+    backgroundColor: '#00704A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#00704A',
+  },
+  profileAvatarText: {
+    fontSize: 32,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  profileName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  switchRoleButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#E5F7F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#00704A',
+  },
+  shortcutsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  shortcutCard: {
+    width: (width - 48) / 2,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  shortcutIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  shortcutLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1F2937',
+    textAlign: 'center',
+  },
+  settingsList: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    marginBottom: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  settingsListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  settingsListItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  settingsListItemText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#1F2937',
+    marginLeft: 12,
+  },
+  expandedContent: {
+    backgroundColor: '#F9FAFB',
+    paddingLeft: 52,
+  },
+  expandedItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  expandedItemText: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  logoutButton: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  logoutText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  bottomSpacing: {
+    height: 100,
   },
   userInfoCard: {
     backgroundColor: '#0F4D3A',
@@ -919,23 +1331,137 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
   },
-  logoutSection: {
-    marginTop: 40,
-    marginBottom: 40,
+  businessRegisterSection: {
+    marginTop: 20,
+    marginBottom: 12,
   },
-  logoutButton: {
-    backgroundColor: '#EF4444',
-    paddingVertical: 16,
+  businessHistoryContainer: {
+    marginTop: 8,
+  },
+  businessHistoryTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 12,
+    marginLeft: 4,
+  },
+  businessHistoryCard: {
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    alignItems: 'center',
+    padding: 16,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
   },
-  logoutButtonText: {
+  businessHistoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  businessHistoryName: {
     fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    flex: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusBadgeApproved: {
+    backgroundColor: '#D1FAE5',
+  },
+  statusBadgeRejected: {
+    backgroundColor: '#FEE2E2',
+  },
+  statusBadgePending: {
+    backgroundColor: '#FEF3C7',
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  statusBadgeTextApproved: {
+    color: '#065F46',
+  },
+  statusBadgeTextRejected: {
+    color: '#991B1B',
+  },
+  statusBadgeTextPending: {
+    color: '#92400E',
+  },
+  businessHistoryInfo: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 6,
+  },
+  rejectNoteContainer: {
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#EF4444',
+  },
+  rejectNoteLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#DC2626',
+    marginBottom: 4,
+  },
+  rejectNoteText: {
+    fontSize: 14,
+    color: '#991B1B',
+  },
+  businessHistoryDate: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 8,
+  },
+  businessRegisterButton: {
+    backgroundColor: '#00704A',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    position: 'relative',
+    marginTop: 12,
+  },
+  businessRegisterButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  pendingBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  pendingBadgeText: {
+    fontSize: 10,
     fontWeight: '600',
     color: '#FFFFFF',
   },

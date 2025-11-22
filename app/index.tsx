@@ -25,7 +25,17 @@ export default function SplashScreen() {
       // Only redirect after hydration is complete
       if (state.isHydrated) {
         if (state.isAuthenticated && state.role) {
-          const dest = state.role === "customer" ? "/(protected)/customer" : state.role === "business" ? "/(protected)/business" : "/(protected)/admin";
+          // Block admin access on mobile
+          if (state.role === "admin") {
+            console.log("❌ SplashScreen: Admin user detected on mobile - redirecting to login");
+            router.replace("/auth/login");
+            return;
+          }
+          
+          // Redirect based on role (only customer and business allowed on mobile)
+          const dest = state.role === "business" 
+            ? "/(protected)/business" 
+            : "/(protected)/customer";
           console.log("🚀 SplashScreen: User authenticated, redirecting to:", dest);
           router.replace(dest);
         } else {

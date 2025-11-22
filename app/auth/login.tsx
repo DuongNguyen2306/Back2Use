@@ -1,26 +1,25 @@
 // "use client"; // (không cần trong Expo RN, bạn có thể xóa dòng này)
 
+import { googleAuthService } from "@/services/auth/googleAuthService";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    ImageBackground,
-    KeyboardAvoidingView,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useAuth } from "../../context/AuthProvider";
-import { authApi, LoginRequest } from "../../lib/api";
-import { googleAuthService } from "../../lib/google-auth-service";
 
 type Role = "customer" | "business" | "admin";
 
@@ -45,57 +44,52 @@ export default function LoginScreen() {
 
     setIsLoading(true);
     try {
-      const loginData: LoginRequest = {
-        username: username.trim(),
-        password,
-      };
+      const result = await actions.login(username.trim(), password);
+      console.log("Login result:", result);
 
-      const response = await authApi.login(loginData);
-      console.log("API Response:", JSON.stringify(response, null, 2));
-      console.log("Response statusCode:", response.statusCode);
-      console.log("Response data:", response.data);
-      console.log("Response user:", response.data?.user);
-      console.log("Response role:", response.data?.user?.role);
+      // Redirect based on user role (only customer and business allowed on mobile)
+      // Admin is already blocked in useAuth.ts, so we won't get here if role is admin
+      const role = result?.role || 'customer';
+      const destination = role === 'business' 
+        ? "/(protected)/business" 
+        : "/(protected)/customer";
       
-      // Check if login was successful (statusCode 200)
-      if (response.statusCode === 200) {
-        console.log("Login successful");
-        console.log("Access token:", response.data?.accessToken ? "***" + response.data.accessToken.slice(-8) : "None");
-        console.log("Refresh token:", response.data?.refreshToken ? "***" + response.data.refreshToken.slice(-8) : "None");
-        console.log("Full response.data:", JSON.stringify(response.data, null, 2));
-        
-        // Sign in with real tokens from API - role will be decoded from JWT token
-        await actions.signInWithTokens({
-          accessToken: response.data?.accessToken || "",
-          refreshToken: response.data?.refreshToken || null,
-          // Role will be decoded from JWT token automatically
-          tokenExpiry: response.data?.tokenExpiry ? new Date(response.data.tokenExpiry).getTime() : undefined
-        });
-        console.log("Auth state with real tokens completed");
-        
-        // Navigate based on role - will be determined by JWT token decode
-        // For now, navigate to customer dashboard as default
-        // The actual role will be available in the auth context after JWT decode
-        const destination = "/(protected)/customer";
-        console.log("Navigating to:", destination, "(role will be determined by JWT token)");
-        
-        try {
-          router.replace(destination);
-          console.log("Navigation command sent");
-        } catch (navError) {
-          console.error("Navigation error:", navError);
-          // Fallback navigation
-          setTimeout(() => {
-            console.log("Fallback navigation attempt");
-            router.push(destination);
-          }, 1000);
-        }
-      } else {
-        Alert.alert("Error", response.message || "Login failed");
+      console.log("🚀 Login successful, redirecting to:", destination);
+      
+      try {
+        router.replace(destination);
+      } catch (navError) {
+        router.push(destination);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login error:", error);
-      Alert.alert("Error", "Login failed. Please check your credentials and try again.");
+      const errorMessage = error?.message || "Login failed. Please check your credentials and try again.";
+      
+      // Check if error is about admin access restriction
+      if (errorMessage.includes("Admin accounts cannot be accessed on mobile") || 
+          errorMessage.includes("admin") || 
+          errorMessage.toLowerCase().includes("admin")) {
+        // Show specific alert for admin access restriction in Vietnamese
+        Alert.alert(
+          "Không thể đăng nhập",
+          "Tài khoản Admin không thể đăng nhập trên ứng dụng di động. Vui lòng đăng nhập trên nền tảng web.",
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                // Clear form
+                setUsername("");
+                setPassword("");
+                setAgreedToTerms(false);
+              }
+            }
+          ],
+          { cancelable: false }
+        );
+      } else {
+        // Show generic error for other login failures
+        Alert.alert("Lỗi", errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -229,12 +223,6 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
             
-            <View style={styles.businessFooter}>
-              <Text style={styles.businessFooterText}>Are you a business owner? </Text>
-              <TouchableOpacity onPress={() => router.push("/auth/business-register")}>
-                <Text style={styles.businessFooterLink}>Register Business</Text>
-              </TouchableOpacity>
-            </View>
 
             {/* Guest mode removed - only real authentication allowed */}
             </View>
@@ -325,7 +313,4 @@ const styles = StyleSheet.create({
   footer: { flexDirection: "row", justifyContent: "center", alignItems: "center" },
   footerText: { fontSize: 14, color: "#6B7280" },
   footerLink: { fontSize: 14, color: "#0F4D3A", fontWeight: "600" },
-  businessFooter: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: 12 },
-  businessFooterText: { fontSize: 14, color: "#6B7280" },
-  businessFooterLink: { fontSize: 14, color: "#0F4D3A", fontWeight: "600" },
 });

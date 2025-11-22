@@ -1,0 +1,528 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { authApi } from "../../../services/api/authService";
+import { Role } from "../../../types/auth.types";
+
+type AuthState = {
+  isAuthenticated: boolean;
+  role: Role | null;
+  isHydrated: boolean;
+  accessToken: string | null;
+  refreshToken: string | null;
+  tokenExpiry: number | null;
+};
+
+const STORAGE_KEYS = {
+  BYPASS: "AUTH_BYPASS",
+  ROLE: "AUTH_ROLE",
+  AUTH: "AUTH_IS_AUTHENTICATED",
+  ACCESS_TOKEN: "ACCESS_TOKEN",
+  REFRESH_TOKEN: "REFRESH_TOKEN",
+  TOKEN_EXPIRY: "TOKEN_EXPIRY",
+};
+
+// Helper functions - only real token refresh from server
+
+const refreshAccessToken = async (refreshToken: string) => {
+  try {
+    console.log("🔄 Refreshing access token...");
+    const response = await authApi.refreshToken(refreshToken);
+    
+    // Accept multiple success formats from server
+    const successByFlag = (response as any)?.success === true;
+    const successByStatus = (response as any)?.statusCode === 200;
+    const successByMessage = typeof (response as any)?.message === 'string' && /success|thành công|refreshed/i.test((response as any).message);
+    const isSuccess = successByFlag || successByStatus || successByMessage;
+
+    if (isSuccess && (response as any)?.data) {
+      const { accessToken, refreshToken: newRefreshToken, user } = (response as any).data;
+      
+      // Save new tokens
+      await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken || '');
+      if (newRefreshToken) {
+        await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, newRefreshToken);
+      }
+      
+      // Calculate new expiry time (assuming 1 hour from now)
+      const newExpiry = Date.now() + (60 * 60 * 1000); // 1 hour
+      await AsyncStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRY, newExpiry.toString());
+      
+      console.log("✅ Token refreshed successfully");
+      return {
+        accessToken,
+        refreshToken: newRefreshToken || refreshToken,
+        expiry: newExpiry,
+        user
+      };
+    } else {
+      console.error("❌ Token refresh failed:", (response as any)?.message || 'Unknown message');
+      return null;
+    }
+  } catch (error) {
+    console.error("❌ Error refreshing token:", error);
+    return null;
+  }
+};
+
+const clearAuthData = async () => {
+  console.log("Clearing auth data");
+  await Promise.all([
+    AsyncStorage.removeItem(STORAGE_KEYS.ROLE),
+    AsyncStorage.removeItem(STORAGE_KEYS.AUTH),
+    AsyncStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN),
+    AsyncStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN),
+    AsyncStorage.removeItem(STORAGE_KEYS.TOKEN_EXPIRY),
+  ]);
+};
+
+const clearFakeTokens = async () => {
+  console.log("🧹 Clearing all tokens and forcing logout");
+  await clearAuthData();
+};
+
+// Check if token is expired or about to expire (within 5 minutes)
+const isTokenExpired = (expiry: number | null) => {
+  if (!expiry) return true;
+  const now = Date.now();
+  const fiveMinutes = 5 * 60 * 1000; // 5 minutes in milliseconds
+  return now >= (expiry - fiveMinutes);
+};
+
+// Auto refresh token if needed
+const checkAndRefreshToken = async (state: AuthState) => {
+  if (!state.isAuthenticated || !state.refreshToken || !state.tokenExpiry) {
+    return state;
+  }
+
+  if (isTokenExpired(state.tokenExpiry)) {
+    console.log("⚠️ Token expired or about to expire, refreshing...");
+    const refreshResult = await refreshAccessToken(state.refreshToken);
+    
+    if (refreshResult) {
+      return {
+        ...state,
+        accessToken: refreshResult.accessToken,
+        refreshToken: refreshResult.refreshToken,
+        tokenExpiry: refreshResult.expiry,
+      };
+    } else {
+      console.log("❌ Token refresh failed, logging out");
+      await clearAuthData();
+      return {
+        ...state,
+        isAuthenticated: false,
+        role: null,
+        accessToken: null,
+        refreshToken: null,
+        tokenExpiry: null,
+      };
+    }
+  }
+
+  return state;
+};
+
+export function useAuthCore() {
+  const [state, setState] = useState<AuthState>({
+    isAuthenticated: false,
+    role: null,
+    isHydrated: false,
+    accessToken: null,
+    refreshToken: null,
+    tokenExpiry: null,
+  });
+
+  // Hydrate auth state from storage on mount
+  useEffect(() => {
+    const hydrateAuth = async () => {
+      try {
+        console.log("🔄 Hydrating auth state...");
+        
+        const [
+          storedAuth,
+          storedRole,
+          storedAccessToken,
+          storedRefreshToken,
+          storedTokenExpiry,
+        ] = await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEYS.AUTH),
+          AsyncStorage.getItem(STORAGE_KEYS.ROLE),
+          AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN),
+          AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN),
+          AsyncStorage.getItem(STORAGE_KEYS.TOKEN_EXPIRY),
+        ]);
+
+        console.log("📦 Stored auth data:", {
+          auth: storedAuth,
+          role: storedRole,
+          hasAccessToken: !!storedAccessToken,
+          hasRefreshToken: !!storedRefreshToken,
+          tokenExpiry: storedTokenExpiry,
+        });
+
+        const isAuthenticated = storedAuth === "true";
+        const role = storedRole as Role | null;
+        const accessToken = storedAccessToken;
+        const refreshToken = storedRefreshToken;
+        const tokenExpiry = storedTokenExpiry ? parseInt(storedTokenExpiry, 10) : null;
+
+        if (isAuthenticated && accessToken && refreshToken && tokenExpiry) {
+          console.log("✅ Found valid auth data, checking token expiry...");
+          
+          // Check if token needs refresh
+          let updatedState = await checkAndRefreshToken({
+            isAuthenticated,
+            role,
+            isHydrated: true,
+            accessToken,
+            refreshToken,
+            tokenExpiry,
+          });
+
+          // Refresh user role from backend to ensure we have latest role
+          // This is important when business registration was approved while user was offline
+          if (updatedState.isAuthenticated && updatedState.accessToken) {
+            try {
+              const { getCurrentUserProfile } = await import('../../../services/api/userService');
+              const userProfile = await getCurrentUserProfile(updatedState.accessToken);
+              const backendRole = userProfile?.role as Role;
+              
+              if (backendRole) {
+                // Block admin access on mobile - clear auth if admin
+                if (backendRole === 'admin') {
+                  console.log("❌ Admin role detected on hydration - clearing auth and blocking access");
+                  // Clear auth storage
+                  await clearAuthData();
+                  // Set state to unauthenticated
+                  setState({
+                    isAuthenticated: false,
+                    role: null,
+                    isHydrated: true,
+                    accessToken: null,
+                    refreshToken: null,
+                    tokenExpiry: null,
+                  });
+                  return; // Exit early, don't set authenticated state
+                }
+                
+                // Always update role from backend to ensure we have the latest
+                if (backendRole !== updatedState.role) {
+                  console.log(`🔄 Role updated on hydration! Stored: ${updatedState.role}, Backend: ${backendRole}`);
+                } else {
+                  console.log(`✅ Role confirmed on hydration: ${backendRole}`);
+                }
+                // Always update role in storage and state to ensure consistency
+                await AsyncStorage.setItem(STORAGE_KEYS.ROLE, backendRole);
+                updatedState.role = backendRole;
+              }
+            } catch (error) {
+              console.error("❌ Error refreshing role on hydration:", error);
+              // Continue with stored role if refresh fails
+              // But still check if stored role is admin and block it
+              if (updatedState.role === 'admin') {
+                console.log("❌ Admin role detected in storage on hydration - clearing auth");
+                await clearAuthData();
+                setState({
+                  isAuthenticated: false,
+                  role: null,
+                  isHydrated: true,
+                  accessToken: null,
+                  refreshToken: null,
+                  tokenExpiry: null,
+                });
+                return;
+              }
+            }
+          } else {
+            // If we have stored role but no token, check if role is admin
+            if (role === 'admin') {
+              console.log("❌ Admin role detected in storage but no valid token - clearing auth");
+              await clearAuthData();
+              setState({
+                isAuthenticated: false,
+                role: null,
+                isHydrated: true,
+                accessToken: null,
+                refreshToken: null,
+                tokenExpiry: null,
+              });
+              return;
+            }
+          }
+
+          setState(updatedState);
+        } else {
+          console.log("❌ No valid auth data found");
+          setState({
+            isAuthenticated: false,
+            role: null,
+            isHydrated: true,
+            accessToken: null,
+            refreshToken: null,
+            tokenExpiry: null,
+          });
+        }
+      } catch (error) {
+        console.error("❌ Error hydrating auth state:", error);
+        setState({
+          isAuthenticated: false,
+          role: null,
+          isHydrated: true,
+          accessToken: null,
+          refreshToken: null,
+          tokenExpiry: null,
+        });
+      }
+    };
+
+    hydrateAuth();
+  }, []);
+
+  // Auto refresh token periodically
+  useEffect(() => {
+    if (!state.isAuthenticated || !state.refreshToken || !state.tokenExpiry) {
+      return;
+    }
+
+    const interval = setInterval(async () => {
+      console.log("🔄 Periodic token check...");
+      const updatedState = await checkAndRefreshToken(state);
+      if (updatedState !== state) {
+        setState(updatedState);
+      }
+    }, 5 * 60 * 1000); // Check every 5 minutes
+
+    return () => clearInterval(interval);
+  }, [state.isAuthenticated, state.refreshToken, state.tokenExpiry]);
+
+  const login = useCallback(async (username: string, password: string) => {
+    try {
+      console.log("🔐 Attempting login...");
+      const response = await authApi.login({ username, password });
+      
+      console.log("📥 Login response:", {
+        statusCode: response.statusCode,
+        message: response.message,
+        hasData: !!response.data,
+        hasAccessToken: !!response.data?.accessToken,
+        hasUser: !!response.data?.user,
+      });
+
+      // Handle different response formats
+      let accessToken: string | null = null;
+      let refreshToken: string | null = null;
+      let user: any = null;
+      let role: Role | null = null;
+
+      if (response.data) {
+        accessToken = response.data.accessToken || null;
+        refreshToken = response.data.refreshToken || null;
+        user = response.data.user || null;
+        role = user?.role as Role || null;
+      }
+
+      // Fallback to legacy format
+      if (!accessToken && (response as any).user) {
+        user = (response as any).user;
+        role = user?.role as Role || null;
+        accessToken = (response as any).accessToken || null;
+      }
+
+      if (!accessToken) {
+        throw new Error(response.message || "No access token received");
+      }
+
+      // If role is not in response, try to fetch from user profile
+      if (!role && accessToken) {
+        try {
+          const { getCurrentUserProfile } = await import('../../../services/api/userService');
+          const userProfile = await getCurrentUserProfile(accessToken);
+          role = userProfile?.role as Role || null;
+          user = userProfile;
+          console.log("📥 Fetched user profile, role:", role);
+        } catch (error) {
+          console.error("❌ Error fetching user profile:", error);
+          // Continue with role from login response
+        }
+      }
+
+      // Block admin login on mobile - throw error before saving tokens
+      if (role === 'admin') {
+        console.log("❌ useAuth: Admin login attempted on mobile - blocking access");
+        throw new Error("Tài khoản Admin không thể đăng nhập trên ứng dụng di động. Vui lòng đăng nhập trên nền tảng web.");
+      }
+
+      // Calculate token expiry (1 hour from now)
+      const tokenExpiry = Date.now() + (60 * 60 * 1000);
+
+      // Save to storage
+      await Promise.all([
+        AsyncStorage.setItem(STORAGE_KEYS.AUTH, "true"),
+        AsyncStorage.setItem(STORAGE_KEYS.ROLE, role || ""),
+        AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken),
+        AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken || ""),
+        AsyncStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRY, tokenExpiry.toString()),
+      ]);
+
+      console.log("✅ Login successful, tokens saved, role:", role);
+
+      setState({
+        isAuthenticated: true,
+        role,
+        isHydrated: true,
+        accessToken,
+        refreshToken,
+        tokenExpiry,
+      });
+
+      return { success: true, user, role };
+    } catch (error: any) {
+      console.error("❌ Login failed:", error);
+      throw new Error(error.message || "Login failed");
+    }
+  }, []);
+
+  const register = useCallback(async (userData: any) => {
+    try {
+      console.log("📝 Attempting registration...");
+      const response = await authApi.register(userData);
+      
+      if (response.success) {
+        console.log("✅ Registration successful");
+        return { success: true, message: response.message };
+      } else {
+        throw new Error(response.message || "Registration failed");
+      }
+    } catch (error: any) {
+      console.error("❌ Registration failed:", error);
+      throw new Error(error.message || "Registration failed");
+    }
+  }, []);
+
+  const logout = useCallback(async () => {
+    try {
+      console.log("🚪 Logging out...");
+      await clearAuthData();
+      
+      setState({
+        isAuthenticated: false,
+        role: null,
+        isHydrated: true,
+        accessToken: null,
+        refreshToken: null,
+        tokenExpiry: null,
+      });
+      
+      console.log("✅ Logout successful");
+    } catch (error) {
+      console.error("❌ Error during logout:", error);
+    }
+  }, []);
+
+  const getCurrentAccessToken = useCallback(async () => {
+    if (!state.isAuthenticated || !state.accessToken) {
+      return null;
+    }
+
+    // Check if token needs refresh
+    if (state.tokenExpiry && isTokenExpired(state.tokenExpiry)) {
+      console.log("🔄 Token expired, refreshing...");
+      const updatedState = await checkAndRefreshToken(state);
+      if (updatedState !== state) {
+        setState(updatedState);
+        return updatedState.accessToken;
+      }
+    }
+
+    return state.accessToken;
+  }, [state]);
+
+  /**
+   * Update role and refresh session
+   * Used when business registration is approved
+   */
+  const updateRole = useCallback(async (newRole: Role) => {
+    try {
+      console.log(`🔄 Updating role to: ${newRole}`);
+      
+      // Update role in storage
+      await AsyncStorage.setItem(STORAGE_KEYS.ROLE, newRole);
+      
+      // Update state
+      setState(prev => ({
+        ...prev,
+        role: newRole,
+      }));
+      
+      console.log(`✅ Role updated to: ${newRole}`);
+    } catch (error) {
+      console.error('❌ Error updating role:', error);
+    }
+  }, []);
+
+  /**
+   * Refresh user profile and update role from backend
+   */
+  const refreshUserRole = useCallback(async () => {
+    try {
+      if (!state.isAuthenticated || !state.accessToken) {
+        return null;
+      }
+
+      // Try to get user profile directly first
+      try {
+        const { getCurrentUserProfile } = await import('../../../services/api/userService');
+        const userProfile = await getCurrentUserProfile(state.accessToken);
+        const newRole = userProfile?.role as Role;
+        
+        if (newRole && newRole !== state.role) {
+          console.log(`🔄 Role changed from ${state.role} to ${newRole}`);
+          await updateRole(newRole);
+          return { role: newRole, user: userProfile };
+        }
+        
+        return { role: newRole, user: userProfile };
+      } catch (error) {
+        console.error('❌ Error fetching user profile:', error);
+      }
+
+      // Fallback: Refresh token to get updated user data
+      if (state.refreshToken) {
+        const refreshResult = await refreshAccessToken(state.refreshToken);
+        
+        if (refreshResult && refreshResult.user) {
+          const newRole = refreshResult.user.role as Role;
+          
+          if (newRole && newRole !== state.role) {
+            console.log(`🔄 Role changed from ${state.role} to ${newRole}`);
+            await updateRole(newRole);
+          }
+          
+          return { role: newRole, user: refreshResult.user };
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Error refreshing user role:', error);
+      return null;
+    }
+  }, [state.isAuthenticated, state.accessToken, state.refreshToken, state.role, updateRole]);
+
+  const actions = useMemo(() => ({
+    login,
+    register,
+    logout,
+    getCurrentAccessToken,
+    updateRole,
+    refreshUserRole,
+  }), [login, register, logout, getCurrentAccessToken, updateRole, refreshUserRole]);
+
+  return {
+    state,
+    actions,
+  };
+}
+
+export type { Role };
+

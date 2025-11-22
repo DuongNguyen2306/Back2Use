@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { API_BASE_URL, API_ENDPOINTS, DEFAULT_HEADERS, REQUEST_TIMEOUT } from './constants';
+import { API_BASE_URL, API_ENDPOINTS, DEFAULT_HEADERS, REQUEST_TIMEOUT } from '../src/constants/api';
 
 // ============================================================================
 // JWT UTILITIES
@@ -89,12 +89,21 @@ apiClient.interceptors.request.use(
 // Response interceptor để xử lý lỗi chung
 apiClient.interceptors.response.use(
   (response) => {
-    console.log('✅ API Response:', response.status, response.config.url);
+    // Only log successful responses for debugging (can be disabled in production)
+    if (__DEV__) {
+      console.log('✅ API Response:', response.status, response.config.url);
+    }
     return response;
   },
   async (error) => {
-    console.log('❌ API Error:', error.response?.status, error.config?.url);
-    console.log('Error details:', error.response?.data);
+    // Only log error details if it's not a network error or in dev mode
+    const isNetworkError = !error.response && error.request;
+    if (__DEV__ || !isNetworkError) {
+      console.log('❌ API Error:', error.response?.status || 'Network Error', error.config?.url);
+      if (error.response?.data) {
+        console.log('Error details:', error.response.data);
+      }
+    }
     
     // Do NOT auto-clear tokens here. Let the auth flow decide how to handle 401.
     // This avoids race conditions where tokens are valid/just refreshed.
@@ -207,6 +216,28 @@ export interface ChangePasswordRequest {
 export interface ChangePasswordResponse {
   success: boolean;
   message: string;
+}
+
+export interface SwitchRoleRequest {
+  role: 'customer' | 'business';
+}
+
+export interface SwitchRoleResponse {
+  statusCode: number;
+  message: string;
+  data?: {
+    accessToken?: string;
+    refreshToken?: string;
+    user?: {
+      _id?: string;
+      email?: string;
+      name?: string;
+      role?: string;
+      isActive?: boolean;
+      isBlocked?: boolean;
+    };
+  };
+  success?: boolean;
 }
 
 export interface GoogleOAuthResponse {
@@ -438,7 +469,7 @@ export const authApi = {
     
     try {
       const response = await apiCall<ChangePasswordResponse>(API_ENDPOINTS.USER.CHANGE_PASSWORD, {
-        method: 'POST',
+        method: 'PUT',
         data: passwordData,
       });
       
@@ -446,6 +477,30 @@ export const authApi = {
       return response;
     } catch (error: any) {
       console.log('🔐 Change password error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      throw error;
+    }
+  },
+
+  // Switch role
+  switchRole: async (roleData: SwitchRoleRequest): Promise<SwitchRoleResponse> => {
+    console.log('🔄 ===== SWITCH ROLE REQUEST START =====');
+    console.log('🔄 Endpoint:', API_ENDPOINTS.AUTH.SWITCH_ROLE);
+    console.log('🔄 Data:', roleData);
+    
+    try {
+      const response = await apiCall<SwitchRoleResponse>(API_ENDPOINTS.AUTH.SWITCH_ROLE, {
+        method: 'POST',
+        data: roleData,
+      });
+      
+      console.log('🔄 Switch role response:', response);
+      return response;
+    } catch (error: any) {
+      console.log('🔄 Switch role error details:', {
         message: error.message,
         response: error.response?.data,
         status: error.response?.status
@@ -573,6 +628,54 @@ export const materialsApi = {
 };
 
 // ============================================================================
+// SUBSCRIPTIONS API
+// ============================================================================
+
+export interface SubscriptionPackage {
+  _id: string;
+  name: string;
+  price: number;
+  durationInDays: number;
+  isActive: boolean;
+  isTrial: boolean;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SubscriptionsResponse {
+  statusCode: number;
+  message: string;
+  data: {
+    subscriptions: SubscriptionPackage[];
+  };
+}
+
+export interface BuySubscriptionRequest {
+  subscriptionId: string;
+}
+
+export interface BuySubscriptionResponse {
+  statusCode: number;
+  message: string;
+  data?: any;
+}
+
+export const subscriptionsApi = {
+  getAll: async (): Promise<SubscriptionsResponse> => {
+    return apiCall<SubscriptionsResponse>(API_ENDPOINTS.SUBSCRIPTIONS.GET_ALL, {
+      method: 'GET',
+    });
+  },
+  buy: async (payload: BuySubscriptionRequest): Promise<BuySubscriptionResponse> => {
+    return apiCall<BuySubscriptionResponse>(API_ENDPOINTS.SUBSCRIPTIONS.BUY, {
+      method: 'POST',
+      data: payload,
+    });
+  },
+};
+
+// ============================================================================
 // WALLET API
 // ============================================================================
 
@@ -592,11 +695,26 @@ export const walletApi = {
   
   // Get wallet details with auto refresh token
   getByIdWithAutoRefresh: async (walletId: string): Promise<WalletDetails> => {
-    if (!getCurrentAccessToken) {
-      throw new Error('Token provider not set. Call setTokenProvider first.');
+    let token: string | null = null;
+    
+    // Try to get token from token provider first (supports auto refresh)
+    if (getCurrentAccessToken) {
+      try {
+        token = await getCurrentAccessToken();
+      } catch (error) {
+        console.warn('Error getting token from provider:', error);
+      }
     }
-
-    const token = await getCurrentAccessToken();
+    
+    // Fallback: Get token directly from AsyncStorage if provider not available
+    if (!token) {
+      try {
+        token = await AsyncStorage.getItem('ACCESS_TOKEN');
+      } catch (error) {
+        console.warn('Error getting token from AsyncStorage:', error);
+      }
+    }
+    
     if (!token) {
       throw new Error('No valid access token available');
     }
@@ -716,11 +834,26 @@ export const getUserById = async (userId: string, token: string): Promise<User> 
 
 // Get current user profile with auto refresh token
 export const getCurrentUserProfileWithAutoRefresh = async (): Promise<User> => {
-  if (!getCurrentAccessToken) {
-    throw new Error('Token provider not set. Call setTokenProvider first.');
+  let token: string | null = null;
+  
+  // Try to get token from token provider first (supports auto refresh)
+  if (getCurrentAccessToken) {
+    try {
+      token = await getCurrentAccessToken();
+    } catch (error) {
+      console.warn('Error getting token from provider:', error);
+    }
   }
-
-  const token = await getCurrentAccessToken();
+  
+  // Fallback: Get token directly from AsyncStorage if provider not available
+  if (!token) {
+    try {
+      token = await AsyncStorage.getItem('ACCESS_TOKEN');
+    } catch (error) {
+      console.warn('Error getting token from AsyncStorage:', error);
+    }
+  }
+  
   if (!token) {
     throw new Error('No valid access token available');
   }
@@ -729,20 +862,27 @@ export const getCurrentUserProfileWithAutoRefresh = async (): Promise<User> => {
 };
 
 // Get current user profile - GET /users/me
-export const getCurrentUserProfile = async (token: string): Promise<User> => {
+export const getCurrentUserProfile = async (token: string, retries = 2): Promise<User> => {
   try {
-    console.log('getCurrentUserProfile called with token:', token ? '***' + token.slice(-8) : 'None');
-    console.log('Token length:', token?.length || 0);
+    // Only log in dev mode to reduce console spam
+    if (__DEV__) {
+      console.log('getCurrentUserProfile called with token:', token ? '***' + token.slice(-8) : 'None');
+      console.log('Token length:', token?.length || 0);
+      console.log('API Base URL:', API_BASE_URL);
+    }
     
     if (!token) {
       throw new Error('No access token provided');
     }
 
+    // Use longer timeout for user profile (60 seconds)
+    const PROFILE_TIMEOUT = 60000;
+
     const response = await apiClient.get('/users/me', {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
-      timeout: REQUEST_TIMEOUT,
+      timeout: PROFILE_TIMEOUT,
     });
 
     const result = response.data;
@@ -753,21 +893,94 @@ export const getCurrentUserProfile = async (token: string): Promise<User> => {
       throw new Error(result.message || 'Failed to get user profile');
     }
   } catch (error: any) {
-    console.error('Error fetching current user profile:', error);
+    // Determine if this is a network error
+    const isNetworkError = error.code === 'ECONNABORTED' || 
+                          error.message === 'Network Error' || 
+                          !error.response ||
+                          error.message?.toLowerCase().includes('network') ||
+                          error.message?.toLowerCase().includes('timeout') ||
+                          error.message?.toLowerCase().includes('connection');
+    
+    // Only log detailed error if it's not a network error or if retries are exhausted
+    if (!isNetworkError || retries === 0) {
+      console.error('Error fetching current user profile:', error);
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url,
+        retriesLeft: retries
+      });
+    } else {
+      // Log network error with less detail to avoid spam
+      console.warn(`⚠️ Network error fetching user profile (${retries} retries left):`, error.message);
+    }
+    
+    // Retry logic for timeout or network errors
+    if (retries > 0 && isNetworkError) {
+      console.log(`🔄 Retrying getCurrentUserProfile... (${retries} retries left)`);
+      // Wait 2 seconds before retry
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      return getCurrentUserProfile(token, retries - 1);
+    }
+    
+    // After all retries exhausted, throw appropriate error
     if (error.code === 'ECONNABORTED') {
       throw new Error('Request timeout. Please check your connection and try again.');
     }
+    
+    if (isNetworkError) {
+      // Check if it's a network error (no response from server)
+      if (!error.response && error.request) {
+        throw new Error('Network error. Please check your internet connection and server status.');
+      }
+      // If we have a response but it's an error, use the message from response
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      throw new Error('Network error. Please check your internet connection and server status.');
+    }
+    
+    // Handle HTTP errors (401, 403, 500, etc.)
+    if (error.response?.status === 401) {
+      throw new Error('Authentication failed. Please log in again.');
+    }
+    
+    if (error.response?.status === 403) {
+      throw new Error('Access forbidden. You do not have permission to access this resource.');
+    }
+    
+    if (error.response?.status >= 500) {
+      throw new Error('Server error. Please try again later.');
+    }
+    
     throw new Error(`Failed to fetch user profile: ${error.response?.data?.message || error.message || 'Unknown error'}`);
   }
 };
 
 // Update user profile with auto refresh token
 export const updateUserProfileWithAutoRefresh = async (updates: UpdateProfileRequest): Promise<User> => {
-  if (!getCurrentAccessToken) {
-    throw new Error('Token provider not set. Call setTokenProvider first.');
+  let token: string | null = null;
+  
+  // Try to get token from token provider first (supports auto refresh)
+  if (getCurrentAccessToken) {
+    try {
+      token = await getCurrentAccessToken();
+    } catch (error) {
+      console.warn('Error getting token from provider:', error);
+    }
   }
-
-  const token = await getCurrentAccessToken();
+  
+  // Fallback: Get token directly from AsyncStorage if provider not available
+  if (!token) {
+    try {
+      token = await AsyncStorage.getItem('ACCESS_TOKEN');
+    } catch (error) {
+      console.warn('Error getting token from AsyncStorage:', error);
+    }
+  }
+  
   if (!token) {
     throw new Error('No valid access token available');
   }
@@ -777,11 +990,26 @@ export const updateUserProfileWithAutoRefresh = async (updates: UpdateProfileReq
 
 // Upload avatar with auto refresh token
 export const uploadAvatarWithAutoRefresh = async (imageUri: string): Promise<UploadAvatarResponse> => {
-  if (!getCurrentAccessToken) {
-    throw new Error('Token provider not set. Call setTokenProvider first.');
+  let token: string | null = null;
+  
+  // Try to get token from token provider first (supports auto refresh)
+  if (getCurrentAccessToken) {
+    try {
+      token = await getCurrentAccessToken();
+    } catch (error) {
+      console.warn('Error getting token from provider:', error);
+    }
   }
-
-  const token = await getCurrentAccessToken();
+  
+  // Fallback: Get token directly from AsyncStorage if provider not available
+  if (!token) {
+    try {
+      token = await AsyncStorage.getItem('ACCESS_TOKEN');
+    } catch (error) {
+      console.warn('Error getting token from AsyncStorage:', error);
+    }
+  }
+  
   if (!token) {
     throw new Error('No valid access token available');
   }
@@ -851,7 +1079,7 @@ export const uploadAvatar = async (imageUri: string, token: string): Promise<Upl
   }
 };
 
-// Update user profile - POST /users/edit-profile
+// Update user profile - PUT /users/edit-profile
 export const updateUserProfile = async (updates: UpdateProfileRequest, token: string): Promise<User> => {
   try {
     console.log('🔄 updateUserProfile called with:', {
@@ -867,7 +1095,7 @@ export const updateUserProfile = async (updates: UpdateProfileRequest, token: st
     console.log('📤 Sending request to:', `${API_ENDPOINTS.USER.UPDATE_PROFILE}`);
     console.log('📤 Request body:', updates);
 
-    const response = await apiClient.post(API_ENDPOINTS.USER.UPDATE_PROFILE, updates, {
+    const response = await apiClient.put(API_ENDPOINTS.USER.UPDATE_PROFILE, updates, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -1001,6 +1229,65 @@ export const useProfileAPI = () => {
   };
   
   return { testAPI };
+};
+
+// ============================================================================
+// BUSINESSES API
+// ============================================================================
+
+export interface NearbyBusiness {
+  _id: string;
+  userId: string;
+  businessName: string;
+  businessAddress: string;
+  businessPhone: string;
+  businessType: string;
+  openTime: string;
+  closeTime: string;
+  businessLogoUrl?: string;
+  location: {
+    type: 'Point';
+    coordinates: [number, number]; // [longitude, latitude]
+  };
+  createdAt: string;
+  updatedAt: string;
+  distance: number;
+  role: string;
+  isActive: boolean;
+  isBlocked: boolean;
+}
+
+export interface NearbyBusinessesResponse {
+  statusCode: number;
+  message: string;
+  data: NearbyBusiness[];
+  total: number;
+  currentPage: number;
+  totalPages: number;
+}
+
+export const businessesApi = {
+  // Get nearby businesses
+  getNearby: async (params: {
+    longitude: number;
+    latitude: number;
+    radius?: number; // in meters, default 2000
+    page?: number;
+    limit?: number;
+  }): Promise<NearbyBusinessesResponse> => {
+    const { longitude, latitude, radius = 2000, page = 1, limit = 10 } = params;
+    
+    return apiCall<NearbyBusinessesResponse>(API_ENDPOINTS.BUSINESSES.NEARBY, {
+      method: 'GET',
+      params: {
+        longitude,
+        latitude,
+        radius,
+        page,
+        limit,
+      },
+    });
+  },
 };
 
 // ============================================================================

@@ -1,5 +1,5 @@
 // API Configuration Constants
-export const API_BASE_URL = 'http://172.16.23.154:8000';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.0.199:8000';
 
 // API Endpoints
 export const API_ENDPOINTS = {
@@ -10,6 +10,7 @@ export const API_ENDPOINTS = {
     RESET_PASSWORD: '/auth/reset-password',
     LOGOUT: '/auth/logout',
     REFRESH_TOKEN: '/auth/refresh-token',
+    SWITCH_ROLE: '/auth/switch-role',
   },
   USER: {
     PROFILE: '/users/me',
@@ -29,6 +30,12 @@ export const API_ENDPOINTS = {
     TRANSACTIONS: '/customer/transactions',
     REWARDS: '/customer/rewards',
     STORES: '/customer/stores',
+  },
+  BUSINESSES: {
+    NEARBY: '/businesses/nearby',
+    HISTORY: '/businesses/history-business-form',
+    GET_ALL: '/businesses',
+    PROFILE: '/businesses/profile',
   },
   ADMIN: {
     DASHBOARD: '/admin/dashboard',
@@ -52,6 +59,17 @@ export const API_ENDPOINTS = {
     LIST_APPROVED: '/materials/approved', // GET ?page=&limit=
     LIST_MY: '/materials/my', // GET ?status=&page=&limit=
   },
+  SUBSCRIPTIONS: {
+    GET_ALL: '/subscriptions', // GET
+    BUY: '/businesses/buy-subscription', // POST
+  },
+  PRODUCTS: {
+    GET_BY_ID: '/products', // GET /products/{id}
+  },
+  BORROW_TRANSACTIONS: {
+    CREATE: '/borrow-transactions', // POST /borrow-transactions
+    GET_MY: '/borrow-transactions/my', // GET /borrow-transactions/my
+  },
 } as const;
 
 // Request timeout (in milliseconds)
@@ -62,3 +80,4 @@ export const DEFAULT_HEADERS = {
   'Content-Type': 'application/json',
   'Accept': 'application/json',
 } as const;
+

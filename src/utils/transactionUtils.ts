@@ -21,7 +21,6 @@ export function getTransactionSummary(transactions: any[]) {
   };
 }
 
-
 export interface TransactionCalculation {
   depositAmount: number;
   lateFee: number;
@@ -52,5 +51,4 @@ export function calculateTransactionFees(
 
   return { depositAmount, lateFee, totalAmount, dueDate: transaction.dueDate || new Date(), isOverdue, hoursOverdue };
 }
-
 

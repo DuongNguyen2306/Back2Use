@@ -3,6 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from "expo-router";
 import { useState } from "react";
 import {
+    ActivityIndicator,
     Alert,
     Dimensions,
     Image,
@@ -17,7 +18,8 @@ import {
     TouchableOpacity,
     View
 } from "react-native";
-import { businessApi, BusinessRegisterRequest } from "../../lib/api";
+import { businessApi } from "@/services/api/businessService";
+import { BusinessRegisterRequest } from "@/types/business.types";
 
 const { width } = Dimensions.get('window');
 
@@ -29,6 +31,8 @@ export default function BusinessRegister() {
     businessAddress: '',
     businessPhone: '',
     taxCode: '',
+    openTime: '08:00',
+    closeTime: '22:00',
   });
 
   const [files, setFiles] = useState({
@@ -40,8 +44,43 @@ export default function BusinessRegister() {
   const [loading, setLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
+  const isFormValid = formData.businessName.trim() && 
+                     formData.businessType.trim() && 
+                     formData.businessMail.trim() && 
+                     formData.businessAddress.trim() && 
+                     formData.businessPhone.trim() && 
+                     formData.taxCode.trim() && 
+                     formData.openTime.trim() && 
+                     formData.closeTime.trim() && 
+                     files.businessLogo && 
+                     files.foodSafetyCertUrl && 
+                     files.businessLicenseFile;
+
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    // Auto-format time input (HH:mm)
+    if (field === 'openTime' || field === 'closeTime') {
+      // Remove all non-numeric characters
+      let numbers = value.replace(/\D/g, '');
+      
+      // Format as HH:mm
+      let formatted = '';
+      if (numbers.length > 0) {
+        formatted = numbers.substring(0, 2);
+        if (numbers.length > 2) {
+          formatted += ':' + numbers.substring(2, 4);
+        } else if (numbers.length === 2 && value.length > 2) {
+          // User added colon manually
+          formatted += ':';
+        }
+      }
+      
+      // Limit to HH:mm format (5 characters max)
+      if (formatted.length <= 5) {
+        setFormData(prev => ({ ...prev, [field]: formatted }));
+      }
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value }));
+    }
   };
 
   const handleFilePick = async (fileType: 'businessLogo' | 'foodSafetyCertUrl' | 'businessLicenseFile') => {
@@ -102,6 +141,22 @@ export default function BusinessRegister() {
       Alert.alert("Lỗi", "Vui lòng nhập mã số thuế");
       return false;
     }
+    if (!formData.openTime.trim()) {
+      Alert.alert("Lỗi", "Vui lòng nhập giờ mở cửa");
+      return false;
+    }
+    if (!/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/.test(formData.openTime)) {
+      Alert.alert("Lỗi", "Giờ mở cửa phải theo định dạng HH:mm (ví dụ: 08:00)");
+      return false;
+    }
+    if (!formData.closeTime.trim()) {
+      Alert.alert("Lỗi", "Vui lòng nhập giờ đóng cửa");
+      return false;
+    }
+    if (!/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/.test(formData.closeTime)) {
+      Alert.alert("Lỗi", "Giờ đóng cửa phải theo định dạng HH:mm (ví dụ: 22:00)");
+      return false;
+    }
     if (!files.businessLogo) {
       Alert.alert("Lỗi", "Vui lòng tải lên logo doanh nghiệp");
       return false;
@@ -129,6 +184,8 @@ export default function BusinessRegister() {
         businessAddress: formData.businessAddress.trim(),
         businessPhone: formData.businessPhone.trim(),
         taxCode: formData.taxCode.trim(),
+        openTime: formData.openTime.trim(),
+        closeTime: formData.closeTime.trim(),
         businessLogo: files.businessLogo,
         foodSafetyCertUrl: files.foodSafetyCertUrl,
         businessLicenseFile: files.businessLicenseFile,
@@ -238,164 +295,291 @@ export default function BusinessRegister() {
 
             {/* Form Card */}
             <View style={styles.formCard}>
-          <Text style={styles.formTitle}>Thông tin doanh nghiệp</Text>
-          
-          {/* Business Name */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Tên doanh nghiệp *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Nhập tên doanh nghiệp"
-              value={formData.businessName}
-              onChangeText={(value) => handleInputChange('businessName', value)}
-            />
-          </View>
+              <View style={styles.titleContainer}>
+                <Ionicons name="business-outline" size={28} color="#0F4D3A" style={{ marginRight: 12 }} />
+                <Text style={styles.formTitle}>Đăng ký doanh nghiệp</Text>
+              </View>
+              <Text style={styles.formSubtitle}>Vui lòng điền đầy đủ thông tin để hoàn tất đăng ký</Text>
+              
+              {/* Business Name */}
+              <View style={styles.fieldContainer}>
+                <Text style={styles.label}>Tên doanh nghiệp *</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons name="business" size={20} color="#6B7280" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Nhập tên doanh nghiệp"
+                    placeholderTextColor="#9CA3AF"
+                    value={formData.businessName}
+                    onChangeText={(value) => handleInputChange('businessName', value)}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                  />
+                </View>
+              </View>
 
-          {/* Business Type */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Loại hình doanh nghiệp *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ví dụ: Cafe, Nhà hàng, Cửa hàng..."
-              value={formData.businessType}
-              onChangeText={(value) => handleInputChange('businessType', value)}
-            />
-          </View>
+              {/* Business Type */}
+              <View style={styles.fieldContainer}>
+                <Text style={styles.label}>Loại hình doanh nghiệp *</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons name="storefront-outline" size={20} color="#6B7280" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Ví dụ: Cafe, Nhà hàng, Cửa hàng..."
+                    placeholderTextColor="#9CA3AF"
+                    value={formData.businessType}
+                    onChangeText={(value) => handleInputChange('businessType', value)}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                  />
+                </View>
+              </View>
 
-          {/* Business Email */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Email doanh nghiệp *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Nhập email doanh nghiệp"
-              value={formData.businessMail}
-              onChangeText={(value) => handleInputChange('businessMail', value)}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          </View>
+              {/* Business Email */}
+              <View style={styles.fieldContainer}>
+                <Text style={styles.label}>Email doanh nghiệp *</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons name="mail-outline" size={20} color="#6B7280" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Nhập email doanh nghiệp"
+                    placeholderTextColor="#9CA3AF"
+                    value={formData.businessMail}
+                    onChangeText={(value) => handleInputChange('businessMail', value)}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+              </View>
 
-          {/* Business Address */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Địa chỉ doanh nghiệp *</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Nhập địa chỉ doanh nghiệp"
-              value={formData.businessAddress}
-              onChangeText={(value) => handleInputChange('businessAddress', value)}
-              multiline
-              numberOfLines={3}
-            />
-          </View>
+              {/* Business Address */}
+              <View style={styles.fieldContainer}>
+                <Text style={styles.label}>Địa chỉ doanh nghiệp *</Text>
+                <View style={[styles.inputWrapper, styles.textAreaWrapper]}>
+                  <Ionicons name="location-outline" size={20} color="#6B7280" style={styles.inputIcon} />
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    placeholder="Nhập địa chỉ doanh nghiệp"
+                    placeholderTextColor="#9CA3AF"
+                    value={formData.businessAddress}
+                    onChangeText={(value) => handleInputChange('businessAddress', value)}
+                    multiline
+                    numberOfLines={3}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                  />
+                </View>
+              </View>
 
-          {/* Business Phone */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Số điện thoại *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Nhập số điện thoại"
-              value={formData.businessPhone}
-              onChangeText={(value) => handleInputChange('businessPhone', value)}
-              keyboardType="phone-pad"
-            />
-          </View>
+              {/* Business Phone */}
+              <View style={styles.fieldContainer}>
+                <Text style={styles.label}>Số điện thoại *</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons name="call-outline" size={20} color="#6B7280" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Nhập số điện thoại"
+                    placeholderTextColor="#9CA3AF"
+                    value={formData.businessPhone}
+                    onChangeText={(value) => handleInputChange('businessPhone', value)}
+                    keyboardType="phone-pad"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+              </View>
 
-          {/* Tax Code */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Mã số thuế *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Nhập mã số thuế"
-              value={formData.taxCode}
-              onChangeText={(value) => handleInputChange('taxCode', value)}
-              keyboardType="numeric"
-            />
-          </View>
+              {/* Tax Code */}
+              <View style={styles.fieldContainer}>
+                <Text style={styles.label}>Mã số thuế *</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons name="receipt-outline" size={20} color="#6B7280" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Nhập mã số thuế"
+                    placeholderTextColor="#9CA3AF"
+                    value={formData.taxCode}
+                    onChangeText={(value) => handleInputChange('taxCode', value)}
+                    keyboardType="numeric"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+              </View>
 
+              {/* Open Time */}
+              <View style={styles.fieldContainer}>
+                <Text style={styles.label}>Giờ mở cửa *</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons name="time-outline" size={20} color="#6B7280" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="HH:mm (ví dụ: 08:00)"
+                    placeholderTextColor="#9CA3AF"
+                    value={formData.openTime}
+                    onChangeText={(value) => handleInputChange('openTime', value)}
+                    keyboardType="numbers-and-punctuation"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    maxLength={5}
+                  />
+                </View>
+                <Text style={styles.helperText}>Định dạng: HH:mm (24 giờ, ví dụ: 08:00, 09:30)</Text>
+              </View>
 
-          {/* Image Upload Section */}
-          <Text style={styles.sectionTitle}>Tài liệu cần thiết (Chụp ảnh)</Text>
+              {/* Close Time */}
+              <View style={styles.fieldContainer}>
+                <Text style={styles.label}>Giờ đóng cửa *</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons name="time-outline" size={20} color="#6B7280" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="HH:mm (ví dụ: 22:00)"
+                    placeholderTextColor="#9CA3AF"
+                    value={formData.closeTime}
+                    onChangeText={(value) => handleInputChange('closeTime', value)}
+                    keyboardType="numbers-and-punctuation"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    maxLength={5}
+                  />
+                </View>
+                <Text style={styles.helperText}>Định dạng: HH:mm (24 giờ, ví dụ: 22:00, 23:30)</Text>
+              </View>
 
-          {/* Business Logo */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Logo doanh nghiệp *</Text>
-            <TouchableOpacity 
-              style={styles.fileButton}
-              onPress={() => handleFilePick('businessLogo')}
-            >
-              <Ionicons name="camera-outline" size={20} color="#0F4D3A" />
-              <Text style={styles.fileButtonText}>
-                {files.businessLogo ? 'Đã chọn ảnh' : 'Chụp/Chọn ảnh'}
-              </Text>
-            </TouchableOpacity>
-            {files.businessLogo && (
-              <Text style={styles.fileInfo}>
-                Đã chọn: {files.businessLogo.name}
-              </Text>
-            )}
-          </View>
+              {/* Divider */}
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>Tài liệu cần thiết</Text>
+                <View style={styles.dividerLine} />
+              </View>
 
-          {/* Food Safety Certificate */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Giấy chứng nhận an toàn thực phẩm *</Text>
-            <TouchableOpacity 
-              style={styles.fileButton}
-              onPress={() => handleFilePick('foodSafetyCertUrl')}
-            >
-              <Ionicons name="camera-outline" size={20} color="#0F4D3A" />
-              <Text style={styles.fileButtonText}>
-                {files.foodSafetyCertUrl ? 'Đã chọn ảnh' : 'Chụp/Chọn ảnh'}
-              </Text>
-            </TouchableOpacity>
-            {files.foodSafetyCertUrl && (
-              <Text style={styles.fileInfo}>
-                Đã chọn: {files.foodSafetyCertUrl.name}
-              </Text>
-            )}
-          </View>
+              {/* Business Logo */}
+              <View style={styles.fieldContainer}>
+                <Text style={styles.label}>Logo doanh nghiệp *</Text>
+                <TouchableOpacity 
+                  style={[styles.fileButton, files.businessLogo && styles.fileButtonSelected]}
+                  onPress={() => handleFilePick('businessLogo')}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.fileButtonContent}>
+                    <Ionicons 
+                      name={files.businessLogo ? "checkmark-circle" : "image-outline"} 
+                      size={24} 
+                      color={files.businessLogo ? "#10B981" : "#0F4D3A"} 
+                    />
+                    <Text style={[styles.fileButtonText, files.businessLogo && styles.fileButtonTextSelected]}>
+                      {files.businessLogo ? 'Đã chọn ảnh' : 'Chụp/Chọn logo'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {files.businessLogo?.uri && (
+                  <View style={styles.previewContainer}>
+                    <Image source={{ uri: files.businessLogo.uri }} style={styles.previewImage} />
+                    <TouchableOpacity 
+                      style={styles.removeButton}
+                      onPress={() => setFiles(prev => ({ ...prev, businessLogo: null }))}
+                    >
+                      <Ionicons name="close-circle" size={20} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
 
-          {/* Business License File */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Giấy phép đăng ký kinh doanh *</Text>
-            <TouchableOpacity 
-              style={styles.fileButton}
-              onPress={() => handleFilePick('businessLicenseFile')}
-            >
-              <Ionicons name="camera-outline" size={20} color="#0F4D3A" />
-              <Text style={styles.fileButtonText}>
-                {files.businessLicenseFile ? 'Đã chọn ảnh' : 'Chụp/Chọn ảnh'}
-              </Text>
-            </TouchableOpacity>
-            {files.businessLicenseFile && (
-              <Text style={styles.fileInfo}>
-                Đã chọn: {files.businessLicenseFile.name}
-              </Text>
-            )}
-          </View>
+              {/* Food Safety Certificate */}
+              <View style={styles.fieldContainer}>
+                <Text style={styles.label}>Giấy chứng nhận an toàn thực phẩm *</Text>
+                <TouchableOpacity 
+                  style={[styles.fileButton, files.foodSafetyCertUrl && styles.fileButtonSelected]}
+                  onPress={() => handleFilePick('foodSafetyCertUrl')}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.fileButtonContent}>
+                    <Ionicons 
+                      name={files.foodSafetyCertUrl ? "checkmark-circle" : "document-text-outline"} 
+                      size={24} 
+                      color={files.foodSafetyCertUrl ? "#10B981" : "#0F4D3A"} 
+                    />
+                    <Text style={[styles.fileButtonText, files.foodSafetyCertUrl && styles.fileButtonTextSelected]}>
+                      {files.foodSafetyCertUrl ? 'Đã chọn ảnh' : 'Chụp/Chọn giấy chứng nhận'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {files.foodSafetyCertUrl?.uri && (
+                  <View style={styles.previewContainer}>
+                    <Image source={{ uri: files.foodSafetyCertUrl.uri }} style={styles.previewImage} />
+                    <TouchableOpacity 
+                      style={styles.removeButton}
+                      onPress={() => setFiles(prev => ({ ...prev, foodSafetyCertUrl: null }))}
+                    >
+                      <Ionicons name="close-circle" size={20} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
 
-          {/* Submit Button */}
-          <TouchableOpacity 
-            style={[styles.submitButton, loading && styles.submitButtonDisabled]}
-            onPress={handleSubmit}
-            disabled={loading}
-          >
-            <Text style={styles.submitButtonText}>
-              {loading 
-                ? 'Đang gửi dữ liệu...' 
-                : retryCount > 0 
-                  ? `Thử lại lần ${retryCount + 1}` 
-                  : 'Đăng ký doanh nghiệp'
-              }
-            </Text>
-          </TouchableOpacity>
+              {/* Business License File */}
+              <View style={styles.fieldContainer}>
+                <Text style={styles.label}>Giấy phép đăng ký kinh doanh *</Text>
+                <TouchableOpacity 
+                  style={[styles.fileButton, files.businessLicenseFile && styles.fileButtonSelected]}
+                  onPress={() => handleFilePick('businessLicenseFile')}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.fileButtonContent}>
+                    <Ionicons 
+                      name={files.businessLicenseFile ? "checkmark-circle" : "document-attach-outline"} 
+                      size={24} 
+                      color={files.businessLicenseFile ? "#10B981" : "#0F4D3A"} 
+                    />
+                    <Text style={[styles.fileButtonText, files.businessLicenseFile && styles.fileButtonTextSelected]}>
+                      {files.businessLicenseFile ? 'Đã chọn ảnh' : 'Chụp/Chọn giấy phép'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {files.businessLicenseFile?.uri && (
+                  <View style={styles.previewContainer}>
+                    <Image source={{ uri: files.businessLicenseFile.uri }} style={styles.previewImage} />
+                    <TouchableOpacity 
+                      style={styles.removeButton}
+                      onPress={() => setFiles(prev => ({ ...prev, businessLicenseFile: null }))}
+                    >
+                      <Ionicons name="close-circle" size={20} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
 
-          {/* Login Link */}
-          <View style={styles.loginLink}>
-            <Text style={styles.loginText}>Đã có tài khoản? </Text>
-            <TouchableOpacity onPress={() => router.push('/auth/login')}>
-              <Text style={styles.loginLinkText}>Đăng nhập ngay</Text>
-            </TouchableOpacity>
-          </View>
+              {/* Submit Button */}
+              <TouchableOpacity 
+                style={[styles.submitButton, (loading || !isFormValid) && styles.submitButtonDisabled]}
+                onPress={handleSubmit}
+                disabled={loading || !isFormValid}
+                activeOpacity={0.8}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <View style={styles.submitButtonContent}>
+                    <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" style={styles.submitIcon} />
+                    <Text style={styles.submitButtonText}>
+                      {retryCount > 0 
+                        ? `Thử lại lần ${retryCount + 1}` 
+                        : 'Đăng ký doanh nghiệp'
+                      }
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              {/* Login Link */}
+              <View style={styles.footer}>
+                <Text style={styles.footerText}>Đã có tài khoản? </Text>
+                <TouchableOpacity onPress={() => router.push('/auth/login')}>
+                  <Text style={styles.footerLink}>Đăng nhập ngay</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -409,19 +593,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    ...StyleSheet.absoluteFillObject as any,
+    backgroundColor: 'rgba(0, 0, 0, 0.15)',
   },
   container: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
   keyboardView: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
+    padding: 20,
   },
   topHeader: {
     flexDirection: 'row',
@@ -440,13 +624,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: {
-    width: 40,
-    height: 40,
+    width: 120,
+    height: 120,
     borderRadius: 20,
     marginRight: 0,
   },
   brandText: {
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
     textShadowColor: 'rgba(0,0,0,0.3)',
@@ -472,98 +656,177 @@ const styles = StyleSheet.create({
     elevation: 6,
     marginTop: 8,
   },
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
   formTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#111827',
     textAlign: 'center',
+  },
+  formSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
     marginBottom: 32,
   },
-  inputGroup: {
+  fieldContainer: {
     marginBottom: 20,
   },
-  inputLabel: {
+  label: {
     fontSize: 16,
     fontWeight: '600',
     color: '#374151',
     marginBottom: 8,
   },
-  input: {
-    height: 48,
-    backgroundColor: 'rgba(255,255,255,0.55)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingHorizontal: 14,
-    fontSize: 16,
-    color: '#374151',
+  helperText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 6,
+    marginLeft: 4,
   },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-    backgroundColor: 'rgba(255,255,255,0.55)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingHorizontal: 14,
-    fontSize: 16,
-    color: '#374151',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#0F4D3A',
-    marginTop: 10,
-    marginBottom: 15,
-  },
-  fileButton: {
+  inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 4,
+  },
+  inputIcon: {
+    marginLeft: 12,
+    marginRight: 8,
+  },
+  input: {
+    flex: 1,
+    height: 48,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#374151',
+    backgroundColor: 'transparent',
+  },
+  textAreaWrapper: {
+    alignItems: 'flex-start',
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  textArea: {
+    minHeight: 80,
+    height: 80,
+    textAlignVertical: 'top',
+    paddingTop: 12,
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 24,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  dividerText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginHorizontal: 12,
+  },
+  fileButton: {
     borderWidth: 2,
     borderColor: '#0F4D3A',
     borderStyle: 'dashed',
     borderRadius: 12,
     padding: 16,
-    backgroundColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    minHeight: 56,
+  },
+  fileButtonSelected: {
+    borderColor: '#10B981',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderStyle: 'solid',
+  },
+  previewContainer: {
+    marginTop: 12,
+    position: 'relative',
+    alignSelf: 'flex-start',
+  },
+  previewImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  removeButton: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 10,
+  },
+  fileButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
   },
   fileButtonText: {
-    marginLeft: 10,
     fontSize: 16,
     color: '#0F4D3A',
-    fontWeight: '500',
+    fontWeight: '600',
+    marginLeft: 10,
   },
-  fileInfo: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 5,
-    fontStyle: 'italic',
+  fileButtonTextSelected: {
+    color: '#10B981',
+    fontWeight: '600',
   },
   submitButton: {
+    height: 54,
     backgroundColor: '#0F4D3A',
-    borderRadius: 12,
-    paddingVertical: 16,
+    borderRadius: 28,
     alignItems: 'center',
-    marginTop: 20,
+    justifyContent: 'center',
+    marginTop: 24,
+    marginBottom: 24,
   },
   submitButtonDisabled: {
-    backgroundColor: '#ccc',
+    backgroundColor: '#9CA3AF',
+    opacity: 0.6,
+  },
+  submitButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitIcon: {
+    marginRight: 8,
   },
   submitButtonText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
   },
-  loginLink: {
+  footer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 20,
+    alignItems: 'center',
+    marginTop: 8,
   },
-  loginText: {
-    fontSize: 16,
-    color: '#666',
+  footerText: {
+    fontSize: 14,
+    color: '#6B7280',
   },
-  loginLinkText: {
-    fontSize: 16,
+  footerLink: {
+    fontSize: 14,
     color: '#0F4D3A',
     fontWeight: '600',
   },

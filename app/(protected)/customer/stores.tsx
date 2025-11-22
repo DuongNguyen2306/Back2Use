@@ -1,32 +1,30 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import React, { useEffect, useState } from 'react';
 import {
+    Alert,
     Dimensions,
+    Image,
+    Linking,
+    SafeAreaView,
     ScrollView,
+    StatusBar,
     StyleSheet,
     Text,
-    TextInput,
     TouchableOpacity,
     View,
 } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, Region } from 'react-native-maps';
 import { useAuth } from '../../../context/AuthProvider';
 import { useI18n } from '../../../hooks/useI18n';
-import { getCurrentUserProfileWithAutoRefresh, User } from '../../../lib/api';
+import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService';
+import { businessesApi } from '@/services/api/businessService';
+import { Business, NearbyBusiness } from '@/types/business.types';
+import { User } from '@/types/auth.types';
+import { useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
-interface Store {
-  id: string;
-  name: string;
-  address: string;
-  rating: number;
-  distance: string;
-  isOpen: boolean;
-  phone: string;
-  latitude: number;
-  longitude: number;
-}
 
 export default function Stores() {
   const auth = useAuth();
@@ -34,9 +32,17 @@ export default function Stores() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<'all' | 'nearby' | 'top-rated' | 'closest'>('all');
-  const [searchText, setSearchText] = useState('');
+  const [businesses, setBusinesses] = useState<Business[]>([]);
+  const router = useRouter();
+  const [businessesLoading, setBusinessesLoading] = useState(false);
+  const [userLocation, setUserLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [mapRegion, setMapRegion] = useState<Region | null>(null);
+  const mapRef = React.useRef<MapView | null>(null);
 
-  // Load user data
+  // Load user data and nearby businesses
   useEffect(() => {
     const loadUserData = async () => {
       try {
@@ -50,226 +56,478 @@ export default function Stores() {
       }
     };
 
+    const getCurrentLocation = async () => {
+      try {
+        console.log('📍 Getting user location...');
+        
+        // Request permission to access location
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          console.log('❌ Location permission denied');
+          Alert.alert(
+            'Location Permission',
+            'The app needs location permission to find stores near you. Please grant permission in settings.',
+            [{ text: 'OK' }]
+          );
+          // Use fallback location
+          useFallbackLocation();
+          return;
+        }
+
+        // Get current position
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+          timeInterval: 10000,
+          distanceInterval: 10,
+        });
+
+        const userLocation = {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        };
+        
+        console.log('📍 User location obtained:', userLocation);
+        setUserLocation(userLocation);
+        setMapRegion({
+          latitude: userLocation.latitude,
+          longitude: userLocation.longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        });
+        
+        // Fetch all businesses
+        await loadAllBusinesses();
+      } catch (error) {
+        console.error('❌ Error getting location:', error);
+        Alert.alert(
+          'Location Error',
+          'Unable to get current location. Using default location.',
+          [{ text: 'OK' }]
+        );
+        useFallbackLocation();
+      }
+    };
+
+    const useFallbackLocation = async () => {
+      // Fallback to default location in Ho Chi Minh City
+      const fallbackLocation = {
+        latitude: 10.7769, // District 1, HCMC
+        longitude: 106.7009,
+      };
+      console.log('📍 Using fallback location:', fallbackLocation);
+      setUserLocation(fallbackLocation);
+      setMapRegion({
+        latitude: fallbackLocation.latitude,
+        longitude: fallbackLocation.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      });
+      await loadAllBusinesses();
+    };
+
+    const loadAllBusinesses = async () => {
+      try {
+        setBusinessesLoading(true);
+        
+        const response = await businessesApi.getAll({
+          page: 1,
+          limit: 100, // Get more businesses to display on map
+        });
+        
+        if (response.statusCode === 200 && response.data) {
+          // Filter only active businesses
+          const activeBusinesses = response.data.filter(business => business.isActive && !business.isBlocked);
+          setBusinesses(activeBusinesses);
+        } else {
+          setBusinesses([]);
+        }
+      } catch (error) {
+        console.error('Error fetching businesses:', error);
+        setBusinesses([]);
+      } finally {
+        setBusinessesLoading(false);
+      }
+    };
+
     loadUserData();
+    getCurrentLocation();
   }, []);
 
-  const getTimeBasedGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 18) return 'Good Afternoon';
-    return 'Good Evening';
+
+
+  // Calculate distance between two coordinates (Haversine formula)
+  // Returns distance in kilometers
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    // Convert degrees to radians
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    
+    // Haversine formula
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c;
+    
+    return distance;
   };
 
-  // Mock data
-  const stores: Store[] = [
-    {
-      id: '1',
-      name: 'Back2Use Store - District 1',
-      address: '123 Nguyen Hue, District 1, Ho Chi Minh City',
-      rating: 4.5,
-      distance: '0.8 km',
-      isOpen: true,
-      phone: '028-1234-5678',
-      latitude: 10.7769,
-      longitude: 106.7009,
-    },
-    {
-      id: '2',
-      name: 'Back2Use Store - District 3',
-      address: '456 Le Van Sy, District 3, Ho Chi Minh City',
-      rating: 4.2,
-      distance: '1.2 km',
-      isOpen: true,
-      phone: '028-2345-6789',
-      latitude: 10.7831,
-      longitude: 106.6969,
-    },
-    {
-      id: '3',
-      name: 'Back2Use Store - District 7',
-      address: '789 Nguyen Thi Thap, District 7, Ho Chi Minh City',
-      rating: 4.8,
-      distance: '2.5 km',
-      isOpen: false,
-      phone: '028-3456-7890',
-      latitude: 10.7374,
-      longitude: 106.7223,
-    },
-    {
-      id: '4',
-      name: 'Back2Use Store - District 10',
-      address: '321 Cach Mang Thang 8, District 10, Ho Chi Minh City',
-      rating: 4.0,
-      distance: '1.8 km',
-      isOpen: true,
-      phone: '028-4567-8901',
-      latitude: 10.7678,
-      longitude: 106.6668,
-    },
-    {
-      id: '5',
-      name: 'Back2Use Store - District 11',
-      address: '654 Ly Thuong Kiet, District 11, Ho Chi Minh City',
-      rating: 4.3,
-      distance: '0.5 km',
-      isOpen: true,
-      phone: '028-5678-9012',
-      latitude: 10.7678,
-      longitude: 106.6668,
-    },
-  ];
+  const handleZoomIn = () => {
+    if (mapRef.current && mapRegion) {
+      mapRef.current.animateToRegion({
+        ...mapRegion,
+        latitudeDelta: mapRegion.latitudeDelta * 0.5,
+        longitudeDelta: mapRegion.longitudeDelta * 0.5,
+      }, 300);
+    }
+  };
 
-  const filteredStores = stores.filter(store => {
-    if (activeFilter === 'all') return true;
-    if (activeFilter === 'nearby') return parseFloat(store.distance) <= 1.0;
-    if (activeFilter === 'top-rated') return store.rating >= 4.5;
-    if (activeFilter === 'closest') return parseFloat(store.distance) <= 0.8;
-    return true;
-  });
+  const handleZoomOut = () => {
+    if (mapRef.current && mapRegion) {
+      mapRef.current.animateToRegion({
+        ...mapRegion,
+        latitudeDelta: mapRegion.latitudeDelta * 2,
+        longitudeDelta: mapRegion.longitudeDelta * 2,
+      }, 300);
+    }
+  };
 
-  const renderStoreCard = (store: Store) => (
-    <View key={store.id} style={styles.storeCard}>
-      <View style={styles.storeHeader}>
-                <View style={styles.storeIcon}>
-          <Ionicons name="storefront" size={20} color="#FFFFFF" />
-                </View>
-        <View style={styles.storeInfo}>
-                  <Text style={styles.storeName}>{store.name}</Text>
-          <Text style={styles.storeAddress}>{store.address}</Text>
-          <View style={styles.storeDetails}>
-            <View style={styles.ratingContainer}>
-              <Text style={styles.ratingText}>⭐ {store.rating}</Text>
-                        </View>
-            <Text style={styles.distance}>{store.distance}</Text>
-            <View style={[styles.statusBadge, { backgroundColor: store.isOpen ? '#10B981' : '#EF4444' }]}>
-              <Text style={styles.statusText}>
-                {store.isOpen ? t('stores').open : t('stores').closed}
-              </Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-                
-              <View style={styles.storeActions}>
-        <TouchableOpacity style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>{t('stores').getDirections}</Text>
-                </TouchableOpacity>
-        
-        <View style={styles.secondaryButtons}>
-          <TouchableOpacity style={styles.secondaryButton}>
-            <Ionicons name="call" size={16} color="#0F4D3A" />
-                  </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryButton}>
-            <Ionicons name="eye" size={16} color="#0F4D3A" />
-                </TouchableOpacity>
-                </View>
-              </View>
+  const handleGetCurrentLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Location Permission', 'Please grant location permission');
+        return;
+      }
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      const userLoc = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+      setUserLocation(userLoc);
+      const newRegion = {
+        latitude: userLoc.latitude,
+        longitude: userLoc.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      };
+      setMapRegion(newRegion);
+      if (mapRef.current) {
+        mapRef.current.animateToRegion(newRegion, 500);
+      }
+    } catch (error) {
+      console.error('Error getting location:', error);
+    }
+  };
+
+  const handleDirections = (store: Business) => {
+    const [longitude, latitude] = store.location.coordinates;
+    let url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+    if (userLocation) {
+      url += `&origin=${userLocation.latitude},${userLocation.longitude}`;
+    }
+    Linking.openURL(url).catch(() => {
+      Alert.alert("Error", "Unable to open Google Maps");
+    });
+  };
+
+  // Filter businesses based on filter criteria
+  const filteredStores = React.useMemo(() => {
+    if (businesses.length === 0) {
+      return [];
+    }
+    
+    // If no user location, return all businesses
+    if (!userLocation) {
+      return businesses;
+    }
+    
+    // Calculate distance for all stores
+    let stores = businesses.map(store => {
+      const [longitude, latitude] = store.location.coordinates;
+      const distance = calculateDistance(
+        userLocation.latitude,
+        userLocation.longitude,
+        latitude,
+        longitude
+      );
+      return { ...store, distance };
+    });
+    
+    // Filter criteria
+    if (activeFilter === 'all') {
+      // Sort by distance for all stores (closest first)
+      return stores.sort((a, b) => (a.distance || 0) - (b.distance || 0));
+    }
+    
+    if (activeFilter === 'nearby') {
+      // Within 5km, sorted by distance
+      return stores
+        .filter(store => (store.distance || 0) <= 5)
+        .sort((a, b) => (a.distance || 0) - (b.distance || 0));
+    }
+    
+    if (activeFilter === 'top-rated') {
+      // We don't have rating data from API, so return all sorted by distance
+      return stores.sort((a, b) => (a.distance || 0) - (b.distance || 0));
+    }
+    
+    if (activeFilter === 'closest') {
+      // Sort by distance and return closest ones
+      return stores
+        .sort((a, b) => (a.distance || 0) - (b.distance || 0))
+        .slice(0, 10); // Top 10 closest
+    }
+    
+    return stores;
+  }, [businesses, activeFilter, userLocation]);
+
+  const renderStoreCard = (store: Business & { distance?: number }) => {
+    const [longitude, latitude] = store.location.coordinates;
+    const currentHour = new Date().getHours();
+    const openHour = parseInt(store.openTime.split(':')[0]);
+    const closeHour = parseInt(store.closeTime.split(':')[0]);
+    const isOpen = currentHour >= openHour && currentHour < closeHour;
+    
+    // Get distance from store object (calculated in filteredStores)
+    // If distance is not available, calculate it
+    const distance = store.distance !== undefined 
+      ? store.distance 
+      : (userLocation 
+          ? calculateDistance(userLocation.latitude, userLocation.longitude, latitude, longitude)
+          : null);
+    
+    return (
+      <View key={store._id} style={styles.storeCard}>
+        {/* Logo - Left Side */}
+        <View style={styles.storeLogoContainer}>
+          {store.businessLogoUrl ? (
+            <Image 
+              source={{ uri: store.businessLogoUrl }} 
+              style={styles.storeLogoImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.storeLogoFallback}>
+              <Ionicons name="storefront" size={32} color="#0F4D3A" />
+            </View>
+          )}
         </View>
-  );
+        
+        {/* Information - Middle */}
+        <View style={styles.storeInfoContainer}>
+          <Text style={styles.storeName} numberOfLines={1}>
+            {store.businessName}
+          </Text>
+          <Text style={styles.storeAddress} numberOfLines={2}>
+            {store.businessAddress}
+          </Text>
+          
+          {/* Status & Distance Row */}
+          <View style={styles.storeStatusRow}>
+            {distance !== null && (
+              <Text style={styles.distanceText}>
+                {distance < 1 ? `${Math.round(distance * 1000)} m` : `${distance.toFixed(1)} km`}
+              </Text>
+            )}
+            <View style={[styles.statusBadge, { backgroundColor: isOpen ? '#10B981' : '#EF4444' }]}>
+              <Text style={styles.statusText}>
+                {isOpen ? 'Open' : 'Closed'}
+              </Text>
+            </View>
+          </View>
+        </View>
+        
+        {/* Action Buttons - Right Side */}
+        <View style={styles.storeActionsContainer}>
+          <TouchableOpacity 
+            style={styles.directionsButton}
+            onPress={() => handleDirections(store)}
+          >
+            <Ionicons name="navigate" size={18} color="#FFFFFF" />
+            <Text style={styles.directionsButtonText}>Directions</Text>
+          </TouchableOpacity>
+          
+          <View style={styles.secondaryButtonsRow}>
+            <TouchableOpacity 
+              style={[styles.secondaryIconButton, { marginLeft: 0 }]}
+              onPress={() => {
+                if (store.businessPhone) {
+                  Linking.openURL(`tel:${store.businessPhone}`);
+                }
+              }}
+            >
+              <Ionicons name="call-outline" size={20} color="#6B7280" />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.secondaryIconButton}
+              onPress={() => {
+                // Navigate to store details
+                console.log('View store details:', store._id);
+              }}
+            >
+              <Ionicons name="eye-outline" size={20} color="#6B7280" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  };
 
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={styles.heroHeaderArea}>
-          <View style={styles.topBar}>
-            <Text style={styles.brandTitle}>BACK2USE</Text>
+        <SafeAreaView style={styles.headerSafeArea}>
+          <StatusBar barStyle="light-content" backgroundColor="#0F4D3A" />
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Stores</Text>
+            <View style={styles.headerProfile}>
+              <Text style={styles.headerProfileText}>U</Text>
             </View>
-          <View style={styles.greetingRow}>
-            <View>
-              <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-              <Text style={styles.greetingName}>Loading...</Text>
-                </View>
-                  </View>
-                </View>
-              </View>
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.heroHeaderArea}>
-        <View style={styles.topBar}>
-          <Text style={styles.brandTitle}>BACK2USE</Text>
-              </View>
-
-        <View style={styles.greetingRow}>
-          <View>
-            <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-            <Text style={styles.greetingName}>{(user as any)?.fullName || user?.name || "User"}</Text>
-                    </View>
-          <View style={styles.avatarLg}>
-            <Text style={styles.avatarLgText}>{((user as any)?.fullName || user?.name || "U").charAt(0).toUpperCase()}</Text>
-                    </View>
-                </View>
-              </View>
-
-      <ScrollView style={styles.scrollContent}>
-        {/* Section Title */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Stores</Text>
-              </View>
-
-        {/* Search & Map Section */}
-        <View style={styles.searchSection}>
-          {/* Location Dropdown */}
-          <View style={styles.locationContainer}>
-            <Ionicons name="location" size={16} color="#6B7280" />
-            <Text style={styles.locationText}>District 11, Vietnam</Text>
-            <Ionicons name="chevron-down" size={16} color="#6B7280" />
-          </View>
-
-          {/* Search Bar */}
-          <View style={styles.searchBar}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder={t('stores').searchPlaceholder}
-              value={searchText}
-              onChangeText={setSearchText}
-              placeholderTextColor="#9CA3AF"
-            />
-          <TouchableOpacity style={styles.filterButton}>
-              <Ionicons name="filter" size={20} color="#6B7280" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Map View */}
-        <View style={styles.mapContainer}>
-          <MapView
-            style={styles.map}
-              initialRegion={{
-                latitude: 10.7769,
-                longitude: 106.7009,
-                latitudeDelta: 0.05,
-                longitudeDelta: 0.05,
-              }}
-            showsUserLocation={true}
-            showsMyLocationButton={true}
-            >
-              {filteredStores.map((store) => (
-              <Marker
-                key={store.id}
-                coordinate={{
-                  latitude: store.latitude,
-                  longitude: store.longitude,
-                }}
-                title={store.name}
-                description={store.address}
-                >
-                  <View style={styles.markerContainer}>
-                    <View style={[styles.markerIcon, { backgroundColor: store.isOpen ? '#10B981' : '#EF4444' }]}>
-                      <Ionicons name="storefront" size={16} color="#FFFFFF" />
-                    </View>
-                </View>
-              </Marker>
-            ))}
-          </MapView>
+      {/* Unified Header */}
+      <SafeAreaView style={styles.headerSafeArea}>
+        <StatusBar barStyle="light-content" backgroundColor="#0F4D3A" />
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Stores</Text>
+          <TouchableOpacity 
+            style={styles.headerProfile}
+            onPress={() => router.push('/(protected)/customer/my-profile')}
+          >
+            <Text style={styles.headerProfileText}>
+              {(user?.name || user?.fullName || 'U').charAt(0).toUpperCase()}
+            </Text>
+          </TouchableOpacity>
         </View>
+      </SafeAreaView>
+
+      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Map View */}
+        <View style={styles.mapSection}>
+
+          <View style={styles.mapContainer}>
+            {businessesLoading ? (
+              <View style={styles.mapLoadingContainer}>
+                <Text style={styles.mapLoadingText}>Loading map...</Text>
+              </View>
+            ) : (
+              <>
+                <MapView
+                  ref={mapRef}
+                  style={styles.map}
+                  initialRegion={mapRegion || {
+                    latitude: 10.7769,
+                    longitude: 106.7009,
+                    latitudeDelta: 0.05,
+                    longitudeDelta: 0.05,
+                  }}
+                  region={mapRegion || undefined}
+                  onRegionChangeComplete={setMapRegion}
+                  showsUserLocation={true}
+                  showsMyLocationButton={false}
+                  showsCompass={true}
+                  showsScale={true}
+                >
+                  {/* User location marker */}
+                  {userLocation && (
+                    <Marker
+                      coordinate={userLocation}
+                      title="Your Location"
+                      description="This is your current location"
+                      pinColor="#3B82F6"
+                    />
+                  )}
+                  
+                  {/* Business markers */}
+                  {filteredStores.map((store) => {
+                    // API returns [longitude, latitude] so we need to reverse
+                    const [longitude, latitude] = store.location.coordinates;
+                    const isOpen = new Date().getHours() >= parseInt(store.openTime.split(':')[0]) && 
+                                   new Date().getHours() < parseInt(store.closeTime.split(':')[0]);
+                    
+                    return (
+                      <Marker
+                        key={store._id}
+                        coordinate={{
+                          latitude,
+                          longitude,
+                        }}
+                        title={store.businessName}
+                        description={store.businessAddress}
+                      >
+                        <View style={styles.markerContainer}>
+                          {store.businessLogoUrl ? (
+                            <View style={styles.markerLogoContainer}>
+                              <Image 
+                                source={{ uri: store.businessLogoUrl }} 
+                                style={styles.markerLogo}
+                                resizeMode="cover"
+                              />
+                              <View style={[styles.markerStatusDot, { backgroundColor: isOpen ? '#10B981' : '#EF4444' }]} />
+                            </View>
+                          ) : (
+                            <View style={[styles.markerIcon, { backgroundColor: isOpen ? '#10B981' : '#EF4444' }]}>
+                              <Ionicons name="storefront" size={16} color="#FFFFFF" />
+                            </View>
+                          )}
+                        </View>
+                      </Marker>
+                    );
+                  })}
+                </MapView>
+                
+                {/* Map Controls */}
+                <View style={styles.mapControls}>
+                  {/* Zoom Controls */}
+                  <View style={styles.zoomControls}>
+                    <TouchableOpacity 
+                      style={styles.zoomButton}
+                      onPress={handleZoomIn}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="add" size={20} color="#0F4D3A" />
+                    </TouchableOpacity>
+                    <View style={styles.zoomDivider} />
+                    <TouchableOpacity 
+                      style={styles.zoomButton}
+                      onPress={handleZoomOut}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="remove" size={20} color="#0F4D3A" />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  {/* Location Button */}
+                  <View style={{ marginTop: 12 }}>
+                    <TouchableOpacity 
+                      style={styles.locationButton}
+                      onPress={handleGetCurrentLocation}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="locate" size={18} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </>
+            )}
           </View>
-          
+        </View>
+
         {/* Store List Section */}
         <View style={styles.storeListSection}>
-          <Text style={styles.nearbyStoresTitle}>{t('stores').nearbyStores}</Text>
+          <Text style={styles.sectionTitle}>Nearby Stores</Text>
           
           {/* Filter Tabs */}
           <View style={styles.filterTabs}>
@@ -278,15 +536,15 @@ export default function Stores() {
               onPress={() => setActiveFilter('all')}
             >
               <Text style={[styles.filterTabText, activeFilter === 'all' && styles.activeFilterTabText]}>
-                {t('stores').all}
-                </Text>
+                All
+              </Text>
             </TouchableOpacity>
-              <TouchableOpacity 
+            <TouchableOpacity 
               style={[styles.filterTab, activeFilter === 'nearby' && styles.activeFilterTab]}
               onPress={() => setActiveFilter('nearby')}
             >
               <Text style={[styles.filterTabText, activeFilter === 'nearby' && styles.activeFilterTabText]}>
-                {t('stores').nearby}
+                Nearby
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -294,7 +552,7 @@ export default function Stores() {
               onPress={() => setActiveFilter('top-rated')}
             >
               <Text style={[styles.filterTabText, activeFilter === 'top-rated' && styles.activeFilterTabText]}>
-                {t('stores').topRated}
+                Top Rated
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -302,17 +560,23 @@ export default function Stores() {
               onPress={() => setActiveFilter('closest')}
             >
               <Text style={[styles.filterTabText, activeFilter === 'closest' && styles.activeFilterTabText]}>
-                {t('stores').closest}
+                Closest
               </Text>
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
+          </View>
 
           {/* Store Cards */}
           <View style={styles.storeList}>
-            {filteredStores.map(renderStoreCard)}
-      </View>
+            {filteredStores.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>No stores found</Text>
               </View>
-            </ScrollView>
+            ) : (
+              filteredStores.map(renderStoreCard)
+            )}
+          </View>
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -320,133 +584,146 @@ export default function Stores() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#FFFFFF',
   },
-  heroHeaderArea: {
-    backgroundColor: '#00704A',
-    paddingHorizontal: 16,
-    paddingTop: 40,
-    paddingBottom: 32,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+  // Header Styles
+  headerSafeArea: {
+    backgroundColor: '#0F4D3A',
   },
-  topBar: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    marginBottom: 4,
-  },
-  brandTitle: { 
-    color: '#fff', 
-    fontWeight: '800', 
-    letterSpacing: 2, 
-    fontSize: 14,
-  },
-  greetingRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#0F4D3A',
   },
-  greetingSub: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  greetingName: {
-    color: '#fff',
-    fontWeight: '800',
+  headerTitle: {
     fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
-  avatarLg: {
-    height: 56,
-    width: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  headerProfile: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
   },
-  avatarLgText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
+  headerProfileText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#0F4D3A',
   },
+  // Scroll Content
   scrollContent: {
     flex: 1,
-    padding: 20,
   },
-  sectionHeader: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1F2937',
-  },
-  searchSection: {
-    marginBottom: 24,
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  locationText: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 16,
-    color: '#1F2937',
-    fontWeight: '500',
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: '#1F2937',
-  },
-  filterButton: {
-    marginLeft: 12,
-    padding: 4,
+  // Map Section
+  mapSection: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
   },
   mapContainer: {
-    height: 200,
+    height: 250,
     borderRadius: 12,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 2,
+    elevation: 3,
+    position: 'relative',
+    backgroundColor: '#F3F4F6',
   },
   map: {
     flex: 1,
   },
+  mapLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  mapLoadingText: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  // Map Controls
+  mapControls: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+  },
+  zoomControls: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  zoomButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  zoomDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  locationButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0F4D3A',
+    borderRadius: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  // Map Markers
   markerContainer: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  markerLogoContainer: {
+    position: 'relative',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  markerLogo: {
+    width: '100%',
+    height: '100%',
+  },
+  markerStatusDot: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   markerIcon: {
     width: 32,
@@ -460,143 +737,163 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
+  // Store List Section
   storeListSection: {
-    marginTop: 8,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
   },
-  nearbyStoresTitle: {
+  sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#1F2937',
     marginBottom: 16,
   },
+  // Filter Tabs
   filterTabs: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F3F4F6',
     borderRadius: 12,
     padding: 4,
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
   filterTab: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 8,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   activeFilterTab: {
     backgroundColor: '#0F4D3A',
   },
   filterTabText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 13,
+    fontWeight: '600',
     color: '#6B7280',
   },
   activeFilterTabText: {
     color: '#FFFFFF',
   },
+  // Store List
   storeList: {
-    gap: 16,
+    marginTop: 4,
   },
-  storeCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  storeHeader: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  storeIcon: {
-    width: 48,
-    height: 48,
-    backgroundColor: '#0F4D3A',
-    borderRadius: 8,
+  emptyState: {
+    paddingVertical: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
   },
-  storeInfo: {
+  emptyStateText: {
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  // Store Card
+  storeCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  // Store Logo (Left)
+  storeLogoContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginRight: 12,
+    backgroundColor: '#F3F4F6',
+  },
+  storeLogoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  storeLogoFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  // Store Info (Middle)
+  storeInfoContainer: {
     flex: 1,
+    justifyContent: 'space-between',
+    paddingRight: 8,
   },
   storeName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#1F2937',
     marginBottom: 4,
   },
   storeAddress: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#6B7280',
+    lineHeight: 18,
     marginBottom: 8,
   },
-  storeDetails: {
+  storeStatusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    marginTop: 4,
   },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  ratingText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  distance: {
-    fontSize: 14,
+  distanceText: {
+    fontSize: 13,
     color: '#6B7280',
     fontWeight: '500',
+    marginRight: 8,
   },
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 6,
   },
   statusText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: '#FFFFFF',
   },
-  storeActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  // Store Actions (Right)
+  storeActionsContainer: {
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
   },
-  primaryButton: {
-    flex: 1,
-    backgroundColor: '#0F4D3A',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  secondaryButtons: {
+  directionsButton: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    backgroundColor: '#0F4D3A',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+    minWidth: 100,
+    justifyContent: 'center',
   },
-  secondaryButton: {
-    width: 40,
-    height: 40,
+  directionsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  secondaryButtonsRow: {
+    flexDirection: 'row',
+  },
+  secondaryIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
     backgroundColor: '#F3F4F6',
-    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 8,
   },
 });

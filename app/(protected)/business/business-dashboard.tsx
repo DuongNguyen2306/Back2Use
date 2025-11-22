@@ -1,24 +1,87 @@
 "use client"
 
 import { Ionicons } from "@expo/vector-icons"
-import { useState } from "react"
-import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { router } from "expo-router"
+import { useEffect, useState } from "react"
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import BusinessHeader from "../../../components/BusinessHeader"
+import BusinessWelcomeModal from "../../../components/BusinessWelcomeModal"
 import { useAuth } from "../../../context/AuthProvider"
-import { mockPackagingItems, mockStores, mockTransactions } from "../../../lib/mock-data"
+import { businessesApi } from "../../../src/services/api/businessService"
+import { BusinessProfile } from "../../../src/types/business.types"
+import { mockPackagingItems, mockStores, mockTransactions } from "../../../src/utils/mockData"
+import AsyncStorage from "@react-native-async-storage/async-storage"
+
+const STORAGE_KEYS = {
+  BUSINESS_WELCOME_SHOWN: 'BUSINESS_WELCOME_SHOWN',
+};
 
 export default function BusinessDashboard() {
   const { state: authState, actions: authActions } = useAuth()
   const [activeTab, setActiveTab] = useState("overview")
   const [showReturnModal, setShowReturnModal] = useState(false)
+  const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false)
 
-  // Mock user data for business dashboard
-  const user = { name: "Chủ doanh nghiệp", email: "business@example.com" }
-  const isStaffUser = user?.email?.includes("staff") || user?.name?.toLowerCase().includes("staff")
+  // Load business profile data
+  useEffect(() => {
+    const loadBusinessData = async () => {
+      try {
+        console.log('🔍 Loading business profile...');
+        const profileResponse = await businessesApi.getProfileWithAutoRefresh();
+        console.log('✅ Business profile loaded:', profileResponse);
+        
+        if (profileResponse.data && profileResponse.data.business) {
+          setBusinessProfile(profileResponse.data.business);
+        }
+      } catch (error) {
+        console.error('❌ Error loading business profile:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadBusinessData()
+  }, [])
+
+  // Check for welcome modal on mount (only show once)
+  useEffect(() => {
+    const checkWelcomeModal = async () => {
+      try {
+        // Check if welcome modal was set by useBusinessRoleCheck
+        // If not, check if this is first time user enters business dashboard
+        const welcomeShown = await AsyncStorage.getItem(STORAGE_KEYS.BUSINESS_WELCOME_SHOWN);
+        
+        // Only show if not shown before and user is business
+        if (!welcomeShown && authState.role === 'business') {
+          // Small delay for smooth UI transition
+          const timeout = setTimeout(() => {
+            setShowWelcomeModal(true);
+            AsyncStorage.setItem(STORAGE_KEYS.BUSINESS_WELCOME_SHOWN, 'true');
+          }, 800);
+          
+          return () => clearTimeout(timeout);
+        }
+      } catch (error) {
+        console.error('Error checking welcome modal:', error);
+      }
+    };
+
+    // Only check after loading is complete
+    if (!loading && authState.role === 'business') {
+      checkWelcomeModal();
+    }
+  }, [authState.role, loading])
 
   // Mock data for current store (assuming staff belongs to first store)
   const currentStore = mockStores[0]
   const storeItems = mockPackagingItems.filter((item) => item.storeId === currentStore.id)
   const storeTransactions = mockTransactions.filter((t) => t.storeId === currentStore.id)
+  
+  // Get business name from profile
+  const businessName = businessProfile?.businessName || "Business Owner";
+  const businessOwnerName = businessProfile?.userId?.username || businessProfile?.userId?.email || "Business Owner";
 
   // Calculate stats with updated logic
   const totalItems = storeItems.length
@@ -41,28 +104,35 @@ export default function BusinessDashboard() {
     setActiveTab("transactions")
   }
 
-  const handleLogout = () => {
-    authActions.signOut()
+  const handleLogout = async () => {
+    try {
+      await authActions.logout();
+      router.replace('/welcome');
+    } catch (error) {
+      console.error('Error during logout:', error);
+      router.replace('/welcome');
+    }
   }
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
+      {/* Welcome Modal */}
+      <BusinessWelcomeModal
+        visible={showWelcomeModal}
+        onClose={() => setShowWelcomeModal(false)}
+      />
       
-      <View style={styles.heroHeaderArea}>
-        <View style={styles.topBar}>
-          <Text style={styles.brandTitle}>BACK2USE</Text>
-        </View>
-        <View style={styles.greetingRow}>
-          <View>
-            <Text style={styles.greetingName}>Dashboard</Text>
-            <Text style={styles.greetingNice}>Business Management</Text>
-          </View>
-          <View style={styles.avatarLg}>
-            <Text style={styles.avatarLgText}>{user?.name?.charAt(0) || "B"}</Text>
-          </View>
-        </View>
-      </View>
+      <BusinessHeader
+        title={loading ? "Loading..." : `Hello, ${businessOwnerName}!`}
+        subtitle={businessProfile ? `${businessName} - Business Management` : "Business Management"}
+        user={businessProfile ? {
+          id: businessProfile.userId._id,
+          name: businessProfile.userId.username,
+          email: businessProfile.userId.email,
+          avatar: businessProfile.businessLogoUrl,
+        } : null}
+        backgroundColor="#00704A"
+      />
 
       {/* Main Content */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -324,7 +394,7 @@ export default function BusinessDashboard() {
           </View>
         )}
 
-        {!isStaffUser && activeTab === "assistant" && (
+        {activeTab === "assistant" && (
           <View style={styles.tabContent}>
             <Text style={styles.tabTitle}>Business AI Assistant</Text>
             <Text style={styles.tabDescription}>
@@ -341,55 +411,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F8F9FA",
-  },
-  heroHeaderArea: { 
-    backgroundColor: '#00704A', 
-    paddingHorizontal: 16, 
-    paddingTop: 40, 
-    paddingBottom: 16 
-  },
-  topBar: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    marginBottom: 4 
-  },
-  brandTitle: { 
-    color: '#fff', 
-    fontWeight: '800', 
-    letterSpacing: 2, 
-    fontSize: 14 
-  },
-  greetingRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between' 
-  },
-  greetingName: { 
-    color: '#fff', 
-    fontWeight: '800', 
-    fontSize: 20 
-  },
-  greetingNice: { 
-    color: 'rgba(255,255,255,0.8)', 
-    fontSize: 12, 
-    marginTop: 2 
-  },
-  avatarLg: { 
-    height: 64, 
-    width: 64, 
-    borderRadius: 32, 
-    backgroundColor: 'rgba(255,255,255,0.2)', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    borderWidth: 2, 
-    borderColor: 'rgba(255,255,255,0.3)', 
-    overflow: 'hidden' 
-  },
-  avatarLgText: { 
-    color: '#fff', 
-    fontWeight: '800', 
-    fontSize: 18 
   },
   content: {
     flex: 1,

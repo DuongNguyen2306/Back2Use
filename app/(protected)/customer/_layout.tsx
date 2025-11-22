@@ -1,13 +1,116 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack, usePathname } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Image, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useI18n } from "../../../hooks/useI18n";
+import { useBusinessRoleCheck } from "../../../src/hooks/useBusinessRoleCheck";
+import { useAuth } from "../../../context/AuthProvider";
+import { getCurrentUserProfileWithAutoRefresh } from "../../../src/services/api/userService";
 
 export default function CustomerLayout() {
   const pathname = usePathname();
   const { t } = useI18n();
+  const { state: authState, actions: authActions } = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
+  const hasCheckedRoleRef = useRef(false);
+  const isRedirectingRef = useRef(false);
+  
+  // Auto-check business role status (this will auto-redirect if role changes to business)
+  useBusinessRoleCheck();
+  
+  // Force check role from backend when component mounts or when on customer screen
+  useEffect(() => {
+    const checkRoleFromBackend = async () => {
+      // Prevent multiple checks
+      if (hasCheckedRoleRef.current || isRedirectingRef.current) {
+        return;
+      }
+      
+      // Only check if authenticated and hydrated
+      if (!authState.isAuthenticated || !authState.isHydrated) {
+        return;
+      }
+      
+      // Only check if on customer screen
+      if (!pathname?.includes('/customer')) {
+        return;
+      }
+      
+      try {
+        hasCheckedRoleRef.current = true;
+        console.log('🔍 CustomerLayout: Checking role from backend...');
+        console.log('🔍 Current role in state:', authState.role);
+        
+        // Get role from backend
+        const userProfile = await getCurrentUserProfileWithAutoRefresh();
+        const backendRole = userProfile?.role;
+        
+        console.log('🔍 Role from backend:', backendRole);
+        
+        if (backendRole === 'business') {
+          console.log('✅ CustomerLayout: Backend role is business, updating auth state...');
+          
+          // Update role in auth state immediately
+          await authActions.updateRole('business');
+          
+          // Redirect immediately without waiting
+          if (!isRedirectingRef.current) {
+            isRedirectingRef.current = true;
+            console.log('🚀 CustomerLayout: Redirecting to business dashboard...');
+            // Use replace to prevent going back
+            router.replace('/(protected)/business');
+          }
+        } else {
+          // Reset check flag if role is not business so it can check again later
+          hasCheckedRoleRef.current = false;
+        }
+      } catch (error: any) {
+        // Don't log network errors as errors - they're expected when offline
+        const isNetworkError = error?.message?.toLowerCase().includes('network') ||
+                               error?.message?.toLowerCase().includes('timeout') ||
+                               error?.message?.toLowerCase().includes('connection');
+        
+        if (isNetworkError) {
+          console.warn('⚠️ CustomerLayout: Network error checking role from backend (will retry later):', error.message);
+        } else {
+          console.error('❌ CustomerLayout: Error checking role from backend:', error);
+        }
+        // Reset check flag on error so it can retry
+        hasCheckedRoleRef.current = false;
+      }
+    };
+    
+    // Check role immediately and also after a short delay
+    checkRoleFromBackend();
+    
+    // Also check after a delay to catch any updates
+    const timeout = setTimeout(() => {
+      if (!isRedirectingRef.current) {
+        checkRoleFromBackend();
+      }
+    }, 1000);
+    
+    return () => clearTimeout(timeout);
+  }, [authState.isAuthenticated, authState.isHydrated, pathname, authActions]);
+  
+  // Immediately redirect if user is business but on customer screen
+  // This is a safety check - AuthGate should handle this, but we double-check here
+  useEffect(() => {
+    // Only redirect if we're on a customer screen and user is business
+    const isOnCustomerScreen = pathname?.includes('/customer');
+    
+    if (authState.isHydrated && authState.isAuthenticated && authState.role === 'business' && isOnCustomerScreen) {
+      if (!isRedirectingRef.current) {
+        isRedirectingRef.current = true;
+        console.log('🚀 CustomerLayout: User is business but on customer screen, redirecting to business dashboard');
+        // Redirect immediately
+        router.replace('/(protected)/business');
+      }
+    } else if (!isOnCustomerScreen || authState.role !== 'business') {
+      // Reset redirect flag if we're not on customer screen or role changed
+      isRedirectingRef.current = false;
+    }
+  }, [authState.isHydrated, authState.isAuthenticated, authState.role, pathname]);
   
   const navigationItems = [
     { id: "dashboard", label: t('navigation').home, icon: "home-button", route: "/(protected)/customer" },

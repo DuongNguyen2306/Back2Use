@@ -13,13 +13,14 @@ import {
 } from "react-native";
 import { useAuth } from "../../../context/AuthProvider";
 import { useTokenRefresh } from "../../../hooks/useTokenRefresh";
-import { getCurrentUserProfileWithAutoRefresh } from "../../../lib/api";
+import { businessesApi } from "../../../src/services/api/businessService";
+import { BusinessProfile } from "../../../src/types/business.types";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function BusinessOverview() {
   const { state } = useAuth();
-  const [userData, setUserData] = useState<any>(null);
+  const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useTokenRefresh();
@@ -32,21 +33,34 @@ export default function BusinessOverview() {
   };
 
   useEffect(() => {
-    const loadUserData = async () => {
-      if (state.accessToken) {
+    const loadBusinessData = async () => {
+      // Wait for auth state to be hydrated before making API calls
+      if (!state.isHydrated) {
+        return;
+      }
+      
+      if (state.accessToken && state.isAuthenticated && state.role === 'business') {
         try {
-          const user = await getCurrentUserProfileWithAutoRefresh();
-          setUserData(user);
-        } catch {
-          // ignore
+          console.log('🔍 Loading business profile for overview screen...');
+          const profileResponse = await businessesApi.getProfileWithAutoRefresh();
+          console.log('✅ Business profile loaded:', profileResponse);
+          
+          if (profileResponse.data && profileResponse.data.business) {
+            setBusinessProfile(profileResponse.data.business);
+          }
+        } catch (error) {
+          console.error('❌ Error loading business profile:', error);
+          // ignore - will show default values
         }
       }
       setLoading(false);
     };
-    loadUserData();
-  }, [state.accessToken]);
+    loadBusinessData();
+  }, [state.accessToken, state.isAuthenticated, state.isHydrated, state.role]);
 
-  const user = userData;
+  // Get user info from business profile
+  const businessOwnerName = businessProfile?.userId?.username || businessProfile?.userId?.email || "Business Owner";
+  const businessLogo = businessProfile?.businessLogoUrl;
 
   if (loading) {
     return (
@@ -85,14 +99,14 @@ export default function BusinessOverview() {
           <View style={styles.greetingRow}>
             <View>
               <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-              <Text style={styles.greetingName}>{(user as any)?.fullName || user?.name || "Business Owner"}</Text>
+              <Text style={styles.greetingName}>{businessOwnerName}</Text>
               <Text style={styles.greetingNice}>Business Overview</Text>
           </View>
             <View style={styles.avatarLg}>
-              {user?.avatar ? (
-                <Image source={{ uri: user.avatar }} style={styles.avatarLgImage} />
+              {businessLogo ? (
+                <Image source={{ uri: businessLogo }} style={styles.avatarLgImage} />
               ) : (
-                <Text style={styles.avatarLgText}>{(user?.name || "B").charAt(0)}</Text>
+                <Text style={styles.avatarLgText}>{businessOwnerName.charAt(0).toUpperCase()}</Text>
               )}
           </View>
         </View>

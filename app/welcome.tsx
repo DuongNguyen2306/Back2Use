@@ -1,25 +1,27 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Location from 'expo-location';
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Dimensions,
-  Image,
-  ImageBackground,
-  Linking,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Dimensions,
+    Image,
+    ImageBackground,
+    Linking,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
-import MapView, { Marker } from "react-native-maps";
+import MapView, { Marker, Region } from "react-native-maps";
 import { useAuth } from "../context/AuthProvider";
-import { mockStores } from "../lib/mock-data";
+import { businessesApi } from "@/services/api/businessService";
+import { Business, NearbyBusiness } from "@/types/business.types";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -37,7 +39,10 @@ export default function WelcomeScreen() {
     latitude: number;
     longitude: number;
   } | null>(null);
+  const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [loading, setLoading] = useState(false);
   const fadeAnim = useState(new Animated.Value(0))[0];
+  const mapRef = React.useRef<MapView | null>(null);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -62,31 +67,162 @@ export default function WelcomeScreen() {
     }
   }, [state.isHydrated, state.isAuthenticated, state.role]);
 
-  const filteredStores = mockStores.filter(
+  const filteredStores = businesses.filter(
     (store) =>
-      store.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      store.address.toLowerCase().includes(searchQuery.toLowerCase())
+      store.businessName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      store.businessAddress.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const getCurrentLocation = () => {
-    // Simulate getting current location (in real app, use expo-location)
-    const mockLocation = {
-      latitude: 10.8412 + (Math.random() - 0.5) * 0.005,
-      longitude: 106.8099 + (Math.random() - 0.5) * 0.005,
-    };
-    console.log('Setting user location:', mockLocation);
-    setUserLocation(mockLocation);
-    setMapRegion({
-      ...mockLocation,
-      latitudeDelta: 0.01,
-      longitudeDelta: 0.01,
-    });
+  const fetchAllBusinesses = async () => {
+    try {
+      setLoading(true);
+      console.log('🔄 Welcome page: Fetching all businesses...');
+      
+      const response = await businessesApi.getAll({
+        page: 1,
+        limit: 100, // Get more businesses to display on map
+      });
+      
+      console.log('📡 Welcome page API Response:', response);
+      
+      if (response.statusCode === 200 && response.data) {
+        // Filter only active businesses
+        const activeBusinesses = response.data.filter(business => business.isActive && !business.isBlocked);
+        setBusinesses(activeBusinesses);
+        console.log('✅ Welcome page: Fetched businesses:', activeBusinesses.length);
+      } else {
+        console.log('❌ Welcome page: Invalid response:', response);
+        setBusinesses([]);
+      }
+    } catch (error) {
+      console.error('❌ Welcome page: Error fetching businesses:', error);
+      // Fallback to empty array on error
+      setBusinesses([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDirections = (store: any) => {
-    console.log('Opening directions to:', store.name, store.latitude, store.longitude);
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${store.latitude},${store.longitude}`;
-    console.log('Google Maps URL:', url);
+  const getCurrentLocation = async () => {
+    try {
+      console.log('📍 Getting user location...');
+      
+      // Request permission to access location
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('❌ Location permission denied');
+        Alert.alert(
+          'Location Access',
+          'The app needs location access to find stores near you. Please grant permission in settings.',
+          [{ text: 'OK' }]
+        );
+        // Use fallback location
+        useFallbackLocation();
+        return;
+      }
+
+      // Get current position
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+        timeInterval: 10000,
+        distanceInterval: 10,
+      });
+
+      const userLocation = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+      
+      console.log('📍 User location obtained:', userLocation);
+      setUserLocation(userLocation);
+      setMapRegion({
+        ...userLocation,
+        latitudeDelta: 0.05, // Wider view to show more businesses
+        longitudeDelta: 0.05,
+      });
+      
+      // Fetch all businesses
+      console.log('🔍 Fetching all businesses...');
+      await fetchAllBusinesses();
+    } catch (error) {
+      console.error('❌ Error getting location:', error);
+      Alert.alert(
+        'Location Error',
+        'Unable to get current location. Using default location.',
+        [{ text: 'OK' }]
+      );
+      useFallbackLocation();
+    }
+  };
+
+  const useFallbackLocation = async () => {
+    // Fallback to default location in Ho Chi Minh City
+    const fallbackLocation = {
+      latitude: 10.7769, // District 1, HCMC
+      longitude: 106.7009,
+    };
+    console.log('📍 Using fallback location:', fallbackLocation);
+    setUserLocation(fallbackLocation);
+    setMapRegion({
+      ...fallbackLocation,
+      latitudeDelta: 0.05, // Wider view to show more businesses
+      longitudeDelta: 0.05,
+    });
+    await fetchAllBusinesses();
+  };
+
+  // Calculate distance between two coordinates (Haversine formula)
+  // Returns distance in kilometers
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    // Convert degrees to radians
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    
+    // Haversine formula
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c;
+    
+    return distance;
+  };
+
+  const handleZoomIn = () => {
+    if (mapRef.current) {
+      mapRef.current.animateToRegion({
+        ...mapRegion,
+        latitudeDelta: mapRegion.latitudeDelta * 0.5,
+        longitudeDelta: mapRegion.longitudeDelta * 0.5,
+      }, 300);
+    }
+  };
+
+  const handleZoomOut = () => {
+    if (mapRef.current) {
+      mapRef.current.animateToRegion({
+        ...mapRegion,
+        latitudeDelta: mapRegion.latitudeDelta * 2,
+        longitudeDelta: mapRegion.longitudeDelta * 2,
+      }, 300);
+    }
+  };
+
+  const handleDirections = (store: Business) => {
+    // API trả về [longitude, latitude] nên cần đảo ngược
+    const [longitude, latitude] = store.location.coordinates;
+    console.log('🗺️ Opening directions to:', store.businessName, 'at', latitude, longitude);
+    
+    // Build URL with origin if user location is available
+    let url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+    if (userLocation) {
+      url += `&origin=${userLocation.latitude},${userLocation.longitude}`;
+    }
+    
+    console.log('🔗 Google Maps URL:', url);
     Linking.openURL(url).catch(() => {
       Alert.alert("Lỗi", "Không thể mở Google Maps");
     });
@@ -128,8 +264,8 @@ export default function WelcomeScreen() {
 
           {/* Title and subtitle */}
           <Animated.View style={[styles.heroContent, { opacity: fadeAnim }]}>
-            <Text style={styles.heroTitle}>Tìm cửa hàng gần bạn</Text>
-            <Text style={styles.heroSubtitle}>Khám phá mạng lưới cửa hàng Back2Use</Text>
+            <Text style={styles.heroTitle}>Find Stores Near You</Text>
+            <Text style={styles.heroSubtitle}>Discover the Back2Use store network</Text>
           </Animated.View>
 
           {/* Login button at bottom right */}
@@ -138,7 +274,7 @@ export default function WelcomeScreen() {
               style={styles.loginButtonBottom}
               onPress={() => router.push("/auth/login")}
             >
-              <Text style={styles.loginButtonBottomText}>Đăng nhập</Text>
+              <Text style={styles.loginButtonBottomText}>Login</Text>
             </TouchableOpacity>
           </Animated.View>
         </SafeAreaView>
@@ -151,7 +287,7 @@ export default function WelcomeScreen() {
             <Ionicons name="search" size={20} color="#6B7280" style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Tìm kiếm cửa hàng, địa chỉ..."
+              placeholder="Search stores, addresses..."
               placeholderTextColor="#6B7280"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -166,8 +302,8 @@ export default function WelcomeScreen() {
               <View style={[styles.statIcon, { backgroundColor: '#0F4D3A20' }]}>
                 <Ionicons name="storefront" size={20} color="#0F4D3A" />
               </View>
-              <Text style={styles.statNumber}>{mockStores.length}</Text>
-              <Text style={styles.statLabel}>Cửa hàng</Text>
+              <Text style={styles.statNumber}>{businesses.length}</Text>
+              <Text style={styles.statLabel}>Stores</Text>
             </View>
 
             <View style={styles.statCard}>
@@ -175,7 +311,7 @@ export default function WelcomeScreen() {
                 <Ionicons name="refresh" size={20} color="#10B981" />
               </View>
               <Text style={styles.statNumber}>2.8K</Text>
-              <Text style={styles.statLabel}>Kg giảm</Text>
+              <Text style={styles.statLabel}>Kg Reduced</Text>
             </View>
 
             <View style={styles.statCard}>
@@ -183,7 +319,7 @@ export default function WelcomeScreen() {
                 <Ionicons name="trending-up" size={20} color="#3B82F6" />
               </View>
               <Text style={styles.statNumber}>3.2K</Text>
-              <Text style={styles.statLabel}>Người dùng</Text>
+              <Text style={styles.statLabel}>Users</Text>
             </View>
           </View>
         </View>
@@ -192,16 +328,22 @@ export default function WelcomeScreen() {
         <View style={styles.mapSection}>
           <View style={styles.mapContainer}>
             <MapView
+              ref={mapRef}
               style={styles.map}
               initialRegion={mapRegion}
+              region={mapRegion}
               onRegionChangeComplete={setMapRegion}
+              showsUserLocation={true}
+              showsMyLocationButton={false}
+              showsCompass={true}
+              showsScale={true}
             >
               {/* User Location Marker */}
               {userLocation && (
                 <Marker
                   coordinate={userLocation}
-                  title="Vị trí của bạn"
-                  description="Đây là vị trí hiện tại của bạn"
+                  title="Your Location"
+                  description="This is your current location"
                   pinColor="#3B82F6"
                 />
               )}
@@ -213,71 +355,146 @@ export default function WelcomeScreen() {
                   longitude: 106.8099,
                 }}
                 title="FPT University HCM"
-                description="Trường Đại học FPT TP.HCM"
+                description="FPT University Ho Chi Minh City"
                 pinColor="#0F4D3A"
               />
               
               {/* Store Markers */}
-              {filteredStores.slice(0, 6).map((store) => (
-                <Marker
-                  key={store.id}
-                  coordinate={{
-                    latitude: store.latitude,
-                    longitude: store.longitude,
-                  }}
-                  title={store.name}
-                  description={store.address}
-                  onPress={() => setSelectedStore(selectedStore === store.id ? null : store.id)}
-                />
-              ))}
+              {filteredStores.map((store) => {
+                // API trả về [longitude, latitude] nên cần đảo ngược
+                const [longitude, latitude] = store.location.coordinates;
+                const isOpen = new Date().getHours() >= parseInt(store.openTime.split(':')[0]) && 
+                               new Date().getHours() < parseInt(store.closeTime.split(':')[0]);
+                console.log('📍 Welcome page business marker:', {
+                  name: store.businessName,
+                  coordinates: [longitude, latitude],
+                  hasLogo: !!store.businessLogoUrl
+                });
+                
+                return (
+                  <Marker
+                    key={store._id}
+                    coordinate={{
+                      latitude,
+                      longitude,
+                    }}
+                    title={store.businessName}
+                    description={store.businessAddress}
+                    onPress={() => setSelectedStore(selectedStore === store._id ? null : store._id)}
+                  >
+                    {store.businessLogoUrl ? (
+                      <View style={styles.markerLogoContainer}>
+                        <Image 
+                          source={{ uri: store.businessLogoUrl }} 
+                          style={styles.markerLogo}
+                          resizeMode="cover"
+                        />
+                        <View style={[styles.markerStatusDot, { backgroundColor: isOpen ? '#10B981' : '#EF4444' }]} />
+                      </View>
+                    ) : null}
+                  </Marker>
+                );
+              })}
             </MapView>
-            <TouchableOpacity 
-              style={styles.locationButton}
-              onPress={getCurrentLocation}
-            >
-              <Ionicons name="navigate" size={16} color="#FFFFFF" />
-              <Text style={styles.locationButtonText}>Vị trí của tôi</Text>
-            </TouchableOpacity>
+            
+            {/* Map Controls */}
+            <View style={styles.mapControls}>
+              {/* Zoom Controls */}
+              <View style={styles.zoomControls}>
+                <TouchableOpacity 
+                  style={styles.zoomButton}
+                  onPress={handleZoomIn}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="add" size={20} color="#0F4D3A" />
+                </TouchableOpacity>
+                <View style={styles.zoomDivider} />
+                <TouchableOpacity 
+                  style={styles.zoomButton}
+                  onPress={handleZoomOut}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="remove" size={20} color="#0F4D3A" />
+                </TouchableOpacity>
+              </View>
+              
+              {/* Location Button */}
+              <TouchableOpacity 
+                style={styles.locationButton}
+                onPress={getCurrentLocation}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="locate" size={18} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
         {/* Stores List */}
         <View style={styles.storesSection}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Cửa hàng gần bạn</Text>
-            <Text style={styles.sectionSubtitle}>{filteredStores.length} cửa hàng</Text>
+            <Text style={styles.sectionTitle}>Stores Near You</Text>
+            <Text style={styles.sectionSubtitle}>{filteredStores.length} stores</Text>
           </View>
 
           <View style={styles.storesList}>
             {filteredStores.slice(0, 5).map((store) => (
               <TouchableOpacity
-                key={store.id}
+                key={store._id}
                 style={[
                   styles.storeCard,
-                  selectedStore === store.id && styles.selectedStoreCard,
+                  selectedStore === store._id && styles.selectedStoreCard,
                 ]}
-                onPress={() => setSelectedStore(selectedStore === store.id ? null : store.id)}
+                onPress={() => setSelectedStore(selectedStore === store._id ? null : store._id)}
               >
                 <View style={styles.storeIcon}>
-                  <Ionicons name="storefront" size={24} color="#0F4D3A" />
+                  {store.businessLogoUrl ? (
+                    <Image 
+                      source={{ uri: store.businessLogoUrl }} 
+                      style={styles.storeLogo}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.storeIconFallback}>
+                      <Ionicons name="storefront" size={24} color="#FFFFFF" />
+                    </View>
+                  )}
                 </View>
                 <View style={styles.storeInfo}>
                   <View style={styles.storeHeader}>
-                    <Text style={styles.storeName}>{store.name}</Text>
-                    <View style={styles.distanceBadge}>
-                      <Text style={styles.distanceText}>
-                        {(Math.random() * 3 + 0.5).toFixed(1)} km
-                      </Text>
-                    </View>
+                    <Text style={styles.storeName}>{store.businessName}</Text>
+                    {userLocation && (() => {
+                      const [longitude, latitude] = store.location.coordinates;
+                      // Đảm bảo đúng thứ tự: lat1, lon1, lat2, lon2
+                      const distance = calculateDistance(
+                        userLocation.latitude,
+                        userLocation.longitude,
+                        latitude,
+                        longitude
+                      );
+                      console.log(`📏 Distance from user to ${store.businessName}:`, {
+                        userLocation: { lat: userLocation.latitude, lon: userLocation.longitude },
+                        storeLocation: { lat: latitude, lon: longitude },
+                        distance: `${distance.toFixed(2)} km`
+                      });
+                      return (
+                        <View style={styles.distanceBadge}>
+                          <Ionicons name="location" size={12} color="#0F4D3A" style={{ marginRight: 4 }} />
+                          <Text style={styles.distanceText}>
+                            {distance < 1 ? `${Math.round(distance * 1000)} m` : `${distance.toFixed(1)} km`}
+                          </Text>
+                        </View>
+                      );
+                    })()}
                   </View>
                   <View style={styles.storeAddress}>
                     <Ionicons name="location" size={14} color="#6B7280" />
-                    <Text style={styles.addressText}>{store.address}</Text>
+                    <Text style={styles.addressText}>{store.businessAddress}</Text>
                   </View>
                   <View style={styles.storeFooter}>
                     <View style={styles.operatingHours}>
                       <Ionicons name="time" size={14} color="#6B7280" />
-                      <Text style={styles.hoursText}>{store.operatingHours}</Text>
+                      <Text style={styles.hoursText}>{store.openTime} - {store.closeTime}</Text>
                     </View>
                     <View style={styles.rating}>
                       <Ionicons name="star" size={14} color="#FBBF24" />
@@ -293,7 +510,7 @@ export default function WelcomeScreen() {
                     onPress={() => handleDirections(store)}
                   >
                     <Ionicons name="navigate" size={16} color="#0F4D3A" />
-                    <Text style={styles.directionsText}>Chỉ đường</Text>
+                    <Text style={styles.directionsText}>Directions</Text>
                   </TouchableOpacity>
                   <Ionicons name="chevron-forward" size={20} color="#6B7280" />
                 </View>
@@ -303,7 +520,7 @@ export default function WelcomeScreen() {
             {filteredStores.length > 5 && (
               <TouchableOpacity style={styles.moreStoresButton}>
                 <Text style={styles.moreStoresText}>
-                  Xem thêm {filteredStores.length - 5} cửa hàng
+                  View {filteredStores.length - 5} more stores
                 </Text>
                 <Ionicons name="arrow-forward" size={16} color="#0F4D3A" />
               </TouchableOpacity>
@@ -315,56 +532,56 @@ export default function WelcomeScreen() {
         <View style={styles.offerSection}>
           <View style={styles.offerCard}>
             <View style={styles.offerBadge}>
-              <Text style={styles.offerBadgeText}>Ưu đãi đặc biệt</Text>
+              <Text style={styles.offerBadgeText}>Special Offer</Text>
             </View>
-            <Text style={styles.offerTitle}>Nhận 50 điểm</Text>
+            <Text style={styles.offerTitle}>Get 50 Points</Text>
             <Text style={styles.offerSubtitle}>
-              Khi đăng ký tài khoản mới ngay hôm nay
+              When you register a new account today
             </Text>
             <TouchableOpacity
               style={styles.offerButton}
               onPress={() => router.push("/auth/register")}
             >
               <Ionicons name="gift" size={16} color="#7C3AED" />
-              <Text style={styles.offerButtonText}>Nhận ngay</Text>
+              <Text style={styles.offerButtonText}>Get Now</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Features */}
         <View style={styles.featuresSection}>
-          <Text style={styles.featuresTitle}>Tại sao chọn Back2Use?</Text>
+          <Text style={styles.featuresTitle}>Why Choose Back2Use?</Text>
           <View style={styles.featuresGrid}>
             <View style={styles.featureCard}>
               <View style={[styles.featureIcon, { backgroundColor: '#0F4D3A20' }]}>
                 <Ionicons name="qr-code" size={24} color="#0F4D3A" />
               </View>
-              <Text style={styles.featureTitle}>Quét & Mượn</Text>
-              <Text style={styles.featureSubtitle}>Dễ dàng chỉ với QR code</Text>
+              <Text style={styles.featureTitle}>Scan & Borrow</Text>
+              <Text style={styles.featureSubtitle}>Easy with just QR code</Text>
             </View>
 
             <View style={styles.featureCard}>
               <View style={[styles.featureIcon, { backgroundColor: '#10B98120' }]}>
                 <Ionicons name="gift" size={24} color="#10B981" />
               </View>
-              <Text style={styles.featureTitle}>Tích điểm</Text>
-              <Text style={styles.featureSubtitle}>Nhận thưởng mỗi lần trả</Text>
+              <Text style={styles.featureTitle}>Earn Points</Text>
+              <Text style={styles.featureSubtitle}>Get rewards every return</Text>
             </View>
 
             <View style={styles.featureCard}>
               <View style={[styles.featureIcon, { backgroundColor: '#3B82F620' }]}>
                 <Ionicons name="leaf" size={24} color="#3B82F6" />
               </View>
-              <Text style={styles.featureTitle}>Xanh hơn</Text>
-              <Text style={styles.featureSubtitle}>Giảm rác thải nhựa</Text>
+              <Text style={styles.featureTitle}>Greener</Text>
+              <Text style={styles.featureSubtitle}>Reduce plastic waste</Text>
             </View>
 
             <View style={styles.featureCard}>
               <View style={[styles.featureIcon, { backgroundColor: '#0F4D3A20' }]}>
                 <Ionicons name="checkmark-circle" size={24} color="#0F4D3A" />
               </View>
-              <Text style={styles.featureTitle}>An toàn</Text>
-              <Text style={styles.featureSubtitle}>Đảm bảo vệ sinh</Text>
+              <Text style={styles.featureTitle}>Safe</Text>
+              <Text style={styles.featureSubtitle}>Guaranteed hygiene</Text>
             </View>
           </View>
         </View>
@@ -544,22 +761,45 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
   },
-  locationButton: {
+  mapControls: {
     position: 'absolute',
-    bottom: 16,
     right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(15,77,58,0.9)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    top: 16,
+    gap: 12,
   },
-  locationButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 8,
+  zoomControls: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    overflow: 'hidden',
+  },
+  zoomButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  zoomDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  locationButton: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0F4D3A',
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   storesSection: {
     paddingHorizontal: 20,
@@ -601,13 +841,27 @@ const styles = StyleSheet.create({
     borderColor: '#0F4D3A',
   },
   storeIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: '#0F4D3A20',
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  storeLogo: {
+    width: '100%',
+    height: '100%',
+  },
+  storeIconFallback: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#0F4D3A',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   storeInfo: {
     flex: 1,
@@ -705,6 +959,38 @@ const styles = StyleSheet.create({
     color: '#0F4D3A',
     fontWeight: '600',
     marginRight: 8,
+  },
+  markerContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markerLogoContainer: {
+    position: 'relative',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  markerLogo: {
+    width: '100%',
+    height: '100%',
+  },
+  markerStatusDot: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   offerSection: {
     paddingHorizontal: 20,

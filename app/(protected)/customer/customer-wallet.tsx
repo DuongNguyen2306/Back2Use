@@ -5,7 +5,6 @@ import {
   Alert,
   AppState,
   Dimensions,
-  Image,
   Modal,
   ScrollView,
   StyleSheet,
@@ -15,9 +14,12 @@ import {
   View
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import CustomerHeader from '../../../components/CustomerHeader';
 import { useAuth } from '../../../context/AuthProvider';
 import { useI18n } from '../../../hooks/useI18n';
-import { getCurrentUserProfileWithAutoRefresh, User, walletApi, WalletDetails, WalletTransaction, walletTransactionsApi } from '../../../lib/api';
+import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService';
+import { User } from '@/types/auth.types';
+import { walletApi, walletTransactionsApi, type WalletDetails, type WalletTransaction } from '@/services/api/walletService';
 
 const { width } = Dimensions.get('window');
 
@@ -112,8 +114,18 @@ export default function CustomerWallet() {
             balance: typeof userData.wallet.balance === 'number' ? userData.wallet.balance : 0,
           });
         }
-        } catch (error) {
-        console.error('Error loading user data:', error);
+        } catch (error: any) {
+        // Don't log network errors as errors - they're expected when offline
+        const isNetworkError = error?.message?.toLowerCase().includes('network') ||
+                               error?.message?.toLowerCase().includes('timeout') ||
+                               error?.message?.toLowerCase().includes('connection');
+        
+        if (!isNetworkError) {
+          console.error('Error loading user data:', error);
+        } else {
+          console.warn('⚠️ Network error loading user data (will retry later):', error.message);
+        }
+        // Continue with default/empty wallet data
       } finally {
         setLoading(false);
       }
@@ -224,12 +236,12 @@ export default function CustomerWallet() {
           return;
         }
         
-        // Save payment amount before opening WebView
+        
         const paymentAmountValue = Number(amount) || 0;
         setSavedPaymentAmount(paymentAmountValue);
         console.log('🔍 Saving payment amount:', paymentAmountValue);
         
-        // Close old modal and show WebView
+        
         setShowAddFunds(false);
         setPaymentUrl(paymentUrl);
         setShowPaymentWebView(true);
@@ -512,17 +524,10 @@ export default function CustomerWallet() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={styles.heroHeaderArea}>
-          <View style={styles.topBar}>
-            <Text style={styles.brandTitle}>BACK2USE</Text>
-          </View>
-          <View style={styles.greetingRow}>
-            <View>
-              <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-              <Text style={styles.greetingName}>Loading...</Text>
-            </View>
-          </View>
-        </View>
+        <CustomerHeader
+          title="Loading..."
+          user={user}
+        />
         
         {/* Credit Card Section - Show even when loading */}
         <View style={styles.cardSection}>
@@ -578,26 +583,11 @@ export default function CustomerWallet() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.heroHeaderArea}>
-          <View style={styles.topBar}>
-            <Text style={styles.brandTitle}>BACK2USE</Text>
-          </View>
-        
-          <View style={styles.greetingRow}>
-            <View>
-              <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-            <Text style={styles.greetingName}>{(user as any)?.fullName || user?.name || "User"}</Text>
-          </View>
-            <View style={styles.avatarLg}>
-              {user?.avatar && user.avatar.trim() !== "" ? (
-                <Image source={{ uri: user.avatar }} style={styles.avatarLgImage} />
-              ) : (
-                <Text style={styles.avatarLgText}>{((user as any)?.fullName || user?.name || "U").charAt(0).toUpperCase()}</Text>
-              )}
-          </View>
-        </View>
-      </View>
+      <CustomerHeader
+        title={getTimeBasedGreeting() + ", " + ((user as any)?.fullName || user?.name || "User")}
+        subtitle="Wallet & Transactions"
+        user={user}
+      />
 
       {/* Credit Card Section - Outside ScrollView */}
       <View style={styles.cardSection}>
@@ -1205,26 +1195,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f8fafc",
   },
-  heroHeaderArea: { 
-    backgroundColor: '#00704A', 
-    paddingHorizontal: 16, 
-    paddingTop: 40, 
-    paddingBottom: 32, 
-    borderBottomLeftRadius: 24, 
-    borderBottomRightRadius: 24 
-  },
-  topBar: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    marginBottom: 4 
-  },
-  brandTitle: { 
-    color: '#fff', 
-    fontWeight: '800', 
-    letterSpacing: 2, 
-    fontSize: 14 
-  },
   iconGhost: { 
     height: 36, 
     width: 36, 
@@ -1232,41 +1202,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center', 
     borderRadius: 18, 
     backgroundColor: 'rgba(255,255,255,0.15)' 
-  },
-  greetingRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between' 
-  },
-  greetingSub: { 
-    color: 'rgba(255,255,255,0.9)', 
-    fontSize: 14, 
-    marginBottom: 4 
-  },
-  greetingName: { 
-    color: '#fff', 
-    fontWeight: '800', 
-    fontSize: 24 
-  },
-  avatarLg: { 
-    height: 56, 
-    width: 56, 
-    borderRadius: 28, 
-    backgroundColor: 'rgba(255,255,255,0.2)', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    borderWidth: 2, 
-    borderColor: 'rgba(255,255,255,0.3)' 
-  },
-  avatarLgText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  avatarLgImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
   },
   notificationButton: {
     width: 40,

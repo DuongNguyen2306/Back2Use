@@ -30,9 +30,14 @@ export default function MorePage() {
         {
           text: "Đăng xuất",
           style: "destructive",
-          onPress: () => {
-            actions.signOut();
-            router.replace("/auth");
+          onPress: async () => {
+            try {
+              await actions.logout();
+              router.replace("/welcome");
+            } catch (error) {
+              console.error('Error during logout:', error);
+              router.replace("/welcome");
+            }
           }
         }
       ]
@@ -107,19 +112,6 @@ export default function MorePage() {
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
 
-          {/* Purchase Packages Button */}
-          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/(protected)/business/purchase')}>
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIcon, { backgroundColor: '#22C55E' }]}>
-                <Ionicons name="card" size={20} color="#FFFFFF" />
-              </View>
-              <View style={styles.menuTextContainer}>
-                <Text style={styles.menuTitle}>Mua gói (VNPay)</Text>
-                <Text style={styles.menuSubtitle}>Tạo đơn và mở payUrl</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
 
           {/* Change Password Button */}
           <TouchableOpacity style={styles.menuItem} onPress={handleChangePassword}>

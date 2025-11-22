@@ -29,7 +29,7 @@ export default function MaterialsScreen() {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
   
   // Form states
   const [formData, setFormData] = useState({
@@ -79,33 +79,84 @@ export default function MaterialsScreen() {
     loadMaterials();
   }, []);
 
+  // Reload materials when activeTab changes
+  useEffect(() => {
+    if (activeTab) {
+      loadMaterials();
+    }
+  }, [activeTab]);
+
   const loadMaterials = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Loading materials...');
+      
       // Try to load from API first, fallback to mock data
       try {
-        const response = await materialsApi.listMy({ page: 1, limit: 50 });
-        if (response.data?.docs || response.data?.items) {
-          const materialsList = response.data.docs || response.data.items || [];
-          setMaterials(materialsList.map((item: any) => ({
+        let response;
+        
+        if (activeTab === 'approved') {
+          console.log('📡 Calling materials API listApproved...');
+          response = await materialsApi.listApproved(1, 50);
+        } else {
+          console.log('📡 Calling materials API listMy...');
+          response = await materialsApi.listMy({ 
+            status: activeTab === 'all' ? undefined : activeTab as any,
+            page: 1, 
+            limit: 50 
+          });
+        }
+        
+        console.log('📊 API response:', response);
+        
+        // Check if response has data array directly
+        if (response.data && Array.isArray(response.data)) {
+          console.log('📋 Materials list from API (direct array):', response.data);
+          
+          const mappedMaterials = response.data.map((item: any) => ({
             id: item._id || item.id,
             materialName: item.materialName,
             maximumReuse: item.maximumReuse || 0,
             description: item.description || '',
             status: item.status || 'pending',
             createdAt: item.createdAt || new Date().toISOString().split('T')[0],
-          })));
+          }));
+          
+          console.log('🔄 Mapped materials:', mappedMaterials);
+          setMaterials(mappedMaterials);
+        } else if (response.data?.docs || response.data?.items) {
+          const materialsList = response.data.docs || response.data.items || [];
+          console.log('📋 Materials list from API (nested):', materialsList);
+          
+          const mappedMaterials = materialsList.map((item: any) => ({
+            id: item._id || item.id,
+            materialName: item.materialName,
+            maximumReuse: item.maximumReuse || 0,
+            description: item.description || '',
+            status: item.status || 'pending',
+            createdAt: item.createdAt || new Date().toISOString().split('T')[0],
+          }));
+          
+          console.log('🔄 Mapped materials:', mappedMaterials);
+          setMaterials(mappedMaterials);
         } else {
+          console.log('📝 No data from API, using mock data');
+          console.log('📊 Response structure:', response);
           // Fallback to mock data
           setMaterials(mockMaterials);
         }
       } catch (apiError) {
-        console.log('API not available, using mock data:', apiError);
+        console.log('❌ API not available, using mock data:', apiError);
+        console.log('❌ API Error details:', {
+          message: (apiError as any)?.message,
+          response: (apiError as any)?.response?.data,
+          status: (apiError as any)?.response?.status
+        });
         // Fallback to mock data
         setMaterials(mockMaterials);
       }
     } catch (error) {
-      console.error('Error loading materials:', error);
+      console.error('❌ Error loading materials:', error);
       Alert.alert('Error', 'Failed to load materials');
     } finally {
       setLoading(false);
@@ -113,6 +164,8 @@ export default function MaterialsScreen() {
   };
 
   const createMaterial = async () => {
+    console.log('🚀 Creating material with data:', formData);
+    
     if (!formData.materialName.trim() || !formData.maximumReuse.trim() || !formData.description.trim()) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -123,19 +176,28 @@ export default function MaterialsScreen() {
       
       // Try to create via API first
       try {
+        console.log('📡 Calling materials API create...');
         const response = await materialsApi.create({
           materialName: formData.materialName,
           maximumReuse: parseInt(formData.maximumReuse),
           description: formData.description,
         });
         
+        console.log('✅ API create response:', response);
+        
         // If API call successful, reload materials
+        console.log('🔄 Reloading materials after successful creation...');
         await loadMaterials();
         setShowCreateModal(false);
         setFormData({ materialName: '', maximumReuse: '', description: '' });
         Alert.alert('Success', 'Material created successfully');
       } catch (apiError) {
-        console.log('API not available, using mock creation:', apiError);
+        console.log('❌ API create failed, using mock creation:', apiError);
+        console.log('❌ API Error details:', {
+          message: (apiError as any)?.message,
+          response: (apiError as any)?.response?.data,
+          status: (apiError as any)?.response?.status
+        });
         
         // Fallback to mock creation
         const newMaterial: Material = {
@@ -147,13 +209,14 @@ export default function MaterialsScreen() {
           createdAt: new Date().toISOString().split('T')[0],
         };
         
+        console.log('📝 Adding mock material:', newMaterial);
         setMaterials(prev => [newMaterial, ...prev]);
         setShowCreateModal(false);
         setFormData({ materialName: '', maximumReuse: '', description: '' });
         Alert.alert('Success', 'Material created successfully (offline mode)');
       }
     } catch (error) {
-      console.error('Error creating material:', error);
+      console.error('❌ Error creating material:', error);
       Alert.alert('Error', 'Failed to create material');
     } finally {
       setSubmitting(false);
@@ -163,7 +226,7 @@ export default function MaterialsScreen() {
   const filteredMaterials = materials.filter(material => {
     const matchesSearch = material.materialName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          material.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || material.status === statusFilter;
+    const matchesStatus = activeTab === 'all' || material.status === activeTab;
     return matchesSearch && matchesStatus;
   });
 
@@ -207,7 +270,7 @@ export default function MaterialsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Search and Filter */}
+      {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchInputContainer}>
           <Ionicons name="search" size={20} color="#6B7280" style={styles.searchIcon} />
@@ -216,30 +279,42 @@ export default function MaterialsScreen() {
             placeholder="Search materials..."
             value={searchQuery}
             onChangeText={setSearchQuery}
+            placeholderTextColor="#9CA3AF"
           />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+              <Ionicons name="close-circle" size={20} color="#6B7280" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
-      {/* Filter Tabs */}
-      <View style={styles.filterContainer}>
-        {['all', 'pending', 'approved', 'rejected'].map((filter) => (
+      {/* Tab Navigation Bar */}
+      <View style={styles.tabContainer}>
+        {[
+          { key: 'all', label: 'All' },
+          { key: 'pending', label: 'Pending' },
+          { key: 'approved', label: 'Approved' },
+          { key: 'rejected', label: 'Rejected' }
+        ].map((tab) => (
           <TouchableOpacity
-            key={filter}
+            key={tab.key}
             style={[
-              styles.filterButton,
-              statusFilter === filter && styles.activeFilterButton
+              styles.tabButton,
+              activeTab === tab.key && styles.activeTabButton
             ]}
-            onPress={() => setStatusFilter(filter as any)}
+            onPress={() => setActiveTab(tab.key as any)}
           >
             <Text style={[
-              styles.filterButtonText,
-              statusFilter === filter && styles.activeFilterButtonText
+              styles.tabButtonText,
+              activeTab === tab.key && styles.activeTabButtonText
             ]}>
-              {filter.charAt(0).toUpperCase() + filter.slice(1)}
+              {tab.label}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
+
 
       {/* Materials List */}
       <ScrollView style={styles.materialsList} showsVerticalScrollIndicator={false}>
@@ -254,23 +329,24 @@ export default function MaterialsScreen() {
         ) : (
           filteredMaterials.map((material) => (
             <View key={material.id} style={styles.materialCard}>
-              <View style={styles.materialHeader}>
-                <Text style={styles.materialName}>{material.materialName}</Text>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(material.status) }]}>
-                  <Text style={styles.statusText}>{getStatusText(material.status)}</Text>
+              <View style={styles.materialContent}>
+                {/* Thumbnail */}
+                <View style={styles.materialThumbnail}>
+                  <Ionicons name="cube" size={32} color="#0F4D3A" />
                 </View>
-              </View>
-              
-              <Text style={styles.materialDescription}>{material.description}</Text>
-              
-              <View style={styles.materialDetails}>
-                <View style={styles.detailItem}>
-                  <Ionicons name="refresh" size={16} color="#6B7280" />
-                  <Text style={styles.detailText}>Max Reuse: {material.maximumReuse}</Text>
+                
+                {/* Material Info */}
+                <View style={styles.materialInfo}>
+                  <Text style={styles.materialName}>{material.materialName}</Text>
+                  <Text style={styles.materialSubtitle}>Max: {material.maximumReuse} uses</Text>
+                  <Text style={styles.materialDescription}>{material.description}</Text>
                 </View>
-                <View style={styles.detailItem}>
-                  <Ionicons name="calendar" size={16} color="#6B7280" />
-                  <Text style={styles.detailText}>{material.createdAt}</Text>
+                
+                {/* Status Badge */}
+                <View style={styles.statusContainer}>
+                  <View style={[styles.statusBadge, { backgroundColor: getStatusColor(material.status) }]}>
+                    <Text style={styles.statusText}>{getStatusText(material.status)}</Text>
+                  </View>
                 </View>
               </View>
             </View>
@@ -359,7 +435,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#059669',
+    backgroundColor: '#0F4D3A',
   },
   headerTitle: {
     fontSize: 20,
@@ -396,31 +472,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#374151',
   },
-  filterContainer: {
+  tabContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    marginBottom: 16,
-  },
-  filterButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
     backgroundColor: 'white',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
-  activeFilterButton: {
-    backgroundColor: '#059669',
-    borderColor: '#059669',
+  tabButton: {
+    flex: 1,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
   },
-  filterButtonText: {
+  activeTabButton: {
+    borderBottomColor: '#0F4D3A',
+    backgroundColor: '#F0FDF4',
+  },
+  tabButtonText: {
     fontSize: 14,
     fontWeight: '500',
     color: '#6B7280',
   },
-  activeFilterButtonText: {
-    color: 'white',
+  activeTabButtonText: {
+    color: '#0F4D3A',
+    fontWeight: '600',
   },
   materialsList: {
     flex: 1,
@@ -551,5 +628,31 @@ const styles = StyleSheet.create({
   textArea: {
     height: 100,
     textAlignVertical: 'top',
+  },
+  materialContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  materialThumbnail: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: '#F0FDF4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  materialInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  materialSubtitle: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  statusContainer: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
 });

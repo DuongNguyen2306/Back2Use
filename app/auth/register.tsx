@@ -17,7 +17,8 @@ import {
     View
 } from "react-native";
 import { useAuth } from "../../context/AuthProvider";
-import { authApi, RegisterRequest } from "../../lib/api";
+import { authApi } from "@/services/api/authService";
+import { RegisterRequest } from "@/types/auth.types";
 
 export default function RegisterScreen() {
   const [username, setUsername] = useState("");
@@ -32,15 +33,19 @@ export default function RegisterScreen() {
 
   const handleSignUp = async () => {
     if (!username || !email || !password || !confirmPassword) {
-      Alert.alert("Error", "Please fill in all fields");
+      Alert.alert("Lỗi", "Vui lòng điền đầy đủ tất cả các trường");
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert("Lỗi", "Mật khẩu phải có ít nhất 6 ký tự");
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert("Error", "Passwords do not match");
+      Alert.alert("Lỗi", "Mật khẩu xác nhận không khớp");
       return;
     }
     if (!agreedToTerms) {
-      Alert.alert("Error", "Please agree to the terms and conditions");
+      Alert.alert("Lỗi", "Vui lòng đồng ý với điều khoản và điều kiện");
       return;
     }
 
@@ -59,12 +64,13 @@ export default function RegisterScreen() {
       // Check if registration was successful
       const isSuccess = response.success || 
                        (response.message && response.message.toLowerCase().includes("successfully")) ||
-                       (response.message && response.message.toLowerCase().includes("registered"));
+                       (response.message && response.message.toLowerCase().includes("registered")) ||
+                       (response.statusCode && response.statusCode === 201);
       
       if (isSuccess) {
         Alert.alert(
-          "Success", 
-          "Account created successfully! Please check your email for verification code.",
+          "Đăng ký thành công", 
+          "Tài khoản của bạn đã được tạo thành công! Vui lòng kiểm tra email để lấy mã xác thực.",
           [
             {
               text: "OK",
@@ -76,11 +82,47 @@ export default function RegisterScreen() {
           ]
         );
       } else {
-        Alert.alert("Error", response.message || "Registration failed");
+        // Show error message from response
+        const errorMessage = response.message || "Đăng ký thất bại. Vui lòng thử lại.";
+        Alert.alert("Lỗi", errorMessage);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Registration error:", error);
-      Alert.alert("Error", "Registration failed. Please try again.");
+      
+      // Parse error message from backend
+      let errorMessage = "Đăng ký thất bại. Vui lòng thử lại.";
+      
+      if (error?.message) {
+        const errorMsg = error.message.toLowerCase();
+        
+        // Handle specific error cases
+        if (errorMsg.includes("email already exists") || errorMsg.includes("email đã tồn tại")) {
+          errorMessage = "Email này đã được sử dụng. Vui lòng sử dụng email khác hoặc đăng nhập.";
+        } else if (errorMsg.includes("username already exists") || errorMsg.includes("tên người dùng đã tồn tại")) {
+          errorMessage = "Tên người dùng này đã được sử dụng. Vui lòng chọn tên khác.";
+        } else if (errorMsg.includes("invalid email") || errorMsg.includes("email không hợp lệ")) {
+          errorMessage = "Email không hợp lệ. Vui lòng nhập đúng định dạng email.";
+        } else if (errorMsg.includes("password") && errorMsg.includes("weak")) {
+          errorMessage = "Mật khẩu quá yếu. Vui lòng sử dụng mật khẩu mạnh hơn (ít nhất 6 ký tự).";
+        } else if (errorMsg.includes("timeout")) {
+          errorMessage = "Kết nối quá chậm. Vui lòng kiểm tra mạng và thử lại.";
+        } else if (errorMsg.includes("network") || errorMsg.includes("connection")) {
+          errorMessage = "Lỗi mạng. Vui lòng kiểm tra kết nối internet và thử lại.";
+        } else {
+          // Use the error message from backend if available
+          errorMessage = error.message;
+        }
+      } else if (error?.response?.data?.message) {
+        // Check response.data.message from axios error
+        const backendMessage = error.response.data.message.toLowerCase();
+        if (backendMessage.includes("email already exists") || backendMessage.includes("email đã tồn tại")) {
+          errorMessage = "Email này đã được sử dụng. Vui lòng sử dụng email khác hoặc đăng nhập.";
+        } else {
+          errorMessage = error.response.data.message;
+        }
+      }
+      
+      Alert.alert("Lỗi", errorMessage);
     } finally {
       setIsLoading(false);
     }

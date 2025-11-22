@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { NotificationService, type Notification } from "../lib/notification-service";
-import { mockPackagingItems, mockTransactions } from "../lib/mock-data";
+import { NotificationService, type Notification } from "@/services/notifications/notificationService";
+import { mockPackagingItems, mockTransactions } from "@/utils/mockData";
 
 export function useNotifications(userId: string | undefined) {
   const [notifications, setNotifications] = useState<Notification[]>([]);

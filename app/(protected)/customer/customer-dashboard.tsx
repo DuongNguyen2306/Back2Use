@@ -8,19 +8,19 @@ import {
     Image,
     Platform,
     ScrollView,
-    StatusBar,
     StyleSheet,
     Text,
     TouchableOpacity,
     Vibration,
     View
 } from "react-native";
+import CustomerHeader from "../../../components/CustomerHeader";
 import { StandaloneAIChecker } from "../../../components/StandaloneAIChecker";
 import { useAuth } from "../../../context/AuthProvider";
 import { useI18n } from "../../../hooks/useI18n";
 import { useTokenRefresh } from "../../../hooks/useTokenRefresh";
-import { getCurrentUserProfileWithAutoRefresh } from "../../../lib/api";
-import { mockTransactions } from "../../../lib/mock-data";
+import { getCurrentUserProfileWithAutoRefresh } from "@/services/api/userService";
+import { mockTransactions } from "@/utils/mockData";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -51,8 +51,18 @@ export default function CustomerDashboard() {
         try {
           const user = await getCurrentUserProfileWithAutoRefresh();
           setUserData(user);
-        } catch {
-          // ignore
+        } catch (error: any) {
+          // Don't log network errors as errors - they're expected when offline
+          const isNetworkError = error?.message?.toLowerCase().includes('network') ||
+                                 error?.message?.toLowerCase().includes('timeout') ||
+                                 error?.message?.toLowerCase().includes('connection');
+          
+          if (!isNetworkError) {
+            console.error('Error loading user data:', error);
+          } else {
+            console.warn('⚠️ Network error loading user data (using default values):', error.message);
+          }
+          // Continue with default user data
         }
       }
     };
@@ -147,26 +157,11 @@ export default function CustomerDashboard() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
-
-      <View style={styles.heroHeaderArea}>
-          <View style={styles.topBar}>
-            <Text style={styles.brandTitle}>BACK2USE</Text>
-          </View>
-          <View style={styles.greetingRow}>
-            <View>
-              <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-              <Text style={styles.greetingName}>{(user as any)?.fullName || user?.name || "User"}</Text>
-              <Text style={styles.greetingNice}>Nice to meet you !</Text>
-          </View>
-            <View style={styles.avatarLg}>
-              {user?.avatar ? (
-                <Image source={{ uri: user.avatar }} style={styles.avatarLgImage} />
-              ) : (
-                <Text style={styles.avatarLgText}>{(user?.name || "U").charAt(0)}</Text>
-              )}
-          </View>
-        </View>
+      <CustomerHeader 
+        title={getTimeBasedGreeting() + ", " + ((user as any)?.fullName || user?.name || "User")} 
+        subtitle="Nice to meet you!" 
+        user={user} 
+      />
           <View style={styles.pointsCard}>
             <View style={{ position: "absolute", right: 16, top: 16, opacity: 0.08 }}>
               <Image source={require("../../../assets/images/logo2.png")} style={{ width: 120, height: 120 }} />
@@ -179,7 +174,6 @@ export default function CustomerDashboard() {
               <Text style={styles.pointsCta}>{t('dashboard').scanToBorrow}</Text>
             </TouchableOpacity>
         </View>
-      </View>
 
       <View style={styles.whiteBackground}>
         <View style={styles.contentWrapper}>
@@ -466,18 +460,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingBottom: 20,
   },
-  heroHeaderArea: { backgroundColor: '#00704A', paddingHorizontal: 16, paddingTop: 40, paddingBottom: 16 },
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  brandTitle: { color: '#fff', fontWeight: '800', letterSpacing: 2, fontSize: 14 },
-  iconGhost: { height: 36, width: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)' },
-  iconGhostDark: { height: 36, width: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18, backgroundColor: '#F3F4F6' },
-  greetingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  greetingSub: { color: 'rgba(255,255,255,0.9)', fontSize: 14, marginBottom: 4 },
-  greetingName: { color: '#fff', fontWeight: '800', fontSize: 24 },
-  greetingNice: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 2 },
-  avatarLg: { height: 64, width: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', overflow: 'hidden' },
-  avatarLgImage: { width: 60, height: 60, borderRadius: 30 },
-  avatarLgText: { color: '#fff', fontWeight: '800', fontSize: 18 },
   pointsCard: { backgroundColor: '#fff', borderRadius: 24, marginTop: 16, padding: 20, overflow: 'hidden' },
   rewardHeader: { color: '#00704A', fontWeight: '800', fontSize: 11, letterSpacing: 1.2 },
   rewardLevel: { color: 'rgba(0,112,74,0.7)', fontSize: 11, marginTop: 4, fontWeight: '600' },

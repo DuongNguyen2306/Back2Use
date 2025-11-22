@@ -1,0 +1,208 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
+import { API_BASE_URL, DEFAULT_HEADERS, REQUEST_TIMEOUT } from '../../constants/api';
+
+// ============================================================================
+// JWT UTILITIES
+// ============================================================================
+
+// Function to decode JWT token
+export const decodeJWT = (token: string) => {
+  try {
+    // JWT token has 3 parts separated by dots: header.payload.signature
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      throw new Error('Invalid JWT token format');
+    }
+    
+    // Decode the payload (second part)
+    const payload = parts[1];
+    
+    // Add padding if needed
+    const paddedPayload = payload + '='.repeat((4 - payload.length % 4) % 4);
+    
+    // Decode base64
+    const decodedPayload = atob(paddedPayload);
+    
+    // Parse JSON
+    const parsedPayload = JSON.parse(decodedPayload);
+    
+    return parsedPayload;
+  } catch (error) {
+    console.error('Error decoding JWT token:', error);
+    return null;
+  }
+};
+
+// Function to get role from JWT token
+export const getRoleFromToken = (token: string): string | null => {
+  const payload = decodeJWT(token);
+  return payload?.role || null;
+};
+
+// Function to get user ID from JWT token
+export const getUserIdFromToken = (token: string): string | null => {
+  const payload = decodeJWT(token);
+  return payload?._id || payload?.id || null;
+};
+
+// ============================================================================
+// AXIOS CONFIGURATION
+// ============================================================================
+
+// Tạo instance axios với cấu hình mặc định
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: REQUEST_TIMEOUT,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request interceptor để thêm token vào header
+apiClient.interceptors.request.use(
+  async (config) => {
+    try {
+      const token = await AsyncStorage.getItem('ACCESS_TOKEN');
+      console.log('🔑 Token from AsyncStorage:', token ? 'Present' : 'Missing');
+      console.log('🌐 Making request to:', config.url);
+      console.log('📝 Request method:', config.method?.toUpperCase());
+      
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+        console.log('✅ Token added to request headers');
+        console.log('🔐 Authorization header:', `Bearer ${token.substring(0, 20)}...`);
+      } else {
+        console.log('❌ No token found, request will be unauthorized');
+        console.log('⚠️ This request will likely fail with 401');
+      }
+    } catch (error) {
+      console.error('Error getting token from AsyncStorage:', error);
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor để xử lý lỗi chung
+apiClient.interceptors.response.use(
+  (response) => {
+    console.log('✅ API Response:', response.status, response.config.url);
+    return response;
+  },
+  async (error) => {
+    console.log('❌ API Error:', error.response?.status, error.config?.url);
+    console.log('Error details:', error.response?.data);
+    
+    // Do NOT auto-clear tokens here. Let the auth flow decide how to handle 401.
+    // This avoids race conditions where tokens are valid/just refreshed.
+    return Promise.reject(error);
+  }
+);
+
+// ============================================================================
+// GENERIC API CALL FUNCTION
+// ============================================================================
+
+async function apiCall<T>(
+  endpoint: string,
+  options: {
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+    data?: any;
+    headers?: Record<string, string>;
+    params?: Record<string, any>;
+  } = {}
+): Promise<T> {
+  console.log('🚀 API Call:', {
+    endpoint,
+    method: options.method || 'GET',
+    hasData: !!options.data,
+    hasHeaders: !!options.headers
+  });
+  
+  try {
+    const response = await apiClient({
+      url: endpoint,
+      method: options.method || 'GET',
+      data: options.data,
+      headers: {
+        ...DEFAULT_HEADERS,
+        ...options.headers,
+      },
+      params: options.params,
+      timeout: REQUEST_TIMEOUT,
+    });
+
+    return response.data;
+  } catch (error: any) {
+    console.error('API call failed:', error);
+    
+    if (error.response) {
+      const errorMessage = error.response.data?.message || `HTTP error! status: ${error.response.status}`;
+      throw new Error(errorMessage);
+    } else if (error.request) {
+      throw new Error('Network error. Please check your connection and try again.');
+    } else {
+      throw new Error(error.message || 'An unexpected error occurred.');
+    }
+  }
+}
+
+// ============================================================================
+// TEST FUNCTIONS
+// ============================================================================
+
+export const testApiConnection = async (): Promise<boolean> => {
+  try {
+    await apiClient.post('/auth/login', {
+      email: 'test@test.com',
+      password: 'test'
+    });
+    return true;
+  } catch (error: any) {
+    if (error.response?.status === 401) {
+      return true;
+    }
+    console.error('API connection test failed:', error);
+    return false;
+  }
+};
+
+export const testAuthEndpoints = async () => {
+  const results = {
+    login: false,
+    register: false,
+    forgotPassword: false,
+  };
+
+  try {
+    try {
+      await apiClient.post('/auth/login', {});
+    } catch (error: any) {
+      results.login = error.response?.status === 400;
+    }
+
+    try {
+      await apiClient.post('/auth/register', {});
+    } catch (error: any) {
+      results.register = error.response?.status === 400;
+    }
+
+    try {
+      await apiClient.post('/auth/forgot-password', {});
+    } catch (error: any) {
+      results.forgotPassword = error.response?.status === 400;
+    }
+
+  } catch (error) {
+    console.error('Auth endpoints test failed:', error);
+  }
+
+  return results;
+};
+
+export { API_BASE_URL, apiCall, apiClient };
+export default apiClient;
+

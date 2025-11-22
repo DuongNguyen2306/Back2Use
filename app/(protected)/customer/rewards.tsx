@@ -3,7 +3,6 @@ import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
     Dimensions,
-    Image,
     ScrollView,
     StyleSheet,
     Text,
@@ -11,9 +10,11 @@ import {
     View,
 } from 'react-native';
 // import { LinearGradient } from 'expo-linear-gradient';
+import CustomerHeader from '../../../components/CustomerHeader';
 import { useAuth } from '../../../context/AuthProvider';
 import { useI18n } from '../../../hooks/useI18n';
-import { getCurrentUserProfileWithAutoRefresh, User } from '../../../lib/api';
+import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService';
+import { User } from '@/types/auth.types';
 
 const { width } = Dimensions.get('window');
 
@@ -168,58 +169,23 @@ export default function Rewards() {
   };
 
   if (loading) {
-  return (
-    <View style={styles.container}>
-      <View style={styles.heroHeaderArea}>
-          <View style={styles.topBar}>
-            <Text style={styles.brandTitle}>BACK2USE</Text>
-          </View>
-          <View style={styles.greetingRow}>
-            <View>
-              <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-              <Text style={styles.greetingName}>Loading...</Text>
-            </View>
-          </View>
-          </View>
-        </View>
+    return (
+      <View style={styles.container}>
+        <CustomerHeader
+          title="Loading..."
+          user={user}
+        />
+      </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.heroHeaderArea}>
-        {/* Status Bar */}
-        <View style={styles.statusBar}>
-          <Text style={styles.timeText}>{getCurrentTime()}</Text>
-          <View style={styles.statusIcons}>
-            <View style={styles.statusIcon}>
-              <Ionicons name="arrow-up" size={12} color="#FFFFFF" />
-          </View>
-            <View style={styles.statusIcon}>
-              <Text style={styles.signalText}>A</Text>
-            </View>
-            </View>
-          </View>
-          
-          <View style={styles.topBar}>
-            <Text style={styles.brandTitle}>BACK2USE</Text>
-            </View>
-        
-          <View style={styles.greetingRow}>
-            <View>
-              <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-            <Text style={styles.greetingName}>{(user as any)?.fullName || user?.name || "User"}</Text>
-            </View>
-            <View style={styles.avatarLg}>
-              {user?.avatar && user.avatar.trim() !== "" ? (
-                <Image source={{ uri: user.avatar }} style={styles.avatarLgImage} />
-              ) : (
-                <Text style={styles.avatarLgText}>{((user as any)?.fullName || user?.name || "U").charAt(0).toUpperCase()}</Text>
-              )}
-          </View>
-        </View>
-      </View>
+      <CustomerHeader
+        title={getTimeBasedGreeting() + ", " + ((user as any)?.fullName || user?.name || "User")}
+        subtitle="Rewards & Vouchers"
+        user={user}
+      />
 
       <ScrollView style={styles.scrollContent}>
         {/* Section Title */}
@@ -320,90 +286,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
-  },
-  heroHeaderArea: {
-    backgroundColor: '#00704A',
-    paddingHorizontal: 16,
-    paddingTop: 40,
-    paddingBottom: 32,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  statusBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  timeText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  statusIcons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statusIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-  },
-  signalText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
-  brandTitle: {
-    color: '#fff',
-    fontWeight: '800',
-    letterSpacing: 2,
-    fontSize: 14,
-  },
-  greetingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  greetingSub: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  greetingName: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 24,
-  },
-  avatarLg: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  avatarLgText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#00704A',
-  },
-  avatarLgImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
   },
   scrollContent: {
     flex: 1,

@@ -1,6 +1,10 @@
 import { createContext, useContext, useEffect } from "react";
-import { useAuthCore, type Role } from "../hooks/useAuth";
-import { setTokenProvider } from "../lib/api";
+import { useAuthCore, type Role } from "../src/features/auth/hooks/useAuth";
+import { setTokenProvider } from "../src/services/api/userService";
+import { setBusinessTokenProvider } from "../src/services/api/businessService";
+import { setProductTokenProvider } from "../src/services/api/productService";
+import { setBorrowTransactionTokenProvider } from "../src/services/api/borrowTransactionService";
+import { setTokenProvider as setLibApiTokenProvider } from "../lib/api";
 
 type AuthContextType = ReturnType<typeof useAuthCore>;
 
@@ -9,9 +13,13 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = useAuthCore();
   
-  // Setup token provider for auto refresh
+  // Setup token provider for auto refresh (for user, business, products, borrowTransactions, and lib/api)
   useEffect(() => {
     setTokenProvider(value.actions.getCurrentAccessToken);
+    setBusinessTokenProvider(value.actions.getCurrentAccessToken);
+    setProductTokenProvider(value.actions.getCurrentAccessToken);
+    setBorrowTransactionTokenProvider(value.actions.getCurrentAccessToken);
+    setLibApiTokenProvider(value.actions.getCurrentAccessToken);
   }, [value.actions.getCurrentAccessToken]);
   
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

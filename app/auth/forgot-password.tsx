@@ -15,7 +15,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import { authApi } from "../../lib/api";
+import { authApi } from "@/services/api/authService";
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState("");
