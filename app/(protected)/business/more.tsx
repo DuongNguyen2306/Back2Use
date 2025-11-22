@@ -84,29 +84,29 @@ export default function MorePage() {
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
 
-          {/* Materials Button */}
+          {/* Inventory Management Button */}
           <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/(protected)/business/materials')}>
             <View style={styles.menuItemLeft}>
               <View style={[styles.menuIcon, { backgroundColor: '#10B981' }]}>
-                <Ionicons name="pricetag" size={20} color="#FFFFFF" />
+                <Ionicons name="cube-outline" size={20} color="#FFFFFF" />
               </View>
               <View style={styles.menuTextContainer}>
-                <Text style={styles.menuTitle}>Vật liệu</Text>
-                <Text style={styles.menuSubtitle}>Danh sách và thêm vật liệu</Text>
+                <Text style={styles.menuTitle}>Inventory Management</Text>
+                <Text style={styles.menuSubtitle}>Manage your inventory and materials</Text>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
 
-          {/* My Materials Button */}
+          {/* My Inventory Button */}
           <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/(protected)/business/my-materials')}>
             <View style={styles.menuItemLeft}>
               <View style={[styles.menuIcon, { backgroundColor: '#F59E0B' }]}>
                 <Ionicons name="albums" size={20} color="#FFFFFF" />
               </View>
               <View style={styles.menuTextContainer}>
-                <Text style={styles.menuTitle}>Vật liệu của tôi</Text>
-                <Text style={styles.menuSubtitle}>Xem trạng thái chờ duyệt/bị từ chối</Text>
+                <Text style={styles.menuTitle}>My Inventory</Text>
+                <Text style={styles.menuSubtitle}>View pending/rejected status</Text>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />

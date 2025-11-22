@@ -10,7 +10,7 @@ export default function BusinessLayout() {
   const navigationItems = [
     { id: "dashboard", label: "Home", icon: "home-button", route: "/(protected)/business" },
     { id: "wallet", label: "Wallet", icon: "wallet", route: "/(protected)/business/wallet" },
-    { id: "materials", label: "Materials", icon: "cube", route: "/(protected)/business/materials" },
+    { id: "materials", label: "Inventory Management", icon: "cube", route: "/(protected)/business/materials" },
     { id: "transaction", label: "Transaction", icon: "receipt", route: "/(protected)/business/transaction" },
     { id: "menu", label: "Menu", icon: "reorder-three", route: "/(protected)/business/menu" },
   ];

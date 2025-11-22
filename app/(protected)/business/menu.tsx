@@ -6,6 +6,7 @@ import {
   Alert,
   Dimensions,
   Image,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -15,7 +16,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
 import { useToast } from '../../../hooks/use-toast';
-import { authApi } from '../../../lib/api';
+import { authApi, subscriptionsApi, SubscriptionPackage } from '../../../lib/api';
 import { businessesApi } from '../../../src/services/api/businessService';
 import { BusinessProfile } from '../../../src/types/business.types';
 
@@ -28,6 +29,12 @@ export default function BusinessMenu() {
   const [loading, setLoading] = useState(true);
   const [expandedHelp, setExpandedHelp] = useState(false);
   const [expandedSettings, setExpandedSettings] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [subscriptions, setSubscriptions] = useState<SubscriptionPackage[]>([]);
+  const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
+  const [buyingSubscription, setBuyingSubscription] = useState(false);
+  const [buyingSubscriptionId, setBuyingSubscriptionId] = useState<string | null>(null);
+  const [activeSubscription, setActiveSubscription] = useState<any[]>([]);
 
   useEffect(() => {
     const loadBusinessData = async () => {
@@ -38,8 +45,19 @@ export default function BusinessMenu() {
       if (auth.state.accessToken && auth.state.isAuthenticated && auth.state.role === 'business') {
         try {
           const profileResponse = await businessesApi.getProfileWithAutoRefresh();
-          if (profileResponse.data && profileResponse.data.business) {
-            setBusinessProfile(profileResponse.data.business);
+          if (profileResponse.data) {
+            if (profileResponse.data.business) {
+              setBusinessProfile(profileResponse.data.business);
+            }
+            // Load active subscription
+            if (profileResponse.data.activeSubscription) {
+              const subscriptions = Array.isArray(profileResponse.data.activeSubscription) 
+                ? profileResponse.data.activeSubscription 
+                : [profileResponse.data.activeSubscription];
+              setActiveSubscription(subscriptions);
+            } else {
+              setActiveSubscription([]);
+            }
           }
         } catch (error) {
           console.error('Error loading business profile:', error);
@@ -91,6 +109,108 @@ export default function BusinessMenu() {
         title: "Error",
         description: error.message || "Unable to switch account. Please try again.",
       });
+    }
+  };
+
+  const loadSubscriptions = async () => {
+    try {
+      setLoadingSubscriptions(true);
+      console.log('🔍 Loading subscriptions...');
+      const response = await subscriptionsApi.getAll();
+      console.log('✅ Subscriptions loaded:', response);
+      
+      if (response.data && response.data.subscriptions) {
+        setSubscriptions(response.data.subscriptions);
+      }
+    } catch (error: any) {
+      console.error('❌ Error loading subscriptions:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load subscriptions",
+      });
+    } finally {
+      setLoadingSubscriptions(false);
+    }
+  };
+
+  const handleSubscriptionPress = () => {
+    setShowSubscriptionModal(true);
+    if (subscriptions.length === 0) {
+      loadSubscriptions();
+    }
+  };
+
+  const formatPrice = (price: number) => {
+    if (price === 0) return 'Free';
+    return `${price.toLocaleString('vi-VN')} VNĐ`;
+  };
+
+  const formatDuration = (days: number) => {
+    if (days < 30) return `${days} days`;
+    if (days < 90) return `${Math.floor(days / 30)} month${Math.floor(days / 30) > 1 ? 's' : ''}`;
+    return `${Math.floor(days / 30)} months`;
+  };
+
+  const hasActiveSubscription = () => {
+    return activeSubscription && activeSubscription.length > 0 && 
+           activeSubscription.some((sub: any) => {
+             const status = sub.status || (sub.isActive ? 'active' : 'inactive');
+             return status === 'active';
+           });
+  };
+
+  const isSubscriptionActive = (packageId: string) => {
+    return activeSubscription.some((sub: any) => {
+      const subId = sub.subscriptionId?._id || sub.subscriptionId || sub.subscription?._id || sub.subscription;
+      return subId === packageId;
+    });
+  };
+
+  const handleBuySubscription = async (packageItem: SubscriptionPackage) => {
+    // Check if already has active subscription
+    if (hasActiveSubscription()) {
+      toast({
+        title: "Warning",
+        description: "You already have an active subscription. Please wait for it to expire before purchasing a new one.",
+      });
+      return;
+    }
+
+    try {
+      setBuyingSubscription(true);
+      setBuyingSubscriptionId(packageItem._id);
+      console.log('🛒 Buying subscription:', packageItem);
+      
+      const response = await subscriptionsApi.buy({
+        subscriptionId: packageItem._id,
+      });
+      
+      console.log('✅ Buy subscription response:', response);
+      
+      toast({
+        title: "Success",
+        description: response.message || "Subscription purchased successfully",
+      });
+      
+      // Reload business profile to get updated activeSubscription
+      const profileResponse = await businessesApi.getProfileWithAutoRefresh();
+      if (profileResponse.data?.activeSubscription) {
+        const subscriptions = Array.isArray(profileResponse.data.activeSubscription) 
+          ? profileResponse.data.activeSubscription 
+          : [profileResponse.data.activeSubscription];
+        setActiveSubscription(subscriptions);
+      }
+      
+      setShowSubscriptionModal(false);
+    } catch (error: any) {
+      console.error('❌ Error buying subscription:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to purchase subscription. Please try again.",
+      });
+    } finally {
+      setBuyingSubscription(false);
+      setBuyingSubscriptionId(null);
     }
   };
 
@@ -147,10 +267,7 @@ export default function BusinessMenu() {
       icon: 'card-outline',
       label: 'Subscription',
       color: '#8B5CF6',
-      onPress: () => {
-        // Navigate to subscription or show modal
-        router.push('/(protected)/business/settings');
-      },
+      onPress: handleSubscriptionPress,
     },
     {
       id: 'qr',
@@ -320,6 +437,114 @@ export default function BusinessMenu() {
         {/* Bottom spacing */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+      {/* Subscription Modal */}
+      <Modal
+        visible={showSubscriptionModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowSubscriptionModal(false)}
+      >
+        <View style={styles.subscriptionModalOverlay}>
+          <View style={styles.subscriptionModalContent}>
+            <View style={styles.subscriptionModalHeader}>
+              <Text style={styles.subscriptionModalTitle}>Subscription Plans</Text>
+              <TouchableOpacity onPress={() => setShowSubscriptionModal(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.subscriptionModalBody} showsVerticalScrollIndicator={false}>
+              {loadingSubscriptions ? (
+                <View style={styles.subscriptionLoadingContainer}>
+                  <Text style={styles.subscriptionLoadingText}>Loading subscriptions...</Text>
+                </View>
+              ) : subscriptions.length > 0 ? (
+                subscriptions.map((packageItem) => (
+                  <View
+                    key={packageItem._id}
+                    style={styles.subscriptionPackageCard}
+                  >
+                    <View style={styles.subscriptionPackageHeader}>
+                      <View style={styles.subscriptionPackageIcon}>
+                        <Ionicons 
+                          name={packageItem.isTrial ? "gift" : "card"} 
+                          size={24} 
+                          color="#00704A" 
+                        />
+                      </View>
+                      <View style={styles.subscriptionPackageInfo}>
+                        <View style={styles.subscriptionRow}>
+                          <Text style={styles.subscriptionPackageName}>{packageItem.name}</Text>
+                          {packageItem.isTrial && (
+                            <View style={styles.subscriptionTrialBadge}>
+                              <Text style={styles.subscriptionTrialText}>TRIAL</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.subscriptionPackageDuration}>
+                          {formatDuration(packageItem.durationInDays)}
+                        </Text>
+                      </View>
+                      <View style={styles.subscriptionPackagePrice}>
+                        <Text style={styles.subscriptionPriceText}>
+                          {formatPrice(packageItem.price)}
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    <View style={styles.subscriptionPackageFeatures}>
+                      <View style={styles.subscriptionFeatureItem}>
+                        <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                        <Text style={styles.subscriptionFeatureText}>Full feature access</Text>
+                      </View>
+                      <View style={styles.subscriptionFeatureItem}>
+                        <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                        <Text style={styles.subscriptionFeatureText}>Priority customer support</Text>
+                      </View>
+                      <View style={styles.subscriptionFeatureItem}>
+                        <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                        <Text style={styles.subscriptionFeatureText}>Advanced analytics</Text>
+                      </View>
+                    </View>
+                    
+                    {isSubscriptionActive(packageItem._id) ? (
+                      <View style={[styles.subscriptionBuyButton, styles.subscriptionBuyButtonActive]}>
+                        <Text style={styles.subscriptionBuyButtonText}>Currently Active</Text>
+                      </View>
+                    ) : hasActiveSubscription() ? (
+                      <View style={[styles.subscriptionBuyButton, styles.subscriptionBuyButtonDisabled]}>
+                        <Text style={styles.subscriptionBuyButtonText}>Already Have Active Plan</Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={[
+                          styles.subscriptionBuyButton,
+                          (buyingSubscription && buyingSubscriptionId === packageItem._id) && styles.subscriptionBuyButtonDisabled
+                        ]}
+                        onPress={() => handleBuySubscription(packageItem)}
+                        disabled={buyingSubscription}
+                      >
+                        {buyingSubscription && buyingSubscriptionId === packageItem._id ? (
+                          <Text style={styles.subscriptionBuyButtonText}>Processing...</Text>
+                        ) : (
+                          <Text style={styles.subscriptionBuyButtonText}>
+                            {packageItem.price === 0 ? 'Get Free Plan' : 'Buy Now'}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))
+              ) : (
+                <View style={styles.subscriptionLoadingContainer}>
+                  <Text style={styles.subscriptionLoadingText}>No subscriptions available</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -495,6 +720,143 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 100,
+  },
+  // Subscription Modal styles
+  subscriptionModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  subscriptionModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '90%',
+    paddingBottom: 20,
+  },
+  subscriptionModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  subscriptionModalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  subscriptionModalBody: {
+    padding: 20,
+  },
+  subscriptionLoadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  subscriptionLoadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  subscriptionPackageCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  subscriptionPackageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  subscriptionPackageIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F0FDF4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  subscriptionPackageInfo: {
+    flex: 1,
+  },
+  subscriptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  subscriptionPackageName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  subscriptionTrialBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  subscriptionTrialText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#92400E',
+  },
+  subscriptionPackageDuration: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  subscriptionPackagePrice: {
+    alignItems: 'flex-end',
+  },
+  subscriptionPriceText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#00704A',
+  },
+  subscriptionPackageFeatures: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  subscriptionFeatureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  subscriptionFeatureText: {
+    fontSize: 14,
+    color: '#374151',
+    marginLeft: 8,
+  },
+  subscriptionBuyButton: {
+    marginTop: 16,
+    backgroundColor: '#00704A',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subscriptionBuyButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+    opacity: 0.6,
+  },
+  subscriptionBuyButtonActive: {
+    backgroundColor: '#10B981',
+  },
+  subscriptionBuyButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });
 

@@ -56,7 +56,7 @@ export const API_ENDPOINTS = {
       },
   MATERIALS: {
     CREATE: '/materials', // POST
-    LIST_APPROVED: '/materials/approved', // GET ?page=&limit=
+    LIST_APPROVED: '/materials', // GET ?page=&limit= (returns approved materials)
     LIST_MY: '/materials/my', // GET ?status=&page=&limit=
   },
   SUBSCRIPTIONS: {
@@ -65,6 +65,15 @@ export const API_ENDPOINTS = {
   },
   PRODUCTS: {
     GET_BY_ID: '/products', // GET /products/{id}
+    CREATE: '/products', // POST /products
+  },
+  PRODUCT_GROUPS: {
+    GET_ALL: '/product-groups', // GET /product-groups?limit=&page=
+    CREATE: '/product-groups', // POST /product-groups
+  },
+  PRODUCT_SIZES: {
+    GET_ALL: '/product-sizes', // GET /product-sizes?productGroupId=
+    CREATE: '/product-sizes', // POST /product-sizes
   },
   BORROW_TRANSACTIONS: {
     CREATE: '/borrow-transactions', // POST /borrow-transactions

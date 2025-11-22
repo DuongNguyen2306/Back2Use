@@ -85,6 +85,143 @@ export const materialsApi = {
   },
 };
 
+// Product Groups
+export interface ProductGroup {
+  _id: string;
+  materialId?: string | null;
+  businessId: string;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  __v?: number;
+}
+
+export interface ProductGroupsResponse {
+  statusCode: number;
+  message: string;
+  data: ProductGroup[];
+}
+
+export interface CreateProductGroupRequest {
+  materialId: string;
+  name: string;
+  description?: string;
+  image?: any; // File for multipart/form-data
+}
+
+export interface CreateProductGroupResponse {
+  statusCode: number;
+  message: string;
+  data: ProductGroup;
+}
+
+export const productGroupsApi = {
+  getAll: async (params?: { page?: number; limit?: number }): Promise<ProductGroupsResponse> => {
+    const { page = 1, limit = 10 } = params || {};
+    return apiCall<ProductGroupsResponse>(API_ENDPOINTS.PRODUCT_GROUPS.GET_ALL, {
+      method: 'GET',
+      params: { page, limit },
+    });
+  },
+  create: async (data: CreateProductGroupRequest): Promise<CreateProductGroupResponse> => {
+    const formData = new FormData();
+    formData.append('materialId', data.materialId);
+    formData.append('name', data.name);
+    if (data.description) {
+      formData.append('description', data.description);
+    }
+    if (data.image) {
+      formData.append('image', data.image as any);
+    }
+    const response = await apiCall<any>(API_ENDPOINTS.PRODUCT_GROUPS.CREATE, {
+      method: 'POST',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    // Backend trả về: { data: {...}, message: "...", statusCode: 200 }
+    // Trả về response.data để giống Redux slice (payload.data || payload)
+    return response.data || response;
+  },
+};
+
+// Product Sizes
+export interface ProductSize {
+  _id: string;
+  productGroupId: string;
+  sizeName: string;
+  basePrice: number;
+  weight: number;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductSizesResponse {
+  statusCode: number;
+  message: string;
+  data: ProductSize[];
+}
+
+export interface CreateProductSizeRequest {
+  productGroupId: string;
+  sizeName: string;
+  basePrice: number;
+  weight: number;
+  description?: string;
+}
+
+export interface CreateProductSizeResponse {
+  statusCode: number;
+  message: string;
+  data: ProductSize;
+}
+
+export const productSizesApi = {
+  getAll: async (productGroupId: string): Promise<ProductSizesResponse> => {
+    return apiCall<ProductSizesResponse>(API_ENDPOINTS.PRODUCT_SIZES.GET_ALL, {
+      method: 'GET',
+      params: { productGroupId },
+    });
+  },
+  create: async (data: CreateProductSizeRequest): Promise<ProductSize> => {
+    const response = await apiCall<any>(API_ENDPOINTS.PRODUCT_SIZES.CREATE, {
+      method: 'POST',
+      data,
+    });
+    // Backend trả về: { data: {...}, message: "...", statusCode: 200 }
+    // Trả về response.data để giống Redux slice (payload.data || payload)
+    return response.data || response;
+  },
+};
+
+// Products
+export interface CreateProductsRequest {
+  productSizeId: string;
+  productGroupId: string;
+  amount: number;
+}
+
+export interface CreateProductsResponse {
+  statusCode: number;
+  message: string;
+  data: {
+    products: any[];
+    qrCodes: string[];
+  };
+}
+
+export const productsApi = {
+  create: async (data: CreateProductsRequest): Promise<CreateProductsResponse> => {
+    return apiCall<CreateProductsResponse>(API_ENDPOINTS.PRODUCTS.CREATE, {
+      method: 'POST',
+      data,
+    });
+  },
+};
+
 // Subscriptions
 export interface SubscriptionPackage {
   _id: string;
@@ -229,4 +366,7 @@ export default {
   materialsApi,
   subscriptionsApi,
   businessesApi,
+  productGroupsApi,
+  productSizesApi,
+  productsApi,
 };

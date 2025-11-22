@@ -139,15 +139,19 @@ export default function MyProfile() {
           smsAlerts: false,
         });
 
-        // Check for pending business registration
+        // Check if user already has business role FIRST
+        const userHasBusinessRole = userData.role === 'business' || auth.state.role === 'business';
+        if (userHasBusinessRole) {
+          setHasBusinessRole(true);
+          console.log('✅ User already has business role from userData or auth state');
+        }
+        
+        // Check for pending business registration (this may also set hasBusinessRole if approved)
         await checkPendingBusiness();
         
-        // Check if user already has business role
+        // Final check: ensure hasBusinessRole is set if user has business role
         if (userData.role === 'business' || auth.state.role === 'business') {
           setHasBusinessRole(true);
-          console.log('⚠️ User already has business role');
-        } else {
-          setHasBusinessRole(false);
         }
       } catch (error: any) {
         // Don't show toast for network errors - they're expected when offline
@@ -213,14 +217,14 @@ export default function MyProfile() {
         if (hasApproved) {
           console.log('✅ Found approved business, user has business role - hiding register button');
           setHasBusinessRole(true);
-        } else {
-          setHasBusinessRole(false);
         }
+        // Don't set to false if user already has business role from userData
+        // Only set to false if we're sure they don't have it
       } else {
         console.log('ℹ️ No business history found');
         setBusinessHistory([]);
         setHasPendingBusiness(false);
-        setHasBusinessRole(false);
+        // Don't reset hasBusinessRole here - it might be set from userData.role
       }
     } catch (error) {
       console.error('❌ Error checking pending business:', error);
@@ -353,13 +357,14 @@ export default function MyProfile() {
           icon: 'lock-closed',
           onPress: () => setShowChangePasswordModal(true),
         },
-        {
+        // Only show switch to business if user has business role
+        ...(hasBusinessRole || auth.state.role === 'business' || user?.role === 'business' ? [{
           id: 'switch-to-business',
           title: 'Chuyển sang tài khoản doanh nghiệp',
           subtitle: 'Chuyển đổi sang chế độ doanh nghiệp',
           icon: 'business',
           onPress: () => handleSwitchRole('business'),
-        },
+        }] : []),
       ]
     },
     {
@@ -700,15 +705,18 @@ export default function MyProfile() {
               )}
               <Text style={styles.profileName}>{userName}</Text>
             </View>
-            <TouchableOpacity 
-              style={styles.switchRoleButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                handleSwitchRole('business');
-              }}
-            >
-              <Ionicons name="swap-horizontal" size={20} color="#00704A" />
-            </TouchableOpacity>
+            {/* Only show switch role button if user has business role */}
+            {(hasBusinessRole || auth.state.role === 'business' || user?.role === 'business') && (
+              <TouchableOpacity 
+                style={styles.switchRoleButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleSwitchRole('business');
+                }}
+              >
+                <Ionicons name="swap-horizontal" size={20} color="#00704A" />
+              </TouchableOpacity>
+            )}
           </View>
         </TouchableOpacity>
 
@@ -793,74 +801,84 @@ export default function MyProfile() {
           )}
         </View>
 
-        {/* Business Registration Section - Only show if user doesn't have business role */}
-        {!hasBusinessRole && auth.state.role !== 'business' && user?.role !== 'business' && (
+        {/* Business Registration History - Always show if there's history */}
+        {businessHistory.length > 0 && (
           <View style={styles.businessRegisterSection}>
-            {businessHistory.length > 0 ? (
-              <View style={styles.businessHistoryContainer}>
-                <Text style={styles.businessHistoryTitle}>Business Registration History</Text>
-                {businessHistory.slice(0, 1).map((item: any, index: number) => (
-                  <View key={item._id || index} style={styles.businessHistoryCard}>
-                    <View style={styles.businessHistoryHeader}>
-                      <Text style={styles.businessHistoryName}>{item.businessName}</Text>
-                      <View style={[
-                        styles.statusBadge,
-                        item.status === 'approved' && styles.statusBadgeApproved,
-                        item.status === 'rejected' && styles.statusBadgeRejected,
-                        item.status === 'pending' && styles.statusBadgePending,
+            <View style={styles.businessHistoryContainer}>
+              <Text style={styles.businessHistoryTitle}>Business Registration History</Text>
+              {businessHistory.slice(0, 1).map((item: any, index: number) => (
+                <View key={item._id || index} style={styles.businessHistoryCard}>
+                  <View style={styles.businessHistoryHeader}>
+                    <Text style={styles.businessHistoryName}>{item.businessName}</Text>
+                    <View style={[
+                      styles.statusBadge,
+                      item.status === 'approved' && styles.statusBadgeApproved,
+                      item.status === 'rejected' && styles.statusBadgeRejected,
+                      item.status === 'pending' && styles.statusBadgePending,
+                    ]}>
+                      <Text style={[
+                        styles.statusBadgeText,
+                        item.status === 'approved' && styles.statusBadgeTextApproved,
+                        item.status === 'rejected' && styles.statusBadgeTextRejected,
+                        item.status === 'pending' && styles.statusBadgeTextPending,
                       ]}>
-                        <Text style={[
-                          styles.statusBadgeText,
-                          item.status === 'approved' && styles.statusBadgeTextApproved,
-                          item.status === 'rejected' && styles.statusBadgeTextRejected,
-                          item.status === 'pending' && styles.statusBadgeTextPending,
-                        ]}>
-                          {item.status === 'approved' ? 'Approved' : 
-                           item.status === 'rejected' ? 'Rejected' : 
-                           'Pending'}
-                        </Text>
-                      </View>
+                        {item.status === 'approved' ? 'Approved' : 
+                         item.status === 'rejected' ? 'Rejected' : 
+                         'Pending'}
+                      </Text>
                     </View>
                   </View>
-                ))}
-                <TouchableOpacity 
-                  style={styles.businessRegisterButton} 
-                  onPress={() => setShowBusinessHistoryModal(true)}
-                >
-                  <Ionicons name="time-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                  <Text style={styles.businessRegisterButtonText}>View History Details</Text>
-                </TouchableOpacity>
-                {!businessHistory.some((item: any) => item.status === 'approved') && !hasPendingBusiness && (
-                  <TouchableOpacity 
-                    style={[styles.businessRegisterButton, { marginTop: 12, backgroundColor: '#00704A' }]} 
-                    onPress={() => setShowBusinessRegisterModal(true)}
-                  >
-                    <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                    <Text style={styles.businessRegisterButtonText}>Register New Business</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            ) : (
+                </View>
+              ))}
               <TouchableOpacity 
                 style={styles.businessRegisterButton} 
-                onPress={() => {
-                  if (hasPendingBusiness) {
-                    setShowBusinessHistoryModal(true);
-                  } else {
-                    setShowBusinessRegisterModal(true);
-                  }
-                }}
+                onPress={() => setShowBusinessHistoryModal(true)}
               >
-                <Ionicons name="business-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={styles.businessRegisterButtonText}>Register Business</Text>
-                {hasPendingBusiness && (
-                  <View style={styles.pendingBadge}>
-                    <Ionicons name="time" size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
-                    <Text style={styles.pendingBadgeText}>Pending</Text>
-                  </View>
-                )}
+                <Ionicons name="time-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={styles.businessRegisterButtonText}>View History Details</Text>
               </TouchableOpacity>
-            )}
+            </View>
+          </View>
+        )}
+
+        {/* Business Registration Section - Only show register button if user doesn't have business role */}
+        {!hasBusinessRole && auth.state.role !== 'business' && user?.role !== 'business' && businessHistory.length === 0 && (
+          <View style={styles.businessRegisterSection}>
+            <TouchableOpacity 
+              style={styles.businessRegisterButton} 
+              onPress={() => {
+                if (hasPendingBusiness) {
+                  setShowBusinessHistoryModal(true);
+                } else {
+                  setShowBusinessRegisterModal(true);
+                }
+              }}
+            >
+              <Ionicons name="business-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.businessRegisterButtonText}>Register Business</Text>
+              {hasPendingBusiness && (
+                <View style={styles.pendingBadge}>
+                  <Ionicons name="time" size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.pendingBadgeText}>Pending</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Register New Business Button - Only show if user doesn't have approved business */}
+        {!hasBusinessRole && auth.state.role !== 'business' && user?.role !== 'business' && 
+         businessHistory.length > 0 && 
+         !businessHistory.some((item: any) => item.status === 'approved') && 
+         !hasPendingBusiness && (
+          <View style={styles.businessRegisterSection}>
+            <TouchableOpacity 
+              style={[styles.businessRegisterButton, { backgroundColor: '#00704A' }]} 
+              onPress={() => setShowBusinessRegisterModal(true)}
+            >
+              <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.businessRegisterButtonText}>Register New Business</Text>
+            </TouchableOpacity>
           </View>
         )}
 

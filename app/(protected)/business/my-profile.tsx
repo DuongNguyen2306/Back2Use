@@ -18,7 +18,7 @@ import {
 import { useAuth } from '../../../context/AuthProvider';
 import { useToast } from '../../../hooks/use-toast';
 import { useI18n } from '../../../hooks/useI18n';
-import { authApi, updateUserProfileWithAutoRefresh } from '../../../lib/api';
+import { authApi, SubscriptionPackage, updateUserProfileWithAutoRefresh } from '../../../lib/api';
 import { businessesApi } from '../../../src/services/api/businessService';
 import { BusinessProfile } from '../../../src/types/business.types';
 
@@ -53,6 +53,9 @@ export default function BusinessProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
+  const [activeSubscription, setActiveSubscription] = useState<any[]>([]);
+  const [subscriptions, setSubscriptions] = useState<SubscriptionPackage[]>([]);
+  const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
 
   // Change password states
@@ -122,26 +125,43 @@ export default function BusinessProfileScreen() {
           const profileResponse = await businessesApi.getProfileWithAutoRefresh();
           console.log('✅ Business profile loaded:', profileResponse);
           
-          if (profileResponse.data && profileResponse.data.business) {
-            const profile = profileResponse.data.business;
-            setBusinessProfile(profile);
+          if (profileResponse.data) {
+            if (profileResponse.data.business) {
+              const profile = profileResponse.data.business;
+              setBusinessProfile(profile);
+              
+              // Populate form with business profile data
+              setFormData({
+                name: profile.businessName || profile.userId.username || "",
+                email: profile.userId.email || profile.businessMail || "",
+                phone: profile.businessPhone || "",
+                address: profile.businessAddress || "",
+                businessName: profile.businessName || "",
+                businessAddress: profile.businessAddress || "",
+                businessPhone: profile.businessPhone || "",
+                businessType: profile.businessType || "",
+                openTime: profile.openTime || "",
+                closeTime: profile.closeTime || "",
+                notifications: true,
+                emailUpdates: true,
+                smsAlerts: false,
+              });
+            }
             
-            // Populate form with business profile data
-            setFormData({
-              name: profile.businessName || profile.userId.username || "",
-              email: profile.userId.email || profile.businessMail || "",
-              phone: profile.businessPhone || "",
-              address: profile.businessAddress || "",
-              businessName: profile.businessName || "",
-              businessAddress: profile.businessAddress || "",
-              businessPhone: profile.businessPhone || "",
-              businessType: profile.businessType || "",
-              openTime: profile.openTime || "",
-              closeTime: profile.closeTime || "",
-              notifications: true,
-              emailUpdates: true,
-              smsAlerts: false,
-            });
+            // Load active subscription
+            console.log('📦 Active Subscription Data:', profileResponse.data.activeSubscription);
+            console.log('📦 Full Response Data:', JSON.stringify(profileResponse.data, null, 2));
+            
+            if (profileResponse.data.activeSubscription) {
+              const subscriptions = Array.isArray(profileResponse.data.activeSubscription) 
+                ? profileResponse.data.activeSubscription 
+                : [profileResponse.data.activeSubscription];
+              console.log('📦 Setting subscriptions:', subscriptions);
+              setActiveSubscription(subscriptions);
+            } else {
+              console.log('⚠️ No activeSubscription found in response');
+              setActiveSubscription([]);
+            }
           }
         } catch (error: any) {
           // Don't show toast for network errors - they're expected when offline
@@ -188,20 +208,6 @@ export default function BusinessProfileScreen() {
           icon: 'swap-horizontal-outline',
           color: '#10B981',
           onPress: () => handleSwitchRole('customer'),
-          showArrow: true,
-        },
-        {
-          id: 'subscription',
-          title: 'Gói đăng ký hiện tại',
-          icon: 'card-outline',
-          color: '#3B82F6',
-          onPress: () => {
-            // Navigate to subscription page or show modal
-            toast({
-              title: 'Gói đăng ký',
-              description: 'Tính năng đang phát triển',
-            });
-          },
           showArrow: true,
         },
       ],
@@ -527,6 +533,67 @@ export default function BusinessProfileScreen() {
                 </View>
               </View>
             )}
+          </View>
+        )}
+
+        {/* Current Subscription Plan Card */}
+        {activeSubscription && activeSubscription.length > 0 ? (
+          <View style={styles.subscriptionCard}>
+            <View style={styles.subscriptionHeader}>
+              <Ionicons name="card" size={24} color="#00704A" />
+              <Text style={styles.subscriptionTitle}>Current Subscription Plan</Text>
+            </View>
+            {activeSubscription.map((sub: any, index: number) => {
+              // Handle different possible structures
+              const subscriptionName = sub.subscriptionId?.name || sub.subscription?.name || sub.name || 'Unknown Plan';
+              const subscriptionPrice = sub.subscriptionId?.price || sub.subscription?.price || sub.price || 0;
+              const startDate = sub.startDate || sub.startAt || sub.createdAt;
+              const endDate = sub.endDate || sub.endAt || sub.expiresAt;
+              const status = sub.status || (sub.isActive ? 'active' : 'inactive');
+              
+              return (
+                <View key={index} style={styles.subscriptionItem}>
+                  <View style={styles.subscriptionInfo}>
+                    <Text style={styles.subscriptionName}>{subscriptionName}</Text>
+                    <Text style={styles.subscriptionPrice}>
+                      {subscriptionPrice > 0 
+                        ? `${subscriptionPrice.toLocaleString('vi-VN')} VNĐ` 
+                        : 'Free'}
+                    </Text>
+                    {startDate && endDate && (
+                      <Text style={styles.subscriptionDate}>
+                        {new Date(startDate).toLocaleDateString('vi-VN')} - {new Date(endDate).toLocaleDateString('vi-VN')}
+                      </Text>
+                    )}
+                    {sub.durationInDays && (
+                      <Text style={styles.subscriptionDate}>
+                        Duration: {sub.durationInDays} days
+                      </Text>
+                    )}
+                    <View style={[
+                      styles.subscriptionStatus,
+                      status === 'active' && styles.subscriptionStatusActive,
+                      status === 'expired' && styles.subscriptionStatusExpired,
+                    ]}>
+                      <Text style={styles.subscriptionStatusText}>
+                        {status === 'active' ? 'Active' : status === 'expired' ? 'Expired' : status}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <View style={styles.subscriptionCard}>
+            <View style={styles.subscriptionHeader}>
+              <Ionicons name="card-outline" size={24} color="#9CA3AF" />
+              <Text style={styles.subscriptionTitle}>Current Subscription Plan</Text>
+            </View>
+            <View style={styles.subscriptionItem}>
+              <Text style={styles.subscriptionName}>No active subscription</Text>
+              <Text style={styles.subscriptionDate}>You don't have an active subscription plan</Text>
+            </View>
           </View>
         )}
 
@@ -1063,6 +1130,89 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     fontWeight: '500',
     marginLeft: 8,
+  },
+  // Subscription Card styles
+  subscriptionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  subscriptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  subscriptionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginLeft: 12,
+  },
+  subscriptionItem: {
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  subscriptionInfo: {
+    flex: 1,
+  },
+  subscriptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  trialBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  trialBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#92400E',
+  },
+  subscriptionName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  subscriptionPrice: {
+    fontSize: 14,
+    color: '#00704A',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  subscriptionDate: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  subscriptionStatus: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    backgroundColor: '#F3F4F6',
+  },
+  subscriptionStatusActive: {
+    backgroundColor: '#D1FAE5',
+  },
+  subscriptionStatusExpired: {
+    backgroundColor: '#FEE2E2',
+  },
+  subscriptionStatusText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#1F2937',
   },
   // Modal styles
   modalContainer: {
