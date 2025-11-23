@@ -47,7 +47,7 @@ export default function BusinessMenu() {
           const profileResponse = await businessesApi.getProfileWithAutoRefresh();
           if (profileResponse.data) {
             if (profileResponse.data.business) {
-              setBusinessProfile(profileResponse.data.business);
+            setBusinessProfile(profileResponse.data.business);
             }
             // Load active subscription
             if (profileResponse.data.activeSubscription) {
@@ -76,7 +76,7 @@ export default function BusinessMenu() {
     try {
       console.log(`🔄 Switching role to: customer`);
       
-      const response = await authApi.switchRole({ role: 'customer' });
+                const response = await authApi.switchRole({ role: 'customer' });
       
       if (response.data?.accessToken && response.data?.refreshToken) {
         // Save new tokens
@@ -99,7 +99,7 @@ export default function BusinessMenu() {
         });
         
         // Redirect to customer dashboard
-        router.replace('/(protected)/customer');
+                  router.replace('/(protected)/customer');
       } else {
         throw new Error('No token received from server');
       }
@@ -121,8 +121,8 @@ export default function BusinessMenu() {
       
       if (response.data && response.data.subscriptions) {
         setSubscriptions(response.data.subscriptions);
-      }
-    } catch (error: any) {
+                }
+              } catch (error: any) {
       console.error('❌ Error loading subscriptions:', error);
       toast({
         title: "Error",

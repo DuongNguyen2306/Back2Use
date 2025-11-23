@@ -3,17 +3,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  Alert,
-  Dimensions,
-  Image,
-  Modal,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    Alert,
+    Dimensions,
+    Image,
+    Modal,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
 import { useToast } from '../../../hooks/use-toast';
@@ -127,25 +127,25 @@ export default function BusinessProfileScreen() {
           
           if (profileResponse.data) {
             if (profileResponse.data.business) {
-              const profile = profileResponse.data.business;
-              setBusinessProfile(profile);
-              
-              // Populate form with business profile data
-              setFormData({
-                name: profile.businessName || profile.userId.username || "",
-                email: profile.userId.email || profile.businessMail || "",
-                phone: profile.businessPhone || "",
-                address: profile.businessAddress || "",
-                businessName: profile.businessName || "",
-                businessAddress: profile.businessAddress || "",
-                businessPhone: profile.businessPhone || "",
-                businessType: profile.businessType || "",
-                openTime: profile.openTime || "",
-                closeTime: profile.closeTime || "",
-                notifications: true,
-                emailUpdates: true,
-                smsAlerts: false,
-              });
+            const profile = profileResponse.data.business;
+            setBusinessProfile(profile);
+            
+            // Populate form with business profile data
+            setFormData({
+              name: profile.businessName || profile.userId.username || "",
+              email: profile.userId.email || profile.businessMail || "",
+              phone: profile.businessPhone || "",
+              address: profile.businessAddress || "",
+              businessName: profile.businessName || "",
+              businessAddress: profile.businessAddress || "",
+              businessPhone: profile.businessPhone || "",
+              businessType: profile.businessType || "",
+              openTime: profile.openTime || "",
+              closeTime: profile.closeTime || "",
+              notifications: true,
+              emailUpdates: true,
+              smsAlerts: false,
+            });
             }
             
             // Load active subscription
@@ -460,7 +460,7 @@ export default function BusinessProfileScreen() {
         </View>
 
         {/* Achievements Section */}
-        <View style={styles.achievementsSection}>
+         <View style={styles.achievementsSection}>
           <Text style={styles.sectionTitle}>Thành tựu</Text>
           <View style={styles.achievementsGrid}>
             {achievements.map((achievement) => (

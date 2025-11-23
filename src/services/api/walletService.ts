@@ -43,8 +43,9 @@ export interface WalletTransactionsResponse {
 }
 
 export const walletTransactionsApi = {
-  getMy: async (params?: { typeGroup?: 'personal' | 'deposit_refund'; direction?: 'in' | 'out'; page?: number; limit?: number; }): Promise<WalletTransactionsResponse> => {
+  getMy: async (params?: { walletType?: 'customer' | 'business'; typeGroup?: 'personal' | 'deposit_refund'; direction?: 'in' | 'out'; page?: number; limit?: number; }): Promise<WalletTransactionsResponse> => {
     const queryParams = new URLSearchParams();
+    if (params?.walletType) queryParams.append('walletType', params.walletType);
     if (params?.typeGroup) queryParams.append('typeGroup', params.typeGroup);
     if (params?.direction) queryParams.append('direction', params.direction);
     if (params?.page) queryParams.append('page', String(params.page));

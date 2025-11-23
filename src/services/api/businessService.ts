@@ -213,7 +213,33 @@ export interface CreateProductsResponse {
   };
 }
 
+export interface Product {
+  _id: string;
+  productSizeId: string;
+  productGroupId: string;
+  qrCode: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductsResponse {
+  statusCode: number;
+  message: string;
+  data: Product[];
+}
+
 export const productsApi = {
+  getAll: async (params?: { productSizeId?: string; productGroupId?: string; page?: number; limit?: number }): Promise<ProductsResponse> => {
+    const { productSizeId, productGroupId, page = 1, limit = 50 } = params || {};
+    const queryParams: any = { page, limit };
+    if (productSizeId) queryParams.productSizeId = productSizeId;
+    if (productGroupId) queryParams.productGroupId = productGroupId;
+    return apiCall<ProductsResponse>(API_ENDPOINTS.PRODUCTS.GET_ALL, {
+      method: 'GET',
+      params: queryParams,
+    });
+  },
   create: async (data: CreateProductsRequest): Promise<CreateProductsResponse> => {
     return apiCall<CreateProductsResponse>(API_ENDPOINTS.PRODUCTS.CREATE, {
       method: 'POST',

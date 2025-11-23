@@ -767,12 +767,14 @@ export interface WalletTransactionsResponse {
 export const walletTransactionsApi = {
   // Get my wallet transactions - GET /wallet-transactions/my
   getMy: async (params?: {
+    walletType?: 'customer' | 'business';
     typeGroup?: 'personal' | 'deposit_refund';
     direction?: 'in' | 'out';
     page?: number;
     limit?: number;
   }): Promise<WalletTransactionsResponse> => {
     const queryParams = new URLSearchParams();
+    if (params?.walletType) queryParams.append('walletType', params.walletType);
     if (params?.typeGroup) queryParams.append('typeGroup', params.typeGroup);
     if (params?.direction) queryParams.append('direction', params.direction);
     if (params?.page) queryParams.append('page', params.page.toString());
@@ -780,6 +782,7 @@ export const walletTransactionsApi = {
     
     const endpoint = `${API_ENDPOINTS.WALLET_TRANSACTIONS.GET_MY}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
     console.log('🔗 Get transactions endpoint:', endpoint);
+    console.log('🔗 Request params:', params);
     
     return apiCall<WalletTransactionsResponse>(endpoint, {
       method: 'GET',

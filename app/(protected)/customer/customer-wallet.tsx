@@ -6,6 +6,7 @@ import {
   AppState,
   Dimensions,
   Modal,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -49,9 +50,7 @@ export default function CustomerWallet() {
   const [user, setUser] = useState<User | null>(null);
   const [wallet, setWallet] = useState<WalletDetails | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'subscriptions' | 'deposits'>('subscriptions');
-  const [subscriptionFilter, setSubscriptionFilter] = useState<'all' | 'plus' | 'minus'>('all');
-  const [depositFilter, setDepositFilter] = useState<'all' | 'plus' | 'minus'>('all');
+  const [transactionFilter, setTransactionFilter] = useState<'all' | 'deposits' | 'withdrawals'>('all');
   
   // Real transactions from API
   const [realTransactions, setRealTransactions] = useState<WalletTransaction[]>([]);
@@ -150,19 +149,13 @@ export default function CustomerWallet() {
     return () => subscription?.remove();
   }, [wallet?._id, isPaymentProcessing, showPaymentWebView]);
 
-  // Load transactions when component mounts and when activeTab or filters change
+  // Load transactions when component mounts and when filter changes
   useEffect(() => {
     if (wallet?._id) {
       loadTransactions();
     }
-  }, [activeTab, subscriptionFilter, depositFilter, wallet?._id]);
+  }, [transactionFilter, wallet?._id]);
 
-  // Load all transactions for summary when component mounts
-  useEffect(() => {
-    if (wallet?._id) {
-      loadAllTransactionsForSummary();
-    }
-  }, [wallet?._id]);
 
   const loadUserData = async () => {
     try {
@@ -402,25 +395,45 @@ export default function CustomerWallet() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return '#10B981';
-      case 'active': return '#3B82F6';
-      case 'overdue': return '#EF4444';
-      case 'returned': return '#8B5CF6';
-      default: return '#6B7280';
+      case 'completed':
+      case 'returned':
+        return '#10B981';
+      case 'processing':
+        return '#F59E0B'; // Amber for processing
+      case 'active':
+        return '#3B82F6';
+      case 'overdue':
+      case 'failed':
+        return '#EF4444';
+      default:
+        return '#6B7280';
     }
   };
 
-  const filteredSubscriptionTransactions = subscriptionTransactions.filter(transaction => {
-    if (subscriptionFilter === 'all') return true;
-    if (subscriptionFilter === 'plus') return transaction.type === 'add_fund';
-    if (subscriptionFilter === 'minus') return transaction.type === 'subscription' || transaction.type === 'withdrawal';
-    return true;
-  });
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'Completed';
+      case 'processing':
+        return 'Processing';
+      case 'failed':
+        return 'Failed';
+      case 'active':
+        return 'Active';
+      case 'overdue':
+        return 'Overdue';
+      case 'returned':
+        return 'Returned';
+      default:
+        return status.charAt(0).toUpperCase() + status.slice(1); // Capitalize first letter
+    }
+  };
 
-  const filteredDepositTransactions = depositTransactions.filter(transaction => {
-    if (depositFilter === 'all') return true;
-    if (depositFilter === 'plus') return transaction.type === 'refund';
-    if (depositFilter === 'minus') return transaction.type === 'deposit';
+  // Filter real transactions based on type
+  const filteredTransactions = realTransactions.filter(transaction => {
+    if (transactionFilter === 'all') return true;
+    if (transactionFilter === 'deposits') return transaction.direction === 'in';
+    if (transactionFilter === 'withdrawals') return transaction.direction === 'out';
     return true;
   });
 
@@ -441,141 +454,75 @@ export default function CustomerWallet() {
 
   // Load real transactions from API
   const loadTransactions = async () => {
+    if (!wallet?._id) return;
+    
     try {
       setTransactionsLoading(true);
-      console.log('📡 Loading transactions from API...');
-      
-      // Determine direction based on active tab and filter
-      let direction: 'in' | 'out' | undefined = undefined;
-      
-      if (activeTab === 'subscriptions') {
-        if (subscriptionFilter === 'plus') direction = 'in';
-        else if (subscriptionFilter === 'minus') direction = 'out';
-      } else if (activeTab === 'deposits') {
-        if (depositFilter === 'plus') direction = 'in';
-        else if (depositFilter === 'minus') direction = 'out';
-      }
+      console.log('🔄 Loading customer transactions...');
       
       const response = await walletTransactionsApi.getMy({
+        walletType: 'customer',
         typeGroup: 'personal',
-        direction: direction,
         page: 1,
-        limit: 20
+        limit: 50,
       });
       
-      console.log('✅ Transactions loaded:', response.data);
-      setRealTransactions(response.data);
+      console.log('📡 Customer Transactions API Response:', response);
       
-      // Calculate summary from loaded transactions
-      calculateSummary(response.data);
-    } catch (error: any) {
+      if (response.statusCode === 200 && response.data) {
+        console.log('✅ Customer transactions data:', response.data);
+        console.log('✅ Number of transactions:', response.data.length);
+        setRealTransactions(response.data);
+        
+        // Calculate summary - only count completed transactions
+        let income = 0;
+        let expenses = 0;
+        
+        response.data.forEach(transaction => {
+          // Only count completed transactions (not processing or failed)
+          if (transaction.status === 'completed') {
+            if (transaction.direction === 'in') {
+              income += transaction.amount;
+            } else {
+              expenses += transaction.amount;
+            }
+          }
+        });
+        
+        console.log('📊 Customer transactions breakdown:', {
+          total: response.data.length,
+          completed: response.data.filter(t => t.status === 'completed').length,
+          processing: response.data.filter(t => t.status === 'processing').length,
+          failed: response.data.filter(t => t.status === 'failed').length,
+        });
+        
+        setTotalIncome(income);
+        setTotalExpenses(expenses);
+        console.log('💰 Summary - Income:', income, 'Expenses:', expenses);
+      }
+    } catch (error) {
       console.error('❌ Error loading transactions:', error);
-      // Fallback to mock data if API fails
-      setRealTransactions([]);
     } finally {
       setTransactionsLoading(false);
     }
   };
 
-  // Force refresh transactions (useful after payment)
-  const refreshTransactions = async () => {
-    console.log('🔄 Force refreshing transactions...');
+  const forceRefresh = async () => {
+    console.log('🔄 Force refreshing all data...');
+    await loadUserData();
     await loadTransactions();
-    await loadAllTransactionsForSummary(); // Also refresh summary
-  };
-
-  // Calculate income and expenses from transactions
-  const calculateSummary = (transactions: WalletTransaction[]) => {
-    let income = 0;
-    let expenses = 0;
-    
-    transactions.forEach(transaction => {
-      if (transaction.direction === 'in') {
-        income += transaction.amount;
-      } else if (transaction.direction === 'out') {
-        expenses += transaction.amount;
-      }
-    });
-    
-    console.log('💰 Calculated summary:', { income, expenses });
-    setTotalIncome(income);
-    setTotalExpenses(expenses);
-  };
-
-  // Load all transactions for summary calculation
-  const loadAllTransactionsForSummary = async () => {
-    try {
-      console.log('📡 Loading all transactions for summary...');
-      
-      const response = await walletTransactionsApi.getMy({
-        typeGroup: 'personal',
-        // No direction filter to get all transactions
-        page: 1,
-        limit: 100 // Get more transactions for accurate summary
-      });
-      
-      console.log('✅ All transactions loaded for summary:', response.data);
-      calculateSummary(response.data);
-    } catch (error: any) {
-      console.error('❌ Error loading all transactions for summary:', error);
-    }
   };
 
   if (loading) {
     return (
       <View style={styles.container}>
         <CustomerHeader
-          title="Loading..."
+          title="Customer Wallet"
           user={user}
         />
-        
-        {/* Credit Card Section - Show even when loading */}
-        <View style={styles.cardSection}>
-          <View style={styles.creditCard}>
-            <View style={styles.cardPattern}>
-              <View style={styles.patternCircle1} />
-              <View style={styles.patternCircle2} />
-              <View style={styles.patternCircle3} />
-            </View>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardAccountNumber}>{t('wallet').totalBalance}</Text>
-              <TouchableOpacity 
-                style={styles.eyeButton}
-                onPress={() => setShowBalance(!showBalance)}
-              >
-                <Ionicons 
-                  name={showBalance ? "eye" : "eye-off"} 
-                  size={20} 
-                  color="#FFFFFF" 
-                />
-              </TouchableOpacity>
-            </View>
-            
-            {/* Balance Display */}
-            <View style={styles.balanceContainer}>
-              {showBalance ? (
-                <Text style={styles.balanceAmount}>
-                  Loading...
-                </Text>
-              ) : (
-                <Text style={styles.balanceHidden}>•••••••• VND</Text>
-              )}
-            </View>
-            
-            <Text style={styles.cardName}>Loading...</Text>
-            
-            {/* Action Button - Right aligned */}
-            <View style={styles.cardActionsRight}>
-              <TouchableOpacity 
-                style={styles.depositWithdrawButton}
-                onPress={() => setShowAddFunds(true)}
-              >
-                <Ionicons name="card" size={16} color="#FFFFFF" />
-                <Text style={styles.depositWithdrawText}>Deposit</Text>
-                <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-          </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#0F4D3A" />
+          <Text style={styles.loadingText}>Loading...</Text>
         </View>
       </View>
     );
@@ -584,302 +531,181 @@ export default function CustomerWallet() {
   return (
     <View style={styles.container}>
       <CustomerHeader
-        title={getTimeBasedGreeting() + ", " + ((user as any)?.fullName || user?.name || "User")}
-        subtitle="Wallet & Transactions"
+        title="Customer Wallet"
         user={user}
+        rightAction={
+          <TouchableOpacity 
+            style={styles.refreshButton}
+            onPress={forceRefresh}
+          >
+            <Ionicons name="refresh" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+        }
       />
 
-      {/* Credit Card Section - Outside ScrollView */}
-      <View style={styles.cardSection}>
-        <View style={styles.creditCard}>
-          <View style={styles.cardPattern}>
-            <View style={styles.patternCircle1} />
-            <View style={styles.patternCircle2} />
-            <View style={styles.patternCircle3} />
-          </View>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={transactionsLoading}
+            onRefresh={forceRefresh}
+            colors={['#0F4D3A']}
+            tintColor="#0F4D3A"
+          />
+        }
+      >
+
+        {/* Balance Card */}
+        <View style={styles.balanceCard}>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardAccountNumber}>{t('wallet').totalBalance}</Text>
+            <Text style={styles.cardTitle}>Available Balance</Text>
             <TouchableOpacity 
               style={styles.eyeButton}
               onPress={() => setShowBalance(!showBalance)}
             >
-              <Ionicons 
-                name={showBalance ? "eye" : "eye-off"} 
-                size={20} 
-                color="#FFFFFF" 
+              <Ionicons
+                name={showBalance ? "eye" : "eye-off"}
+                size={20}
+                color="rgba(255,255,255,0.8)"
               />
             </TouchableOpacity>
           </View>
           
-          {/* Balance Display */}
           <View style={styles.balanceContainer}>
             {showBalance ? (
               <Text style={styles.balanceAmount}>
-                {wallet?.balance && typeof wallet.balance === 'number' ? wallet.balance.toLocaleString('vi-VN') : '0'} VND
+                {wallet?.balance && typeof wallet.balance === 'number' ? wallet.balance.toLocaleString('vi-VN') : '0'} VNĐ
               </Text>
             ) : (
-              <Text style={styles.balanceHidden}>•••••••• VND</Text>
+              <Text style={styles.balanceHidden}>•••••••• VNĐ</Text>
             )}
           </View>
           
-          <Text style={styles.cardName}>{(user as any)?.fullName || user?.name || "User"}</Text>
-          
-          {/* Action Buttons - Right aligned */}
-          <View style={styles.cardActionsRight}>
-            <TouchableOpacity 
-              style={[styles.depositWithdrawButton, { marginRight: 8 }]}
-              onPress={() => setShowAddFunds(true)}
-            >
-              <Ionicons name="add" size={16} color="#FFFFFF" />
-              <Text style={styles.depositWithdrawText}>Deposit</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.depositWithdrawButton}
-              onPress={() => {
-                console.log('🔘 Withdraw button clicked');
-                console.log('🔘 Current showWithdraw state:', showWithdraw);
-                setShowWithdraw(true);
-                console.log('🔘 Set showWithdraw to true');
-              }}
-            >
-              <Ionicons name="remove" size={16} color="#FFFFFF" />
-              <Text style={styles.depositWithdrawText}>Withdraw</Text>
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.cardSubtitle}>Customer Account</Text>
         </View>
-      </View>
 
-      <ScrollView style={styles.scrollContent}>
-
-        {/* Summary Section */}
+        {/* Summary Cards */}
         <View style={styles.summarySection}>
           <View style={styles.summaryCard}>
-            <View style={styles.summaryHeader}>
-              <Text style={styles.summaryLabel}>{t('wallet').income}</Text>
-              <Ionicons name="arrow-up" size={16} color="#fff" />
-                </View>
-            <Text style={styles.summaryAmount}>
-              {totalIncome.toLocaleString('vi-VN')} VND
-            </Text>
-                </View>
-          <View style={[styles.summaryCard, styles.expenseCard]}>
-            <View style={styles.summaryHeader}>
-              <Text style={styles.summaryLabel}>{t('wallet').expenses}</Text>
-              <Ionicons name="arrow-down" size={16} color="#fff" />
-              </View>
-            <Text style={styles.summaryAmount}>
-              {totalExpenses.toLocaleString('vi-VN')} VND
-            </Text>
-                </View>
-        </View>
-
-        {/* Transaction Tabs */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === "subscriptions" && styles.activeTab]}
-            onPress={() => setActiveTab("subscriptions")}
-          >
-            <Text style={[styles.tabText, activeTab === "subscriptions" && styles.activeTabText]}>
-              Transactions & Withdrawals
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === "deposits" && styles.activeTab]}
-            onPress={() => setActiveTab("deposits")}
-          >
-            <Text style={[styles.tabText, activeTab === "deposits" && styles.activeTabText]}>
-              Deposits & Refunds
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Transactions */}
-        <View style={styles.transactionsSection}>
-          {/* Refresh Button */}
-          <View style={styles.refreshHeader}>
-            <Text style={styles.sectionTitle}>Recent Transactions</Text>
-            <TouchableOpacity 
-              style={styles.refreshButton}
-              onPress={refreshTransactions}
-              disabled={transactionsLoading}
-            >
-              <Ionicons 
-                name="refresh" 
-                size={20} 
-                color={transactionsLoading ? "#9CA3AF" : "#3B82F6"} 
-              />
-            </TouchableOpacity>
+            <View style={styles.summaryIcon}>
+              <Ionicons name="trending-up" size={24} color="#10B981" />
+            </View>
+            <View style={styles.summaryContent}>
+              <Text style={styles.summaryLabel}>Total Income</Text>
+              <Text style={styles.summaryValue}>{totalIncome.toLocaleString('vi-VN')} VNĐ</Text>
+            </View>
           </View>
           
-          {activeTab === "subscriptions" && (
-            <>
-              {/* Filter Buttons */}
-              <View style={styles.filterContainer}>
-                <TouchableOpacity
-                  style={[styles.filterButton, subscriptionFilter === "all" && styles.activeFilterButton]}
-                  onPress={() => setSubscriptionFilter("all")}
-                >
-                  <Text style={[styles.filterText, subscriptionFilter === "all" && styles.activeFilterText]}>
-                    All
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterButton, subscriptionFilter === "plus" && styles.activeFilterButton]}
-                  onPress={() => setSubscriptionFilter("plus")}
-                >
-                  <Ionicons name="arrow-up" size={14} color={subscriptionFilter === "plus" ? "#fff" : "#3B9797"} />
-                  <Text style={[styles.filterText, subscriptionFilter === "plus" && styles.activeFilterText]}>
-                    {t('wallet').income}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterButton, subscriptionFilter === "minus" && styles.activeFilterButton]}
-                  onPress={() => setSubscriptionFilter("minus")}
-                >
-                  <Ionicons name="arrow-down" size={14} color={subscriptionFilter === "minus" ? "#fff" : "#BF092F"} />
-                  <Text style={[styles.filterText, subscriptionFilter === "minus" && styles.activeFilterText]}>
-                    {t('wallet').expenses}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryIcon}>
+              <Ionicons name="trending-down" size={24} color="#EF4444" />
+            </View>
+            <View style={styles.summaryContent}>
+              <Text style={styles.summaryLabel}>Total Expenses</Text>
+              <Text style={styles.summaryValue}>{totalExpenses.toLocaleString('vi-VN')} VNĐ</Text>
+            </View>
+          </View>
+        </View>
 
-              {transactionsLoading ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="small" color="#3B82F6" />
-                  <Text style={styles.loadingText}>Loading transactions...</Text>
-                </View>
-              ) : realTransactions.length > 0 ? (
-                realTransactions.map((transaction) => (
-                <View key={transaction._id} style={styles.subscriptionCard}>
-                  <View style={[styles.subscriptionIcon, { backgroundColor: transaction.direction === "in" ? "#D1FAE5" : "#FEE2E2" }]}>
-                    {transaction.transactionType === "deposit" ? (
-                      <Ionicons name="add-circle" size={20} color={transaction.direction === "in" ? "#10B981" : "#EF4444"} />
-                    ) : transaction.transactionType === "withdraw" ? (
-                      <Ionicons name="remove-circle" size={20} color={transaction.direction === "in" ? "#10B981" : "#EF4444"} />
-                    ) : transaction.transactionType === "subscription_fee" ? (
-                      <Ionicons name="card" size={20} color={transaction.direction === "in" ? "#10B981" : "#EF4444"} />
-                    ) : (
-                      <Ionicons name="card" size={20} color={transaction.direction === "in" ? "#10B981" : "#EF4444"} />
-                    )}
-                  </View>
-                  <View style={styles.subscriptionInfo}>
-                    <Text style={styles.subscriptionName}>{transaction.description}</Text>
-                    <Text style={styles.subscriptionDate}>
-                      {new Date(transaction.createdAt).toLocaleDateString("vi-VN", { 
-                        day: "numeric", 
-                        month: "long", 
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit"
-                      })}
-                    </Text>
-                  </View>
-                  <View style={styles.subscriptionAmount}>
-                    <Text style={[styles.subscriptionAmountText, { color: transaction.direction === "in" ? "#10B981" : "#EF4444" }]}>
-                      {transaction.direction === "in" ? "+" : "-"} {transaction.amount.toLocaleString('vi-VN')} VND
-                    </Text>
-                    <View style={[styles.subscriptionStatus, { 
-                      backgroundColor: transaction.status === "completed" ? "#D1FAE5" : 
-                                     transaction.status === "processing" ? "#FEF3C7" : "#FEE2E2"
-                    }]}>
-                      <Text style={[styles.subscriptionStatusText, { 
-                        color: transaction.status === "completed" ? "#065F46" : 
-                               transaction.status === "processing" ? "#92400E" : "#991B1B"
-                      }]}>
-                        {transaction.status === "completed" ? "Completed" : 
-                         transaction.status === "processing" ? "Processing" : "Failed"}
+        {/* Action Buttons */}
+        <View style={styles.actionSection}>
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.addFundsButton]}
+            onPress={() => setShowAddFunds(true)}
+          >
+            <Ionicons name="add-circle" size={24} color="white" />
+            <Text style={styles.actionButtonText}>Deposit</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.withdrawButton]}
+            onPress={() => setShowWithdraw(true)}
+          >
+            <Ionicons name="remove-circle" size={24} color="white" />
+            <Text style={styles.actionButtonText}>Withdraw</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Transaction History Section */}
+        <View style={styles.transactionHistorySection}>
+          <Text style={styles.sectionTitle}>Transaction History</Text>
+          
+          {/* Filter Buttons */}
+          <View style={styles.filterContainer}>
+            <TouchableOpacity
+              style={[styles.filterButton, transactionFilter === 'all' && styles.activeFilterButton]}
+              onPress={() => setTransactionFilter('all')}
+            >
+              <Text style={[styles.filterButtonText, transactionFilter === 'all' && styles.activeFilterButtonText]}>
+                All
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterButton, transactionFilter === 'deposits' && styles.activeFilterButton]}
+              onPress={() => setTransactionFilter('deposits')}
+            >
+              <Ionicons name="arrow-up" size={16} color={transactionFilter === 'deposits' ? "#fff" : "#10B981"} />
+              <Text style={[styles.filterButtonText, transactionFilter === 'deposits' && styles.activeFilterButtonText]}>
+                Deposits
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterButton, transactionFilter === 'withdrawals' && styles.activeFilterButton]}
+              onPress={() => setTransactionFilter('withdrawals')}
+            >
+              <Ionicons name="arrow-down" size={16} color={transactionFilter === 'withdrawals' ? "#fff" : "#EF4444"} />
+              <Text style={[styles.filterButtonText, transactionFilter === 'withdrawals' && styles.activeFilterButtonText]}>
+                Withdrawals
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Transaction List */}
+        <View style={styles.transactionSection}>
+          {transactionsLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#0F4D3A" />
+              <Text style={styles.loadingText}>Loading transactions...</Text>
+            </View>
+          ) : (
+            <>
+              {filteredTransactions.length > 0 ? (
+                filteredTransactions.map((transaction) => (
+                  <View key={transaction._id} style={styles.transactionCard}>
+                    <View style={[styles.transactionIcon, { backgroundColor: transaction.direction === 'in' ? '#E6F7F7' : '#FCE8E8' }]}>
+                      <Ionicons 
+                        name={transaction.direction === 'in' ? 'arrow-up' : 'arrow-down'} 
+                        size={18} 
+                        color={transaction.direction === 'in' ? '#10B981' : '#EF4444'} 
+                      />
+                    </View>
+                    <View style={styles.transactionInfo}>
+                      <Text style={styles.transactionTitle}>{transaction.description}</Text>
+                      <Text style={styles.transactionDate}>
+                        {new Date(transaction.createdAt).toLocaleDateString('en-US')}
                       </Text>
                     </View>
+                    <View style={styles.transactionAmount}>
+                      <Text style={[styles.amountText, { color: transaction.direction === 'in' ? '#10B981' : '#EF4444' }]}>
+                        {transaction.direction === 'in' ? '+' : '-'}{transaction.amount.toLocaleString('vi-VN')} VNĐ
+                      </Text>
+                      <View style={[styles.statusBadge, { backgroundColor: getStatusColor(transaction.status) + "20" }]}>
+                        <Text style={[styles.statusText, { color: getStatusColor(transaction.status) }]}>
+                          {getStatusText(transaction.status)}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
-                </View>
-              ))
+                ))
               ) : (
                 <View style={styles.emptyState}>
+                  <Ionicons name="receipt-outline" size={48} color="#9CA3AF" />
                   <Text style={styles.emptyStateText}>No transactions found</Text>
+                  <Text style={styles.emptyStateSubtext}>Your transaction history will appear here</Text>
                 </View>
               )}
-            </>
-          )}
-
-          {activeTab === "deposits" && (
-            <>
-              {/* Filter Buttons */}
-              <View style={styles.filterContainer}>
-                <TouchableOpacity
-                  style={[styles.filterButton, depositFilter === "all" && styles.activeFilterButton]}
-                  onPress={() => setDepositFilter("all")}
-                >
-                  <Text style={[styles.filterText, depositFilter === "all" && styles.activeFilterText]}>
-                    All
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterButton, depositFilter === "plus" && styles.activeFilterButton]}
-                  onPress={() => setDepositFilter("plus")}
-                >
-                  <Ionicons name="arrow-up" size={14} color={depositFilter === "plus" ? "#fff" : "#3B9797"} />
-                  <Text style={[styles.filterText, depositFilter === "plus" && styles.activeFilterText]}>
-                    Refunds
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterButton, depositFilter === "minus" && styles.activeFilterButton]}
-                  onPress={() => setDepositFilter("minus")}
-                >
-                  <Ionicons name="arrow-down" size={14} color={depositFilter === "minus" ? "#fff" : "#BF092F"} />
-                  <Text style={[styles.filterText, depositFilter === "minus" && styles.activeFilterText]}>
-                    Deposits
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {filteredDepositTransactions.map((transaction) => (
-                <View key={transaction.id} style={styles.transactionCard}>
-                  <View style={[styles.transactionIcon, { backgroundColor: transaction.type === "refund" ? "#E6F7F7" : "#FCE8E8" }]}>
-                    {transaction.itemName?.includes("Glass") ? (
-                      <Ionicons name="wine" size={18} color={transaction.type === "refund" ? "#3B9797" : "#BF092F"} />
-                    ) : transaction.itemName?.includes("Steel") ? (
-                      <Ionicons name="flask" size={18} color={transaction.type === "refund" ? "#3B9797" : "#BF092F"} />
-                    ) : transaction.itemName?.includes("Aluminum") ? (
-                      <Ionicons name="cube" size={18} color={transaction.type === "refund" ? "#3B9797" : "#BF092F"} />
-                    ) : transaction.itemName?.includes("Plastic") ? (
-                      <Ionicons name="cube" size={18} color={transaction.type === "refund" ? "#3B9797" : "#BF092F"} />
-                    ) : (
-                    <Ionicons
-                        name={transaction.type === "refund" ? "arrow-up" : "arrow-down"}
-                      size={18}
-                      color={transaction.type === "refund" ? "#3B9797" : "#BF092F"}
-                    />
-                    )}
-                  </View>
-                  <View style={styles.transactionInfo}>
-                    <Text style={styles.transactionTitle}>{transaction.description}</Text>
-                    <Text style={styles.transactionDate}>
-                      {new Date(transaction.createdAt).toLocaleDateString()}
-                    </Text>
-                    <Text style={styles.transactionItem}>{transaction.itemName}</Text>
-                    {transaction.dueDate && (
-                      <Text style={styles.transactionDue}>Due: {new Date(transaction.dueDate).toLocaleDateString()}</Text>
-                    )}
-                    {transaction.returnCondition && (
-                      <Text style={styles.transactionCondition}>Condition: {transaction.returnCondition}</Text>
-                    )}
-                  </View>
-                  <View style={styles.transactionAmount}>
-                    <Text style={[styles.amountText, { color: transaction.type === "refund" ? "#3B9797" : "#BF092F" }]}>
-                      {transaction.type === "refund" ? "+" : "-"}{(transaction.amount * 25000).toLocaleString('vi-VN')} VND
-                    </Text>
-                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(transaction.status) + "20" }]}>
-                      <Text style={[styles.statusText, { color: getStatusColor(transaction.status) }]}>
-                        {transaction.status === "completed" ? "Completed" : 
-                         transaction.status === "active" ? "Active" : 
-                         transaction.status === "overdue" ? "Overdue" : 
-                         transaction.status === "returned" ? "Returned" : transaction.status}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              ))}
             </>
           )}
         </View>
@@ -902,18 +728,23 @@ export default function CustomerWallet() {
               </TouchableOpacity>
             </View>
               
-            <View style={styles.modalBody}>
+            <ScrollView 
+              style={styles.modalBodyScroll}
+              contentContainerStyle={styles.modalBodyContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.modalBody}>
                 <Text style={styles.modalLabel}>Amount (VND)</Text>
-              <TextInput
-                style={styles.modalInput}
+                <TextInput
+                  style={styles.modalInput}
                   placeholder="Enter amount"
                   value={amount}
                   onChangeText={setAmount}
-                keyboardType="numeric"
-              />
-                
+                  keyboardType="numeric"
+                />
+                  
                 <Text style={styles.modalLabel}>Quick Amounts</Text>
-              <View style={styles.quickAmounts}>
+                <View style={styles.quickAmounts}>
                   {quickAmounts.map((quickAmount) => (
                     <TouchableOpacity
                       key={quickAmount}
@@ -921,16 +752,17 @@ export default function CustomerWallet() {
                       onPress={() => setAmount(quickAmount.toString())}
                     >
                       <Text style={styles.quickAmountText}>{quickAmount.toLocaleString('vi-VN')} VND</Text>
-                </TouchableOpacity>
+                    </TouchableOpacity>
                   ))}
+                </View>
               </View>
-            </View>
-              
+                
               <TouchableOpacity style={styles.modalButton} onPress={handleDeposit}>
                 <Text style={styles.modalButtonText}>Deposit</Text>
               </TouchableOpacity>
-            </View>
-              </View>
+            </ScrollView>
+          </View>
+        </View>
         </Modal>
       )}
 
@@ -1195,6 +1027,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f8fafc",
   },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
   iconGhost: { 
     height: 36, 
     width: 36, 
@@ -1211,177 +1047,87 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 100,
-  },
-  cardSection: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
-    marginTop: 10,
-  },
-  addCardButton: {
-    width: 60,
-    height: 40,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#000',
-    borderStyle: 'dashed',
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  creditCard: {
-    width: '100%',
-    height: 250,
-    backgroundColor: '#0F4D3A',
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  cardPattern: {
-    position: 'absolute',
-    top: -20,
-    right: -20,
-    width: 100,
-    height: 100,
-  },
-  patternCircle1: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  patternCircle2: {
-    position: 'absolute',
-    top: 30,
-    right: 30,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  patternCircle3: {
-    position: 'absolute',
-    top: 50,
-    right: 50,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  cardChip: {
-    width: 30,
-    height: 20,
-    backgroundColor: '#FFD700',
-    borderRadius: 4,
-  },
-  cardName: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
-  cardDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardExpiry: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 12,
-  },
-  cardNumber: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    letterSpacing: 2,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardLogo: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
   summarySection: {
     flexDirection: 'row',
-    gap: 16,
-    marginBottom: 24,
+    marginBottom: 20,
+    gap: 12,
   },
   summaryCard: {
     flex: 1,
-    backgroundColor: '#3B9797',
+    backgroundColor: 'white',
     borderRadius: 12,
     padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
   },
-  expenseCard: {
-    backgroundColor: '#BF092F',
-  },
-  summaryHeader: {
-    flexDirection: 'row',
+  summaryIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    paddingHorizontal: 4,
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  summaryContent: {
+    flex: 1,
   },
   summaryLabel: {
-    color: '#fff',
     fontSize: 14,
-    fontWeight: '500',
+    color: '#6B7280',
+    marginBottom: 4,
   },
-  summaryAmount: {
-    color: '#fff',
+  summaryValue: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: '#1F2937',
   },
-  transactionsSection: {
-    marginTop: 8,
-  },
-  refreshHeader: {
+  actionSection: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
+    gap: 12,
   },
-  refreshButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: '#F3F4F6',
-  },
-  sectionHeader: {
+  actionButton: {
+    flex: 1,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  addFundsButton: {
+    backgroundColor: '#0F4D3A',
+  },
+  withdrawButton: {
+    backgroundColor: '#F59E0B',
+  },
+  actionButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  transactionHistorySection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '600',
     color: '#1F2937',
+    marginBottom: 16,
   },
   transactionList: {
     gap: 12,
@@ -1414,34 +1160,29 @@ const styles = StyleSheet.create({
   transactionInfo: {
     flex: 1,
   },
-  transactionName: {
+  transactionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#1F2937',
     marginBottom: 4,
   },
-  transactionDesc: {
-    fontSize: 14,
+  transactionDate: {
+    fontSize: 12,
     color: '#6B7280',
   },
   transactionAmount: {
     alignItems: 'flex-end',
   },
-  transactionDate: {
+  amountText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  statusText: {
     fontSize: 12,
-    color: '#9CA3AF',
+    fontWeight: '500',
   },
-  incomeAmount: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#10B981',
-  },
-  expenseAmount: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#EF4444',
-  },
-  subscriptionCard: {
+  transactionCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
@@ -1456,116 +1197,38 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F3F4F6',
   },
-  subscriptionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  subscriptionInfo: {
-    flex: 1,
-  },
-  subscriptionName: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 6,
-  },
-  subscriptionDate: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  subscriptionAmount: {
-    alignItems: 'flex-end',
-  },
-  subscriptionAmountText: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  subscriptionLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '600',
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    textAlign: 'center',
-  },
-  subscriptionStatus: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  subscriptionStatusText: {
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  activeTab: {
-    backgroundColor: '#00704A',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#6B7280',
-  },
-  activeTabText: {
-    color: '#fff',
-  },
   filterContainer: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
     marginBottom: 16,
   },
   filterButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
     backgroundColor: '#F3F4F6',
-    gap: 4,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 6,
   },
   activeFilterButton: {
-    backgroundColor: '#00704A',
+    backgroundColor: '#0F4D3A',
+    borderColor: '#0F4D3A',
+    shadowColor: '#0F4D3A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  filterText: {
-    fontSize: 12,
-    fontWeight: '500',
+  filterButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
     color: '#6B7280',
   },
-  activeFilterText: {
-    color: '#fff',
+  activeFilterButtonText: {
+    color: 'white',
   },
   transactionCard: {
     flexDirection: 'row',
@@ -1643,6 +1306,12 @@ const styles = StyleSheet.create({
   modalBody: {
     marginBottom: 24,
   },
+  modalBodyScroll: {
+    flex: 1,
+  },
+  modalBodyContent: {
+    paddingBottom: 100, // Tránh bị che bởi navigation bar
+  },
   modalLabel: {
     fontSize: 14,
     fontWeight: '500',
@@ -1695,14 +1364,24 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   balanceCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: '#0F4D3A',
+    borderRadius: 16,
     padding: 20,
+    marginVertical: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  cardTitle: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  cardSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 8,
   },
   balanceTitle: {
     fontSize: 16,
@@ -1732,132 +1411,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  cardAccountNumber: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginBottom: 8,
-  },
-  cardBalance: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  cardActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 20,
-  },
-  cardActionsRight: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 20,
-  },
-  cardActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 16,
-    gap: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  cardActionText: {
-    color: '#00704A',
-    fontSize: 10,
-    fontWeight: '500',
-  },
   eyeButton: {
-    padding: 8,
-    zIndex: 10,
-    elevation: 10,
+    padding: 4,
   },
   balanceContainer: {
     marginVertical: 15,
   },
   balanceAmount: {
-    fontSize: 24,
+    fontSize: 36,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    textAlign: 'center',
   },
   balanceHidden: {
-    fontSize: 24,
+    fontSize: 36,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    textAlign: 'center',
-    letterSpacing: 4,
-  },
-  depositButton: {
-    backgroundColor: '#10B981',
-    flex: 1,
-    marginRight: 8,
-  },
-  withdrawButton: {
-    backgroundColor: '#EF4444',
-    flex: 1,
-    marginLeft: 8,
-  },
-  depositButtonText: {
-    color: '#FFFFFF',
-  },
-  withdrawButtonText: {
-    color: '#FFFFFF',
-  },
-  depositWithdrawButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 16,
-    gap: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  depositWithdrawText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    padding: 4,
-    marginVertical: 16,
-  },
-  toggleButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  toggleButtonActive: {
-    backgroundColor: '#00704A',
-  },
-  toggleText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  toggleTextActive: {
-    color: '#FFFFFF',
-  },
-  depositModalButton: {
-    backgroundColor: '#10B981',
-  },
-  withdrawModalButton: {
-    backgroundColor: '#EF4444',
   },
   statusBadge: {
     paddingHorizontal: 8,

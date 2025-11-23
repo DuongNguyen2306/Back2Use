@@ -65,6 +65,7 @@ export const API_ENDPOINTS = {
   },
   PRODUCTS: {
     GET_BY_ID: '/products', // GET /products/{id}
+    GET_ALL: '/products', // GET /products?productSizeId=&page=&limit=
     CREATE: '/products', // POST /products
   },
   PRODUCT_GROUPS: {

@@ -679,13 +679,13 @@ export default function MyProfile() {
             onPress={() => router.push('/(protected)/customer/settings')}
           >
             <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
+        </TouchableOpacity>
         </View>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* User Profile Card */}
-        <TouchableOpacity 
+                <TouchableOpacity 
           style={styles.profileCard}
           onPress={() => router.push('/(protected)/customer/profile-detail')}
         >
@@ -707,18 +707,18 @@ export default function MyProfile() {
             </View>
             {/* Only show switch role button if user has business role */}
             {(hasBusinessRole || auth.state.role === 'business' || user?.role === 'business') && (
-              <TouchableOpacity 
+                <TouchableOpacity 
                 style={styles.switchRoleButton}
                 onPress={(e) => {
                   e.stopPropagation();
                   handleSwitchRole('business');
                 }}
-              >
+                >
                 <Ionicons name="swap-horizontal" size={20} color="#00704A" />
               </TouchableOpacity>
-            )}
+                  )}
           </View>
-        </TouchableOpacity>
+                </TouchableOpacity>
 
         {/* Shortcuts Grid */}
         <View style={styles.shortcutsGrid}>
@@ -734,7 +734,7 @@ export default function MyProfile() {
               <Text style={styles.shortcutLabel}>{shortcut.label}</Text>
             </TouchableOpacity>
           ))}
-        </View>
+            </View>
 
         {/* Collapsible Settings List */}
         <View style={styles.settingsList}>
@@ -766,7 +766,7 @@ export default function MyProfile() {
               >
                 <Text style={styles.expandedItemText}>Contact Support</Text>
               </TouchableOpacity>
-            </View>
+              </View>
           )}
 
           <TouchableOpacity
@@ -776,7 +776,7 @@ export default function MyProfile() {
             <View style={styles.settingsListItemLeft}>
               <Ionicons name="settings-outline" size={24} color="#00704A" />
               <Text style={styles.settingsListItemText}>Settings & Privacy</Text>
-            </View>
+              </View>
             <Ionicons 
               name={expandedSettings ? "chevron-up" : "chevron-down"} 
               size={20} 
@@ -797,10 +797,10 @@ export default function MyProfile() {
               >
                 <Text style={styles.expandedItemText}>Privacy</Text>
               </TouchableOpacity>
-            </View>
+              </View>
           )}
-        </View>
-
+            </View>
+            
         {/* Business Registration History - Always show if there's history */}
         {businessHistory.length > 0 && (
           <View style={styles.businessRegisterSection}>
@@ -825,27 +825,27 @@ export default function MyProfile() {
                         {item.status === 'approved' ? 'Approved' : 
                          item.status === 'rejected' ? 'Rejected' : 
                          'Pending'}
-                      </Text>
-                    </View>
-                  </View>
+                  </Text>
+                </View>
+            </View>
                 </View>
               ))}
-              <TouchableOpacity 
+                <TouchableOpacity
                 style={styles.businessRegisterButton} 
                 onPress={() => setShowBusinessHistoryModal(true)}
               >
                 <Ionicons name="time-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
                 <Text style={styles.businessRegisterButtonText}>View History Details</Text>
-              </TouchableOpacity>
+                </TouchableOpacity>
             </View>
           </View>
         )}
 
         {/* Business Registration Section - Only show register button if user doesn't have business role */}
         {!hasBusinessRole && auth.state.role !== 'business' && user?.role !== 'business' && businessHistory.length === 0 && (
-          <View style={styles.businessRegisterSection}>
-            <TouchableOpacity 
-              style={styles.businessRegisterButton} 
+        <View style={styles.businessRegisterSection}>
+          <TouchableOpacity 
+            style={styles.businessRegisterButton} 
               onPress={() => {
                 if (hasPendingBusiness) {
                   setShowBusinessHistoryModal(true);
@@ -853,17 +853,17 @@ export default function MyProfile() {
                   setShowBusinessRegisterModal(true);
                 }
               }}
-            >
-              <Ionicons name="business-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+          >
+            <Ionicons name="business-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
               <Text style={styles.businessRegisterButtonText}>Register Business</Text>
-              {hasPendingBusiness && (
-                <View style={styles.pendingBadge}>
-                  <Ionicons name="time" size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
+            {hasPendingBusiness && (
+              <View style={styles.pendingBadge}>
+                <Ionicons name="time" size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
                   <Text style={styles.pendingBadgeText}>Pending</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
         )}
 
         {/* Register New Business Button - Only show if user doesn't have approved business */}
@@ -878,8 +878,8 @@ export default function MyProfile() {
             >
               <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
               <Text style={styles.businessRegisterButtonText}>Register New Business</Text>
-            </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
+        </View>
         )}
 
         {/* Logout Button */}

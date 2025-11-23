@@ -44,12 +44,17 @@ export default function InventoryManagementScreen() {
   const [showGroupDetailModal, setShowGroupDetailModal] = useState(false);
   const [showCreateSizeModal, setShowCreateSizeModal] = useState(false);
   const [showCreateProductsModal, setShowCreateProductsModal] = useState(false);
+  const [showProductListModal, setShowProductListModal] = useState(false);
   const [showMaterialPicker, setShowMaterialPicker] = useState(false);
   
   // Selected group for detail view
   const [selectedGroup, setSelectedGroup] = useState<ProductGroup | null>(null);
   const [groupSizes, setGroupSizes] = useState<ProductSize[]>([]);
   const [loadingSizes, setLoadingSizes] = useState(false);
+  
+  // Products state
+  const [products, setProducts] = useState<any[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
   
   // Form states
   const [groupForm, setGroupForm] = useState({
@@ -104,7 +109,7 @@ export default function InventoryManagementScreen() {
     }
   };
 
-  const loadProductGroups = async () => {
+  const loadProductGroups = async (): Promise<ProductGroup[]> => {
     try {
       setLoading(true);
       const productGroupsResponse = await productGroupsApi.getAll({ page: 1, limit: 50 });
@@ -124,12 +129,17 @@ export default function InventoryManagementScreen() {
         createdAt: item.createdAt || new Date().toISOString().split('T')[0],
       }));
       
-      setProductGroups(mappedGroups);
+      setProductGroups(mappedGroups);  // ← cập nhật state
+      
+      console.log('✅ Product groups loaded:', mappedGroups.length, mappedGroups);
+      
+      return mappedGroups; // ← TRẢ VỀ MẢNG MỚI (quan trọng!)
     } catch (error: any) {
       console.error('❌ Error loading product groups:', error);
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to load inventory';
       Alert.alert('Error', errorMessage);
       setProductGroups([]);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -147,13 +157,45 @@ export default function InventoryManagementScreen() {
         : (responseData?.data || responseData?.docs || responseData?.items || []);
       
       setGroupSizes(sizesArray);
+      
+      // LOG ĐÚNG Ở ĐÂY
+      console.log('✅ Sizes loaded successfully:', sizesArray.length, sizesArray);
+      
+      return sizesArray; // ← trả về để dùng ở nơi khác nếu cần
     } catch (error: any) {
       console.error('❌ Error loading sizes:', error);
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to load product sizes';
       Alert.alert('Error', errorMessage);
       setGroupSizes([]);
+      return []; // Trả về mảng rỗng nếu có lỗi
     } finally {
       setLoadingSizes(false);
+    }
+  };
+
+  const loadProducts = async (productSizeId: string) => {
+    try {
+      setLoadingProducts(true);
+      const response = await productsApi.getAll({ productSizeId, page: 1, limit: 100 });
+      
+      // Handle response structure
+      const responseData = (response as any)?.data || response;
+      const productsArray = Array.isArray(responseData) 
+        ? responseData 
+        : (responseData?.data || responseData?.docs || responseData?.items || []);
+      
+      setProducts(productsArray);
+      console.log('✅ Products loaded successfully:', productsArray.length, productsArray);
+      
+      return productsArray;
+    } catch (error: any) {
+      console.error('❌ Error loading products:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to load products';
+      Alert.alert('Error', errorMessage);
+      setProducts([]);
+      return [];
+    } finally {
+      setLoadingProducts(false);
     }
   };
 
@@ -183,7 +225,10 @@ export default function InventoryManagementScreen() {
       Alert.alert('Success', successMessage);
       setShowCreateGroupModal(false);
       setGroupForm({ materialId: '', name: '', description: '', image: null });
-      await loadProductGroups();
+      
+      // RELOAD và log đúng
+      const newGroups = await loadProductGroups();
+      console.log('✅ New groups count:', newGroups.length); // sẽ thấy đúng số lượng
     } catch (error: any) {
       console.error('❌ Error creating product group:', error);
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to create product group';
@@ -209,24 +254,24 @@ export default function InventoryManagementScreen() {
         description: sizeForm.description || undefined,
       };
       
-      // API service đã trả về response.data (size mới) trực tiếp
-      const newSize = await productSizesApi.create(request);
+      console.log('📤 Creating product size:', request);
+      const response = await productSizesApi.create(request);
+      console.log('✅ Created size successfully:', (response as any)?.data || response);
       
       // ĐÓNG MODAL TRƯỚC
       setShowCreateSizeModal(false);
       setSizeForm({ sizeName: '', basePrice: '', weight: '', description: '' });
 
-      // TỰ ĐỘNG THÊM SIZE MỚI VÀO DANH SÁCH (không cần reload)
-      if (newSize && newSize._id) {
-        setGroupSizes(prev => [...prev, newSize]);
-      } else {
-        // Fallback: reload nếu không lấy được data
-        await loadGroupSizes(selectedGroup.id);
-      }
+      // RELOAD và log đúng
+      const updatedSizes = await loadGroupSizes(selectedGroup.id);
+      console.log('✅ Sizes now:', updatedSizes.length); // → đúng số lượng mới!
+
+      // Mở lại Group Detail Modal để hiển thị size mới
+      setShowGroupDetailModal(true);
 
       Alert.alert('Success', 'Product size created successfully');
     } catch (error: any) {
-      console.error('Error creating product size:', error);
+      console.error('❌ Error creating product size:', error);
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to create product size';
       Alert.alert('Error', errorMessage);
     } finally {
@@ -267,10 +312,14 @@ export default function InventoryManagementScreen() {
       Alert.alert('Success', successMessage);
       setShowCreateProductsModal(false);
       setProductsForm({ amount: '' });
-      setSelectedSize(null);
       
-      // Optionally reload sizes to show updated product count if needed
-      // await loadGroupSizes(selectedGroup.id);
+      // Reload products để hiển thị products mới
+      if (selectedSize) {
+        await loadProducts(selectedSize._id);
+      }
+      
+      // Mở lại Product List Modal để hiển thị products mới
+      setShowProductListModal(true);
     } catch (error: any) {
       console.error('❌ Error creating products:', error);
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to create products';
@@ -406,16 +455,21 @@ export default function InventoryManagementScreen() {
       <Modal
         visible={showCreateGroupModal}
         animationType="slide"
-        presentationStyle="pageSheet"
+        presentationStyle="overFullScreen"
       >
         <View style={styles.modalContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#059669" />
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setShowCreateGroupModal(false)}>
               <Text style={styles.cancelButton}>Cancel</Text>
             </TouchableOpacity>
             <Text style={styles.modalTitle}>Create Product Group</Text>
-            <TouchableOpacity onPress={handleCreateGroup} disabled={submitting}>
-              <Text style={[styles.saveButton, submitting && styles.disabledButton]}>
+            <TouchableOpacity 
+              onPress={handleCreateGroup}
+              disabled={submitting}
+              style={{ opacity: submitting ? 0.6 : 1 }}
+            >
+              <Text style={styles.saveButton}>
                 {submitting ? 'Creating...' : 'Save'}
               </Text>
             </TouchableOpacity>
@@ -539,9 +593,10 @@ export default function InventoryManagementScreen() {
       <Modal
         visible={showGroupDetailModal}
         animationType="slide"
-        presentationStyle="pageSheet"
+        presentationStyle="overFullScreen"
       >
         <View style={styles.modalContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#059669" />
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => {
               setShowGroupDetailModal(false);
@@ -552,6 +607,9 @@ export default function InventoryManagementScreen() {
             </TouchableOpacity>
             <Text style={styles.modalTitle}>{selectedGroup?.name || 'Product Group'}</Text>
             <TouchableOpacity onPress={() => {
+              // Đóng modal hiện tại
+              setShowGroupDetailModal(false);
+              // Mở modal tạo size NGAY LẬP TỨC → không cần setTimeout
               setShowCreateSizeModal(true);
             }}>
               <Ionicons name="add" size={24} color="white" />
@@ -574,9 +632,12 @@ export default function InventoryManagementScreen() {
                 <TouchableOpacity
                   key={size._id}
                   style={styles.sizeCard}
-                  onPress={() => {
+                  onPress={async () => {
                     setSelectedSize(size);
-                    setShowCreateProductsModal(true);
+                    setShowGroupDetailModal(false);
+                    setShowProductListModal(true);  // MỞ DANH SÁCH PRODUCT
+                    // Load products khi mở modal
+                    await loadProducts(size._id);
                   }}
                 >
                   <View style={styles.sizeContent}>
@@ -606,16 +667,27 @@ export default function InventoryManagementScreen() {
       <Modal
         visible={showCreateSizeModal}
         animationType="slide"
-        presentationStyle="pageSheet"
+        presentationStyle="overFullScreen"
       >
         <View style={styles.modalContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#059669" />
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowCreateSizeModal(false)}>
+            <TouchableOpacity onPress={() => {
+              setShowCreateSizeModal(false);
+              // Mở lại Group Detail Modal khi đóng Create Size Modal
+              if (selectedGroup) {
+                setShowGroupDetailModal(true);
+              }
+            }}>
               <Text style={styles.cancelButton}>Cancel</Text>
             </TouchableOpacity>
             <Text style={styles.modalTitle}>Create Product Size</Text>
-            <TouchableOpacity onPress={handleCreateSize} disabled={submitting}>
-              <Text style={[styles.saveButton, submitting && styles.disabledButton]}>
+            <TouchableOpacity 
+              onPress={handleCreateSize}
+              disabled={submitting}
+              style={{ opacity: submitting ? 0.6 : 1 }}
+            >
+              <Text style={styles.saveButton}>
                 {submitting ? 'Creating...' : 'Save'}
               </Text>
             </TouchableOpacity>
@@ -673,19 +745,25 @@ export default function InventoryManagementScreen() {
       <Modal
         visible={showCreateProductsModal}
         animationType="slide"
-        presentationStyle="pageSheet"
+        presentationStyle="overFullScreen"
       >
         <View style={styles.modalContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#059669" />
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => {
               setShowCreateProductsModal(false);
-              setSelectedSize(null);
+              // Mở lại Product List Modal
+              setShowProductListModal(true);
             }}>
               <Text style={styles.cancelButton}>Cancel</Text>
             </TouchableOpacity>
             <Text style={styles.modalTitle}>Create Products</Text>
-            <TouchableOpacity onPress={handleCreateProducts} disabled={submitting}>
-              <Text style={[styles.saveButton, submitting && styles.disabledButton]}>
+            <TouchableOpacity 
+              onPress={handleCreateProducts}
+              disabled={submitting}
+              style={{ opacity: submitting ? 0.6 : 1 }}
+            >
+              <Text style={styles.saveButton}>
                 {submitting ? 'Creating...' : 'Create'}
               </Text>
             </TouchableOpacity>
@@ -712,6 +790,127 @@ export default function InventoryManagementScreen() {
                 This will create {productsForm.amount || 0} products with unique QR codes
               </Text>
             </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Product List Modal - SIÊU ĐẸP */}
+      <Modal
+        visible={showProductListModal}
+        animationType="slide"
+        presentationStyle="overFullScreen"
+      >
+        <View style={styles.modalContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#059669" />
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => {
+              setShowProductListModal(false);
+              setShowGroupDetailModal(true);
+            }}>
+              <Text style={styles.cancelButton}>Back</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle} numberOfLines={1}>
+              {selectedSize?.sizeName} Products
+            </Text>
+            <View style={{ width: 50 }} />
+          </View>
+
+          <ScrollView style={styles.formContainer}>
+            {/* Size Info */}
+            <View style={styles.sizeInfoCard}>
+              <Text style={styles.sizeInfoTitle}>Size Information</Text>
+              <Text style={styles.sizeInfoText}>Name: {selectedSize?.sizeName}</Text>
+              <Text style={styles.sizeInfoText}>
+                Price: {selectedSize?.basePrice?.toLocaleString()} VND
+              </Text>
+              <Text style={styles.sizeInfoText}>Weight: {selectedSize?.weight}g</Text>
+            </View>
+
+            {/* Product Count */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <Text style={{ fontSize: 18, fontWeight: '600', color: '#111827' }}>
+                Products ({products.length})
+              </Text>
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                onPress={() => {
+                  setShowProductListModal(false);
+                  setShowCreateProductsModal(true);
+                }}
+              >
+                <Ionicons name="add-circle" size={22} color="#059669" />
+                <Text style={{ color: '#059669', fontWeight: '600' }}>Add More</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Danh sách sản phẩm */}
+            {loadingProducts ? (
+              <View style={{ alignItems: 'center', paddingVertical: 60 }}>
+                <ActivityIndicator size="large" color="#059669" />
+                <Text style={{ marginTop: 16, color: '#6B7280' }}>Loading products...</Text>
+              </View>
+            ) : products.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 60 }}>
+                <Ionicons name="qr-code-outline" size={80} color="#D1D5DB" />
+                <Text style={{ fontSize: 18, color: '#6B7280', marginTop: 20, fontWeight: '600' }}>
+                  No products yet
+                </Text>
+                <Text style={{ color: '#9CA3AF', marginTop: 8, textAlign: 'center' }}>
+                  Tap "Add More" to create products with unique QR codes
+                </Text>
+              </View>
+            ) : (
+              <View style={{ gap: 12 }}>
+                {products.map((product, index) => (
+                  <TouchableOpacity
+                    key={product._id || index}
+                    style={styles.productItem}
+                    onPress={() => {
+                      // TODO: Navigate to product detail
+                      console.log('Product pressed:', product);
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <View style={styles.qrPlaceholder}>
+                        <Ionicons name="qr-code-outline" size={32} color="#059669" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontWeight: '600', color: '#111827' }}>
+                          Product #{String(index + 1).padStart(4, '0')}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+                          QR: {product.qrCode || 'N/A'}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: '#6B7280' }}>
+                          {new Date(product.createdAt).toLocaleDateString('vi-VN')}
+                        </Text>
+                      </View>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Nút tạo thêm lớn (nếu chưa có hoặc muốn thêm) */}
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#059669',
+                padding: 18,
+                borderRadius: 14,
+                alignItems: 'center',
+                marginTop: 30,
+                marginBottom: 20,
+              }}
+              onPress={() => {
+                setShowProductListModal(false);
+                setShowCreateProductsModal(true);
+              }}
+            >
+              <Text style={{ color: 'white', fontSize: 17, fontWeight: '600' }}>
+                Create More Products
+              </Text>
+            </TouchableOpacity>
           </ScrollView>
         </View>
       </Modal>
@@ -859,7 +1058,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop: 50, // Tránh bị che bởi status bar
+    paddingBottom: 16,
     backgroundColor: '#059669',
   },
   cancelButton: {
@@ -1072,5 +1272,23 @@ const styles = StyleSheet.create({
   refreshText: {
     color: '#059669',
     fontWeight: '600',
+  },
+  productItem: {
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  qrPlaceholder: {
+    width: 56,
+    height: 56,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

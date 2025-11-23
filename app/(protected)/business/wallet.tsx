@@ -107,22 +107,26 @@ export default function BusinessWalletScreen() {
         console.log('🔄 Loading real transactions...');
         
         const response = await walletTransactionsApi.getMy({
+          walletType: 'business',
+          typeGroup: 'personal', // Chỉ lấy personal transactions (top_up, withdraw, subscription_fee)
           page: 1,
           limit: 50,
         });
         
-        console.log('📡 Transactions API Response:', response);
+        console.log('📡 Business Transactions API Response:', response);
+        console.log('📡 Request params:', { walletType: 'business', typeGroup: 'personal' });
         
         if (response.statusCode === 200 && response.data) {
+          console.log('✅ Business transactions data:', response.data);
+          console.log('✅ Number of transactions:', response.data.length);
           setRealTransactions(response.data);
-          console.log('✅ Loaded transactions:', response.data.length);
           
           // Calculate summary - only count completed transactions
           let income = 0;
           let expenses = 0;
           
           response.data.forEach(transaction => {
-            // Only count completed transactions
+            // Only count completed transactions (not processing or failed)
             if (transaction.status === 'completed') {
               if (transaction.direction === 'in') {
                 income += transaction.amount;
@@ -130,6 +134,13 @@ export default function BusinessWalletScreen() {
                 expenses += transaction.amount;
               }
             }
+          });
+          
+          console.log('📊 Business transactions breakdown:', {
+            total: response.data.length,
+            completed: response.data.filter(t => t.status === 'completed').length,
+            processing: response.data.filter(t => t.status === 'processing').length,
+            failed: response.data.filter(t => t.status === 'failed').length,
           });
           
           setTotalIncome(income);
@@ -228,11 +239,15 @@ export default function BusinessWalletScreen() {
       console.log('🔄 Loading real transactions...');
       
       const response = await walletTransactionsApi.getMy({
+        walletType: 'business',
+        typeGroup: 'personal', // Chỉ lấy personal transactions (top_up, withdraw, subscription_fee)
         page: 1,
         limit: 50,
       });
       
-      console.log('📊 Real transactions response:', response);
+      console.log('📊 Business Real transactions response:', response);
+      console.log('📊 Request params:', { walletType: 'business', typeGroup: 'personal' });
+      console.log('📊 Transactions data:', response.data);
       setRealTransactions(response.data);
       
       // Calculate summary - only count completed transactions
@@ -240,7 +255,7 @@ export default function BusinessWalletScreen() {
       let expenses = 0;
       
       response.data.forEach(transaction => {
-        // Only count completed transactions
+        // Only count completed transactions (not processing or failed)
         if (transaction.status === 'completed') {
           if (transaction.direction === 'in') {
             income += transaction.amount;
@@ -248,6 +263,13 @@ export default function BusinessWalletScreen() {
             expenses += transaction.amount;
           }
         }
+      });
+      
+      console.log('📊 Business transactions breakdown (reload):', {
+        total: response.data.length,
+        completed: response.data.filter(t => t.status === 'completed').length,
+        processing: response.data.filter(t => t.status === 'processing').length,
+        failed: response.data.filter(t => t.status === 'failed').length,
       });
       
       setTotalIncome(income);
@@ -421,9 +443,12 @@ export default function BusinessWalletScreen() {
       case 'completed':
       case 'returned':
         return '#10B981';
+      case 'processing':
+        return '#F59E0B'; // Amber for processing
       case 'active':
         return '#3B82F6';
       case 'overdue':
+      case 'failed':
         return '#EF4444';
       default:
         return '#6B7280';
@@ -434,6 +459,10 @@ export default function BusinessWalletScreen() {
     switch (status) {
       case 'completed':
         return 'Completed';
+      case 'processing':
+        return 'Processing';
+      case 'failed':
+        return 'Failed';
       case 'active':
         return 'Active';
       case 'overdue':
@@ -441,7 +470,7 @@ export default function BusinessWalletScreen() {
       case 'returned':
         return 'Returned';
       default:
-        return status;
+        return status.charAt(0).toUpperCase() + status.slice(1); // Capitalize first letter
     }
   };
 
@@ -649,7 +678,11 @@ export default function BusinessWalletScreen() {
             <View style={{ width: 60 }} />
           </View>
 
-          <View style={styles.modalContent}>
+          <ScrollView 
+            style={styles.modalContent}
+            contentContainerStyle={styles.modalContentScroll}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={styles.modalSubtitle}>Enter amount to add to your wallet</Text>
             
             <View style={styles.amountInputContainer}>
@@ -694,7 +727,7 @@ export default function BusinessWalletScreen() {
                 {isProcessing ? 'Processing...' : 'Deposit'}
               </Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
 
@@ -1139,7 +1172,10 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     flex: 1,
+  },
+  modalContentScroll: {
     padding: 20,
+    paddingBottom: 100, // Tránh bị che bởi navigation bar
   },
   modalSubtitle: {
     fontSize: 16,
