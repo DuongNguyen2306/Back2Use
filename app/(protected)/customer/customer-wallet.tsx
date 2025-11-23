@@ -1,3 +1,6 @@
+import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService';
+import { walletApi, walletTransactionsApi, type WalletDetails, type WalletTransaction } from '@/services/api/walletService';
+import { User } from '@/types/auth.types';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
@@ -8,6 +11,7 @@ import {
   Modal,
   RefreshControl,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -18,9 +22,6 @@ import { WebView } from 'react-native-webview';
 import CustomerHeader from '../../../components/CustomerHeader';
 import { useAuth } from '../../../context/AuthProvider';
 import { useI18n } from '../../../hooks/useI18n';
-import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService';
-import { User } from '@/types/auth.types';
-import { walletApi, walletTransactionsApi, type WalletDetails, type WalletTransaction } from '@/services/api/walletService';
 
 const { width } = Dimensions.get('window');
 
@@ -107,11 +108,19 @@ export default function CustomerWallet() {
           console.log('🔍 Customer Wallet data from API:', userData.wallet);
           console.log('💰 Customer Balance type:', typeof userData.wallet.balance);
           console.log('💰 Customer Balance value:', userData.wallet.balance);
+          console.log('💰 Customer Wallet full object:', JSON.stringify(userData.wallet, null, 2));
+          
+          // Handle both balance and availableBalance fields
+          const walletBalance = (userData.wallet as any).availableBalance ?? userData.wallet.balance ?? 0;
           
           setWallet({
             _id: userData.wallet._id,
-            balance: typeof userData.wallet.balance === 'number' ? userData.wallet.balance : 0,
+            balance: typeof walletBalance === 'number' ? walletBalance : 0,
           });
+          
+          console.log('✅ Set wallet balance to:', walletBalance);
+        } else {
+          console.warn('⚠️ No wallet data in user profile');
         }
         } catch (error: any) {
         // Don't log network errors as errors - they're expected when offline
@@ -140,8 +149,7 @@ export default function CustomerWallet() {
       if (nextAppState === 'active' && wallet?._id && !isPaymentProcessing && !showPaymentWebView) {
         console.log('🔄 App became active, reloading wallet and transaction data...');
         loadUserData();
-        loadTransactions(); // Also reload transactions to get updated status
-        loadAllTransactionsForSummary(); // Also reload summary
+        loadTransactions(); // Also reload transactions to get updated status (includes summary calculation)
       }
     };
 
@@ -170,11 +178,19 @@ export default function CustomerWallet() {
         console.log('🔍 Customer Wallet data from API:', userData.wallet);
         console.log('💰 Customer Balance type:', typeof userData.wallet.balance);
         console.log('💰 Customer Balance value:', userData.wallet.balance);
+        console.log('💰 Customer Wallet full object:', JSON.stringify(userData.wallet, null, 2));
+        
+        // Handle both balance and availableBalance fields
+        const walletBalance = (userData.wallet as any).availableBalance ?? userData.wallet.balance ?? 0;
         
         setWallet({
           _id: userData.wallet._id,
-          balance: typeof userData.wallet.balance === 'number' ? userData.wallet.balance : 0,
+          balance: typeof walletBalance === 'number' ? walletBalance : 0,
         });
+        
+        console.log('✅ Set wallet balance to:', walletBalance);
+      } else {
+        console.warn('⚠️ No wallet data in user profile');
       }
     } catch (error) {
       console.error('Error loading user data:', error);
@@ -183,8 +199,8 @@ export default function CustomerWallet() {
     }
   };
 
-  const handleDeposit = async () => {
-    console.log('🚀 Starting customer deposit process...');
+  const handleAddFunds = async () => {
+    console.log('🚀 Starting add funds process...');
     console.log('💰 Amount:', amount);
     console.log('💳 Wallet ID:', wallet?._id);
     
@@ -212,43 +228,26 @@ export default function CustomerWallet() {
       if (response.url || response.payUrl) {
         const paymentUrl = response.url || response.payUrl;
         console.log('🔗 Payment URL received:', paymentUrl);
-        console.log('🔗 URL type:', typeof paymentUrl);
-        console.log('🔗 URL length:', paymentUrl?.length);
-        console.log('🔗 URL starts with:', paymentUrl?.substring(0, 50));
         
-        // Validate URL before showing WebView
-        if (!paymentUrl || paymentUrl.trim() === '') {
-          console.error('❌ Empty payment URL');
-          Alert.alert('Error', 'Invalid payment URL received');
-          return;
-        }
+        // Save payment amount for result display
+        setSavedPaymentAmount(Number(amount));
+        setPaymentAmount(Number(amount));
         
-        if (!paymentUrl.startsWith('http')) {
-          console.error('❌ Invalid URL format:', paymentUrl);
-          Alert.alert('Error', 'Invalid payment URL format');
-          return;
-        }
-        
-        
-        const paymentAmountValue = Number(amount) || 0;
-        setSavedPaymentAmount(paymentAmountValue);
-        console.log('🔍 Saving payment amount:', paymentAmountValue);
-        
-        
-        setShowAddFunds(false);
-        setPaymentUrl(paymentUrl);
+        // Show VNPay WebView
+        setPaymentUrl(paymentUrl || '');
         setShowPaymentWebView(true);
+        setShowAddFunds(false);
       } else {
         console.log('✅ Direct deposit successful');
         Alert.alert('Success', 'Deposit successful');
-        // Reload wallet data
+        // Reload wallet data and transactions
         await loadUserData();
+        await loadTransactions();
+        setShowAddFunds(false);
+        setAmount('');
       }
-      
-      setShowAddFunds(false);
-      setAmount('');
     } catch (error: any) {
-      console.error('❌ Deposit error:', error);
+      console.error('❌ Add funds error:', error);
       console.error('❌ Error message:', error.message);
       console.error('❌ Error response:', error.response?.data);
       Alert.alert('Error', `Failed to process deposit: ${error.message}`);
@@ -258,18 +257,12 @@ export default function CustomerWallet() {
   };
 
   const handleWithdraw = async () => {
-    console.log('🚀 Starting customer withdraw process...');
-    console.log('💰 Amount:', amount);
-    console.log('💳 Wallet ID:', wallet?._id);
-    
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-      console.log('❌ Invalid amount');
       Alert.alert('Error', 'Please enter a valid amount');
       return;
     }
 
     if (!wallet?._id) {
-      console.log('❌ No wallet ID');
       Alert.alert('Error', 'Wallet not found');
       return;
     }
@@ -281,12 +274,7 @@ export default function CustomerWallet() {
 
     try {
       setIsProcessing(true);
-      console.log('📡 Calling withdraw API...');
-      console.log('📡 API URL:', `/wallets/${wallet._id}/withdraw`);
-      console.log('📡 Amount:', Number(amount));
-      
       await walletApi.withdraw(wallet._id, Number(amount));
-      console.log('✅ Withdraw successful');
       
       Alert.alert('Success', 'Withdrawal successful');
       setShowWithdraw(false);
@@ -294,14 +282,53 @@ export default function CustomerWallet() {
       
       // Reload wallet data
       await loadUserData();
-    } catch (error: any) {
-      console.error('❌ Withdraw error:', error);
-      console.error('❌ Error message:', error.message);
-      console.error('❌ Error response:', error.response?.data);
-      Alert.alert('Error', `Failed to process withdrawal: ${error.message}`);
+      await loadTransactions();
+    } catch (error) {
+      console.error('Withdraw error:', error);
+      Alert.alert('Error', 'Failed to process withdrawal');
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handlePaymentSuccess = async () => {
+    console.log('✅ Payment successful, closing WebView and showing result');
+    setShowPaymentWebView(false);
+    setPaymentResult('success');
+    setShowPaymentResult(true);
+    setPaymentResultShown(true);
+    
+    // Immediate refresh
+    await loadUserData();
+    await loadTransactions();
+    
+    // Additional refresh after delay to ensure data is updated
+    setTimeout(async () => {
+      console.log('🔄 Refreshing data after payment success...');
+      await loadUserData();
+      await loadTransactions();
+    }, 3000); // 3 seconds delay
+  };
+
+  const handlePaymentFailure = () => {
+    console.log('❌ Payment failed, closing WebView and showing result');
+    setShowPaymentWebView(false);
+    setPaymentResult('failed');
+    setShowPaymentResult(true);
+    setPaymentResultShown(true);
+  };
+
+  const handlePaymentResultClose = async () => {
+    console.log('🔄 Closing payment result modal');
+    setShowPaymentResult(false);
+    setPaymentResult(null);
+    setPaymentResultShown(false);
+    setAmount('');
+    
+    // Refresh data when closing payment result
+    console.log('🔄 Refreshing data after closing payment result...');
+    await loadUserData();
+    await loadTransactions();
   };
 
   // Mock data
@@ -429,6 +456,44 @@ export default function CustomerWallet() {
     }
   };
 
+  const getTransactionTypeText = (transactionType: string) => {
+    switch (transactionType) {
+      case 'top_up':
+        return 'Nạp tiền';
+      case 'withdraw':
+        return 'Rút tiền';
+      case 'subscription_fee':
+        return 'Phí đăng ký';
+      case 'borrow_deposit':
+        return 'Tiền cọc mượn';
+      case 'return_refund':
+        return 'Hoàn tiền cọc';
+      case 'deposit_forfeited':
+        return 'Mất tiền cọc';
+      default:
+        return transactionType;
+    }
+  };
+
+  const getTransactionTypeIcon = (transactionType: string) => {
+    switch (transactionType) {
+      case 'top_up':
+        return 'add-circle';
+      case 'withdraw':
+        return 'remove-circle';
+      case 'subscription_fee':
+        return 'card';
+      case 'borrow_deposit':
+        return 'cube';
+      case 'return_refund':
+        return 'refresh';
+      case 'deposit_forfeited':
+        return 'close-circle';
+      default:
+        return 'receipt';
+    }
+  };
+
   // Filter real transactions based on type
   const filteredTransactions = realTransactions.filter(transaction => {
     if (transactionFilter === 'all') return true;
@@ -440,15 +505,6 @@ export default function CustomerWallet() {
 
 
 
-  const handleAddFunds = () => {
-    if (!amount || parseFloat(amount) <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid amount');
-      return;
-    }
-    // Handle add funds logic here
-    setShowAddFunds(false);
-    setAmount('');
-  };
 
   const quickAmounts = [10000, 50000, 100000, 200000];
 
@@ -460,46 +516,62 @@ export default function CustomerWallet() {
       setTransactionsLoading(true);
       console.log('🔄 Loading customer transactions...');
       
-      const response = await walletTransactionsApi.getMy({
-        walletType: 'customer',
-        typeGroup: 'personal',
-        page: 1,
-        limit: 50,
+      // Load cả personal và deposit_refund transactions
+      const [personalResponse, depositRefundResponse] = await Promise.all([
+        walletTransactionsApi.getMy({
+          walletType: 'customer',
+          typeGroup: 'personal',
+          page: 1,
+          limit: 50,
+        }),
+        walletTransactionsApi.getMy({
+          walletType: 'customer',
+          typeGroup: 'deposit_refund',
+          page: 1,
+          limit: 50,
+        }),
+      ]);
+      
+      console.log('📡 Personal Transactions API Response:', personalResponse);
+      console.log('📡 Deposit Refund Transactions API Response:', depositRefundResponse);
+      
+      // Merge cả 2 loại transactions và sort theo createdAt (mới nhất trước)
+      const allTransactions = [
+        ...(personalResponse.statusCode === 200 && personalResponse.data ? personalResponse.data : []),
+        ...(depositRefundResponse.statusCode === 200 && depositRefundResponse.data ? depositRefundResponse.data : []),
+      ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      console.log('✅ All customer transactions:', allTransactions);
+      console.log('✅ Total number of transactions:', allTransactions.length);
+      setRealTransactions(allTransactions);
+      
+      // Calculate summary - only count completed transactions
+      let income = 0;
+      let expenses = 0;
+      
+      allTransactions.forEach(transaction => {
+        // Only count completed transactions (not processing or failed)
+        if (transaction.status === 'completed') {
+          if (transaction.direction === 'in') {
+            income += transaction.amount;
+          } else {
+            expenses += transaction.amount;
+          }
+        }
       });
       
-      console.log('📡 Customer Transactions API Response:', response);
+      console.log('📊 Customer transactions breakdown:', {
+        total: allTransactions.length,
+        personal: personalResponse.statusCode === 200 && personalResponse.data ? personalResponse.data.length : 0,
+        depositRefund: depositRefundResponse.statusCode === 200 && depositRefundResponse.data ? depositRefundResponse.data.length : 0,
+        completed: allTransactions.filter(t => t.status === 'completed').length,
+        processing: allTransactions.filter(t => t.status === 'processing').length,
+        failed: allTransactions.filter(t => t.status === 'failed').length,
+      });
       
-      if (response.statusCode === 200 && response.data) {
-        console.log('✅ Customer transactions data:', response.data);
-        console.log('✅ Number of transactions:', response.data.length);
-        setRealTransactions(response.data);
-        
-        // Calculate summary - only count completed transactions
-        let income = 0;
-        let expenses = 0;
-        
-        response.data.forEach(transaction => {
-          // Only count completed transactions (not processing or failed)
-          if (transaction.status === 'completed') {
-            if (transaction.direction === 'in') {
-              income += transaction.amount;
-            } else {
-              expenses += transaction.amount;
-            }
-          }
-        });
-        
-        console.log('📊 Customer transactions breakdown:', {
-          total: response.data.length,
-          completed: response.data.filter(t => t.status === 'completed').length,
-          processing: response.data.filter(t => t.status === 'processing').length,
-          failed: response.data.filter(t => t.status === 'failed').length,
-        });
-        
-        setTotalIncome(income);
-        setTotalExpenses(expenses);
-        console.log('💰 Summary - Income:', income, 'Expenses:', expenses);
-      }
+      setTotalIncome(income);
+      setTotalExpenses(expenses);
+      console.log('💰 Summary - Income:', income, 'Expenses:', expenses);
     } catch (error) {
       console.error('❌ Error loading transactions:', error);
     } finally {
@@ -535,7 +607,7 @@ export default function CustomerWallet() {
         user={user}
         rightAction={
           <TouchableOpacity 
-            style={styles.refreshButton}
+            style={styles.iconGhost}
             onPress={forceRefresh}
           >
             <Ionicons name="refresh" size={20} color="#FFFFFF" />
@@ -608,11 +680,15 @@ export default function CustomerWallet() {
           </View>
         </View>
 
-        {/* Action Buttons */}
+        {/* Action Buttons - Deposit & Withdraw */}
         <View style={styles.actionSection}>
           <TouchableOpacity 
             style={[styles.actionButton, styles.addFundsButton]}
-            onPress={() => setShowAddFunds(true)}
+            onPress={() => {
+              console.log('💰 Deposit button pressed');
+              setShowAddFunds(true);
+            }}
+            activeOpacity={0.8}
           >
             <Ionicons name="add-circle" size={24} color="white" />
             <Text style={styles.actionButtonText}>Deposit</Text>
@@ -620,7 +696,11 @@ export default function CustomerWallet() {
           
           <TouchableOpacity 
             style={[styles.actionButton, styles.withdrawButton]}
-            onPress={() => setShowWithdraw(true)}
+            onPress={() => {
+              console.log('💸 Withdraw button pressed');
+              setShowWithdraw(true);
+            }}
+            activeOpacity={0.8}
           >
             <Ionicons name="remove-circle" size={24} color="white" />
             <Text style={styles.actionButtonText}>Withdraw</Text>
@@ -663,7 +743,7 @@ export default function CustomerWallet() {
         </View>
 
         {/* Transaction List */}
-        <View style={styles.transactionSection}>
+        <View style={styles.transactionHistorySection}>
           {transactionsLoading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color="#0F4D3A" />
@@ -682,9 +762,20 @@ export default function CustomerWallet() {
                       />
                     </View>
                     <View style={styles.transactionInfo}>
-                      <Text style={styles.transactionTitle}>{transaction.description}</Text>
+                      <Text style={styles.transactionTitle}>
+                        {transaction.transactionType ? getTransactionTypeText(transaction.transactionType) : transaction.description}
+                      </Text>
+                      {transaction.description && transaction.transactionType && (
+                        <Text style={styles.transactionSubtitle}>{transaction.description}</Text>
+                      )}
                       <Text style={styles.transactionDate}>
-                        {new Date(transaction.createdAt).toLocaleDateString('en-US')}
+                        {new Date(transaction.createdAt).toLocaleDateString('vi-VN', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
                       </Text>
                     </View>
                     <View style={styles.transactionAmount}>
@@ -711,112 +802,201 @@ export default function CustomerWallet() {
         </View>
       </ScrollView>
 
-      {/* Add Funds Modal - Old Beautiful Design */}
-      {showAddFunds && (
-        <Modal
-          visible={showAddFunds}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setShowAddFunds(false)}
-        >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Deposit Money</Text>
-              <TouchableOpacity onPress={() => setShowAddFunds(false)}>
-                  <Ionicons name="close" size={24} color="#6B7280" />
+      {/* Deposit Modal */}
+      <Modal
+        visible={showAddFunds}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <View style={styles.modalContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#0F4D3A" />
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowAddFunds(false)}>
+              <Text style={styles.cancelButton}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Deposit</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          <ScrollView 
+            style={styles.modalContent}
+            contentContainerStyle={styles.modalContentScroll}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Text style={styles.modalSubtitle}>Enter amount to add to your wallet</Text>
+            
+            <View style={styles.amountInputContainer}>
+              <Text style={styles.currencySymbol}>VNĐ</Text>
+              <TextInput
+                style={styles.amountInput}
+                placeholder="0"
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="numeric"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+
+            <View style={styles.quickAmounts}>
+              <TouchableOpacity 
+                style={styles.quickAmountButton}
+                onPress={() => setAmount('100000')}
+              >
+                <Text style={styles.quickAmountText}>100,000 VNĐ</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.quickAmountButton}
+                onPress={() => setAmount('500000')}
+              >
+                <Text style={styles.quickAmountText}>500,000 VNĐ</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.quickAmountButton}
+                onPress={() => setAmount('1000000')}
+              >
+                <Text style={styles.quickAmountText}>1,000,000 VNĐ</Text>
               </TouchableOpacity>
             </View>
-              
-            <ScrollView 
-              style={styles.modalBodyScroll}
-              contentContainerStyle={styles.modalBodyContent}
-              keyboardShouldPersistTaps="handled"
+
+            <TouchableOpacity 
+              style={[styles.confirmButton, styles.addFundsConfirmButton]}
+              onPress={handleAddFunds}
+              disabled={isProcessing}
             >
-              <View style={styles.modalBody}>
-                <Text style={styles.modalLabel}>Amount (VND)</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="Enter amount"
-                  value={amount}
-                  onChangeText={setAmount}
-                  keyboardType="numeric"
-                />
-                  
-                <Text style={styles.modalLabel}>Quick Amounts</Text>
-                <View style={styles.quickAmounts}>
-                  {quickAmounts.map((quickAmount) => (
-                    <TouchableOpacity
-                      key={quickAmount}
-                      style={styles.quickAmountButton}
-                      onPress={() => setAmount(quickAmount.toString())}
-                    >
-                      <Text style={styles.quickAmountText}>{quickAmount.toLocaleString('vi-VN')} VND</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-                
-              <TouchableOpacity style={styles.modalButton} onPress={handleDeposit}>
-                <Text style={styles.modalButtonText}>Deposit</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
+              <Text style={styles.confirmButtonText}>
+                {isProcessing ? 'Processing...' : 'Deposit'}
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
-        </Modal>
-      )}
+      </Modal>
 
       {/* Withdraw Modal */}
-      {showWithdraw && (
-        <Modal
-          visible={showWithdraw}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => {
-            console.log('🔘 Withdraw modal onRequestClose called');
-            setShowWithdraw(false);
-          }}
-        >
-        <View style={styles.modalOverlay}>
+      <Modal
+        visible={showWithdraw}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <View style={styles.modalContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#0F4D3A" />
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowWithdraw(false)}>
+              <Text style={styles.cancelButton}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Withdraw</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
           <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Withdraw Money</Text>
-              <TouchableOpacity onPress={() => setShowWithdraw(false)}>
-                  <Ionicons name="close" size={24} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
-              
-            <View style={styles.modalBody}>
-                <Text style={styles.modalLabel}>Withdrawal Amount (VND)</Text>
+            <Text style={styles.modalSubtitle}>Enter amount to withdraw from your wallet</Text>
+            <Text style={styles.balanceInfo}>
+              Available balance: {wallet?.balance ? wallet.balance.toLocaleString('vi-VN') : '0'} VNĐ
+            </Text>
+            
+            <View style={styles.amountInputContainer}>
+              <Text style={styles.currencySymbol}>VNĐ</Text>
               <TextInput
-                style={styles.modalInput}
-                  placeholder="Enter amount"
-                  value={amount}
-                  onChangeText={setAmount}
+                style={styles.amountInput}
+                placeholder="0"
+                value={amount}
+                onChangeText={setAmount}
                 keyboardType="numeric"
+                placeholderTextColor="#9CA3AF"
               />
-                
-                <Text style={styles.modalLabel}>Quick Amounts</Text>
-              <View style={styles.quickAmounts}>
-                  {quickAmounts.map((quickAmount) => (
-                    <TouchableOpacity
-                      key={quickAmount}
-                      style={styles.quickAmountButton}
-                      onPress={() => setAmount(quickAmount.toString())}
-                    >
-                      <Text style={styles.quickAmountText}>{quickAmount.toLocaleString('vi-VN')} VND</Text>
-                </TouchableOpacity>
-                  ))}
-              </View>
             </View>
+
+            <TouchableOpacity 
+              style={[styles.confirmButton, styles.withdrawConfirmButton]}
+              onPress={handleWithdraw}
+              disabled={isProcessing}
+            >
+              <Text style={styles.confirmButtonText}>
+                {isProcessing ? 'Processing...' : 'Withdraw'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* VNPay WebView Modal */}
+      <Modal
+        visible={showPaymentWebView}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
+        <View style={styles.webViewContainer}>
+          <View style={styles.webViewHeader}>
+            <TouchableOpacity onPress={() => setShowPaymentWebView(false)}>
+              <Text style={styles.cancelButton}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.webViewTitle}>VNPay Payment</Text>
+            <View style={{ width: 60 }} />
+          </View>
+          
+          <WebView
+            source={{ uri: paymentUrl }}
+            style={styles.webView}
+            onNavigationStateChange={(navState) => {
+              console.log('🔍 WebView navigation:', navState.url);
               
-              <TouchableOpacity style={styles.modalButton} onPress={handleWithdraw}>
-                <Text style={styles.modalButtonText}>Withdraw</Text>
-              </TouchableOpacity>
+              // Check for success URL
+              if (navState.url.includes('vnp_ResponseCode=00') || navState.url.includes('success')) {
+                console.log('✅ Payment success detected');
+                handlePaymentSuccess();
+              }
+              
+              // Check for failure URL
+              if (navState.url.includes('vnp_ResponseCode=') && !navState.url.includes('vnp_ResponseCode=00')) {
+                console.log('❌ Payment failure detected');
+                handlePaymentFailure();
+              }
+            }}
+            onError={(error) => {
+              console.error('❌ WebView error:', error);
+              handlePaymentFailure();
+            }}
+          />
+        </View>
+      </Modal>
+
+      {/* Payment Result Modal */}
+      <Modal
+        visible={showPaymentResult}
+        animationType="fade"
+        transparent={true}
+      >
+        <View style={styles.resultModalContainer}>
+          <View style={styles.resultModalContent}>
+            <View style={styles.resultIcon}>
+              <Ionicons 
+                name={paymentResult === 'success' ? 'checkmark-circle' : 'close-circle'} 
+                size={64} 
+                color={paymentResult === 'success' ? '#10B981' : '#EF4444'} 
+              />
             </View>
-              </View>
-        </Modal>
-      )}
+            
+            <Text style={styles.resultTitle}>
+              {paymentResult === 'success' ? 'Payment Successful!' : 'Payment Failed'}
+            </Text>
+            
+            <Text style={styles.resultMessage}>
+              {paymentResult === 'success' 
+                ? `Successfully added ${savedPaymentAmount.toLocaleString('vi-VN')} VNĐ to your wallet`
+                : 'Payment could not be processed. Please try again.'
+              }
+            </Text>
+            
+            <TouchableOpacity 
+              style={[styles.resultButton, paymentResult === 'success' ? styles.successButton : styles.failureButton]}
+              onPress={handlePaymentResultClose}
+            >
+              <Text style={styles.resultButtonText}>
+                {paymentResult === 'success' ? 'Continue' : 'Try Again'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
 
 
@@ -988,7 +1168,7 @@ export default function CustomerWallet() {
                   // Refresh transactions to get updated status
                   if (paymentResult === 'success') {
                     console.log('🔄 Refreshing transactions after successful payment...');
-                    await refreshTransactions();
+                    await loadTransactions();
                   }
                 }}
               >
@@ -1170,6 +1350,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6B7280',
   },
+  transactionSubtitle: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
   transactionAmount: {
     alignItems: 'flex-end',
   },
@@ -1230,50 +1415,6 @@ const styles = StyleSheet.create({
   activeFilterButtonText: {
     color: 'white',
   },
-  transactionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  transactionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  transactionMethod: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  transactionDuration: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  transactionDue: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  transactionCondition: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  amountText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -1292,17 +1433,7 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 10,
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1F2937',
-  },
+  // Old modal styles - keeping for backward compatibility but not used
   modalBody: {
     marginBottom: 24,
   },
@@ -1363,6 +1494,12 @@ const styles = StyleSheet.create({
   balanceSection: {
     marginBottom: 24,
   },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   balanceCard: {
     backgroundColor: '#0F4D3A',
     borderRadius: 16,
@@ -1388,18 +1525,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2937',
     marginBottom: 8,
-  },
-  addFundsButton: {
-    backgroundColor: '#00704A',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
   addFundsText: {
     color: '#fff',
@@ -1444,10 +1569,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     backgroundColor: '#3B82F6',
-  },
-  cancelButton: {
-    fontSize: 16,
-    color: 'white',
   },
   newModalTitle: {
     fontSize: 18,
@@ -1522,9 +1643,6 @@ const styles = StyleSheet.create({
   depositConfirmButton: {
     backgroundColor: '#3B82F6',
   },
-  withdrawConfirmButton: {
-    backgroundColor: '#F59E0B',
-  },
   confirmButtonText: {
     color: 'white',
     fontSize: 16,
@@ -1572,6 +1690,12 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     paddingVertical: 40,
+  },
+  emptyStateSubtext: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
   },
   emptyStateText: {
     fontSize: 16,
@@ -1663,6 +1787,96 @@ const styles = StyleSheet.create({
   },
   paymentResultButtonTextSecondary: {
     color: '#3B82F6',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // Modal styles (from business wallet)
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingTop: 50, // Account for status bar
+    backgroundColor: '#0F4D3A',
+  },
+  cancelButton: {
+    fontSize: 16,
+    color: 'white',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: 'white',
+  },
+  modalContentScroll: {
+    padding: 20,
+    paddingBottom: 100, // Tránh bị che bởi navigation bar
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  addFundsConfirmButton: {
+    backgroundColor: '#0F4D3A',
+  },
+  withdrawConfirmButton: {
+    backgroundColor: '#F59E0B',
+  },
+  // Payment result modal styles
+  resultModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  resultModalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 320,
+  },
+  resultIcon: {
+    marginBottom: 16,
+  },
+  resultTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  resultMessage: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  resultButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center',
+  },
+  successButton: {
+    backgroundColor: '#10B981',
+  },
+  failureButton: {
+    backgroundColor: '#EF4444',
+  },
+  resultButtonText: {
+    color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },

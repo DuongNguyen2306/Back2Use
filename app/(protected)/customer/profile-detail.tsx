@@ -75,21 +75,28 @@ export default function ProfileDetail() {
   const loadUserProfile = async () => {
     try {
       setLoading(true);
-      const response = await getCurrentUserProfileWithAutoRefresh();
-      if (response.data) {
-        const userData = response.data as any;
-        setUser(userData);
-        setFormData({
-          name: userData.fullName || userData.name || "",
-          email: userData.email || "",
-          phone: userData.phone || "",
-          address: userData.address || "",
-          dateOfBirth: formatDateString(userData.dateOfBirth || ""),
-          notifications: userData.notifications !== undefined ? userData.notifications : true,
-          emailUpdates: userData.emailUpdates !== undefined ? userData.emailUpdates : true,
-          smsAlerts: userData.smsAlerts !== undefined ? userData.smsAlerts : false,
-        });
-      }
+      const userData = await getCurrentUserProfileWithAutoRefresh();
+      // getCurrentUserProfileWithAutoRefresh returns User directly, not wrapped in response.data
+      setUser(userData);
+      
+      // Auto-fill form with user data
+      const userDataAny = userData as any;
+      setFormData({
+        name: userDataAny.fullName || userData.name || "",
+        email: userData.email || "",
+        phone: userDataAny.phone || "",
+        address: userDataAny.address || "",
+        dateOfBirth: formatDateString(userDataAny.dateOfBirth || userDataAny.yob || ""),
+        notifications: userDataAny.notifications !== undefined ? userDataAny.notifications : true,
+        emailUpdates: userDataAny.emailUpdates !== undefined ? userDataAny.emailUpdates : true,
+        smsAlerts: userDataAny.smsAlerts !== undefined ? userDataAny.smsAlerts : false,
+      });
+      console.log('✅ Profile loaded and form filled:', {
+        name: userDataAny.fullName || userData.name,
+        email: userData.email,
+        phone: userDataAny.phone,
+        dateOfBirth: formatDateString(userDataAny.dateOfBirth || userDataAny.yob || ""),
+      });
     } catch (error: any) {
       console.error("Error loading profile:", error);
       toast({
@@ -147,17 +154,28 @@ export default function ProfileDetail() {
         dateOfBirth: formData.dateOfBirth || undefined,
       };
 
-      const response = await updateUserProfileWithAutoRefresh(updateData);
+      const updatedUser = await updateUserProfileWithAutoRefresh(updateData);
+      // updateUserProfileWithAutoRefresh returns User directly, not wrapped in response.data
+      setUser(updatedUser);
       
-      if (response.data) {
-        const updatedUser = response.data as any;
-        setUser(updatedUser);
-        setIsEditing(false);
-        toast({
-          title: "Success",
-          description: "Profile updated successfully",
-        });
-      }
+      // Update formData with new user data
+      const updatedUserAny = updatedUser as any;
+      setFormData({
+        name: updatedUserAny.fullName || updatedUser.name || "",
+        email: updatedUser.email || "",
+        phone: updatedUserAny.phone || "",
+        address: updatedUserAny.address || "",
+        dateOfBirth: formatDateString(updatedUserAny.dateOfBirth || updatedUserAny.yob || ""),
+        notifications: updatedUserAny.notifications !== undefined ? updatedUserAny.notifications : true,
+        emailUpdates: updatedUserAny.emailUpdates !== undefined ? updatedUserAny.emailUpdates : true,
+        smsAlerts: updatedUserAny.smsAlerts !== undefined ? updatedUserAny.smsAlerts : false,
+      });
+      
+      setIsEditing(false);
+      toast({
+        title: "Success",
+        description: "Profile updated successfully",
+      });
     } catch (error: any) {
       console.error("Error updating profile:", error);
       toast({
@@ -174,19 +192,25 @@ export default function ProfileDetail() {
       setUploadingAvatar(true);
       const response = await uploadAvatarWithAutoRefresh(imageUri);
       
-      if (response.data) {
-        const avatarUrl = typeof response.data === 'string' ? response.data : (response.data as any)?.avatarUrl || response.data;
+      // Extract avatarUrl from response
+      const avatarUrl = response?.data?.avatarUrl || 
+                       (typeof response.data === 'string' ? response.data : '') ||
+                       (response as any)?.avatarUrl || '';
+      
+      if (avatarUrl) {
         setUser(prev => prev ? { ...prev, avatar: avatarUrl } : null);
         toast({
           title: "Success",
           description: "Avatar updated successfully",
         });
+      } else {
+        throw new Error('No avatar URL returned from server');
       }
     } catch (error: any) {
       console.error('Error uploading avatar:', error);
       toast({
         title: "Error",
-        description: "Failed to upload avatar",
+        description: error.message || "Failed to upload avatar",
       });
     } finally {
       setUploadingAvatar(false);

@@ -176,20 +176,57 @@ export default function InventoryManagementScreen() {
   const loadProducts = async (productSizeId: string) => {
     try {
       setLoadingProducts(true);
-      const response = await productsApi.getAll({ productSizeId, page: 1, limit: 100 });
+      
+      // API yêu cầu productGroupId làm path parameter, không phải productSizeId
+      // Lấy productGroupId từ selectedGroup hoặc selectedSize
+      const productGroupId = selectedGroup?.id || selectedSize?.productGroupId;
+      
+      if (!productGroupId) {
+        console.error('❌ No productGroupId available');
+        Alert.alert('Error', 'Product group ID is required');
+        setProducts([]);
+        return [];
+      }
+      
+      console.log('🔄 Loading products for productGroupId:', productGroupId, 'productSizeId:', productSizeId);
+      console.log('🔄 productsApi.getAll exists?', typeof productsApi.getAll === 'function');
+      
+      // Gọi API với productGroupId làm path parameter
+      const response = await productsApi.getAll(productGroupId, { 
+        page: 1, 
+        limit: 100 
+      });
+      
+      console.log('📡 Products API Response:', response);
       
       // Handle response structure
       const responseData = (response as any)?.data || response;
-      const productsArray = Array.isArray(responseData) 
+      let productsArray = Array.isArray(responseData) 
         ? responseData 
         : (responseData?.data || responseData?.docs || responseData?.items || []);
       
+      console.log('📦 Products array before filter:', productsArray.length);
+      
+      // Filter products theo productSizeId nếu có
+      // Lưu ý: productSizeId trong response là object, không phải string
+      if (productSizeId && productsArray.length > 0) {
+        productsArray = productsArray.filter((p: any) => {
+          // productSizeId có thể là object {_id: "...", ...} hoặc string
+          const sizeId = typeof p.productSizeId === 'object' 
+            ? p.productSizeId?._id 
+            : p.productSizeId;
+          return sizeId === productSizeId;
+        });
+        console.log(`🔍 Filtered products by productSizeId (${productSizeId}):`, productsArray.length);
+      }
+      
       setProducts(productsArray);
-      console.log('✅ Products loaded successfully:', productsArray.length, productsArray);
+      console.log('✅ Products loaded successfully:', productsArray.length);
       
       return productsArray;
     } catch (error: any) {
       console.error('❌ Error loading products:', error);
+      console.error('❌ Error stack:', error.stack);
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to load products';
       Alert.alert('Error', errorMessage);
       setProducts([]);
@@ -861,34 +898,47 @@ export default function InventoryManagementScreen() {
               </View>
             ) : (
               <View style={{ gap: 12 }}>
-                {products.map((product, index) => (
-                  <TouchableOpacity
-                    key={product._id || index}
-                    style={styles.productItem}
-                    onPress={() => {
-                      // TODO: Navigate to product detail
-                      console.log('Product pressed:', product);
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                      <View style={styles.qrPlaceholder}>
-                        <Ionicons name="qr-code-outline" size={32} color="#059669" />
+                {products.map((product, index) => {
+                  // Xử lý productSizeId có thể là object hoặc string
+                  const sizeId = typeof product.productSizeId === 'object' 
+                    ? product.productSizeId?._id 
+                    : product.productSizeId;
+                  const sizeName = typeof product.productSizeId === 'object' 
+                    ? product.productSizeId?.sizeName 
+                    : 'Unknown';
+                  
+                  return (
+                    <TouchableOpacity
+                      key={product._id || index}
+                      style={styles.productItem}
+                      onPress={() => {
+                        // TODO: Navigate to product detail
+                        console.log('Product pressed:', product);
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <View style={styles.qrPlaceholder}>
+                          <Ionicons name="qr-code-outline" size={32} color="#059669" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontWeight: '600', color: '#111827' }}>
+                            {product.serialNumber || `Product #${String(index + 1).padStart(4, '0')}`}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+                            Size: {sizeName}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: '#6B7280' }}>
+                            Status: {product.status || 'N/A'}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: '#6B7280' }}>
+                            {new Date(product.createdAt).toLocaleDateString('vi-VN')}
+                          </Text>
+                        </View>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontWeight: '600', color: '#111827' }}>
-                          Product #{String(index + 1).padStart(4, '0')}
-                        </Text>
-                        <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
-                          QR: {product.qrCode || 'N/A'}
-                        </Text>
-                        <Text style={{ fontSize: 12, color: '#6B7280' }}>
-                          {new Date(product.createdAt).toLocaleDateString('vi-VN')}
-                        </Text>
-                      </View>
-                    </View>
-                    <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-                  </TouchableOpacity>
-                ))}
+                      <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             )}
 

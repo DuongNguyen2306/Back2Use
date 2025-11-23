@@ -1,20 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_ENDPOINTS, REQUEST_TIMEOUT } from '../../constants/api';
+import { API_ENDPOINTS } from '../../constants/api';
 import {
-    BusinessRegisterRequest,
-    BusinessRegisterResponse,
-    BusinessFormHistory,
-    BusinessFormHistoryResponse,
-    Business,
-    GetAllBusinessesResponse,
-    MaterialCreateRequest,
-    MaterialItem,
-    NearbyBusinessesResponse,
-    PaginatedResponse,
-    BusinessProfileResponse,
+  BusinessFormHistoryResponse,
+  BusinessProfileResponse,
+  BusinessRegisterRequest,
+  BusinessRegisterResponse,
+  GetAllBusinessesResponse,
+  MaterialCreateRequest,
+  MaterialItem,
+  NearbyBusinessesResponse,
+  PaginatedResponse
 } from '../../types/business.types';
-import { apiCall } from './client';
-import { apiClient } from './client';
+import { apiCall, apiClient } from './client';
 
 // Helper function to get current access token with auto refresh
 let getCurrentAccessToken: (() => Promise<string | null>) | null = null;
@@ -229,13 +226,28 @@ export interface ProductsResponse {
   data: Product[];
 }
 
+export interface ScanProductResponse {
+  success?: boolean;
+  statusCode?: number;
+  message?: string;
+  data: {
+    product?: Product;
+    qrCode?: string;
+    serialNumber?: string;
+    status?: string;
+    reuseCount?: number;
+    transaction?: any;
+    lateInfo?: any;
+  } | Product;
+}
+
 export const productsApi = {
-  getAll: async (params?: { productSizeId?: string; productGroupId?: string; page?: number; limit?: number }): Promise<ProductsResponse> => {
-    const { productSizeId, productGroupId, page = 1, limit = 50 } = params || {};
+  getAll: async (productGroupId: string, params?: { page?: number; limit?: number; status?: string; search?: string }): Promise<ProductsResponse> => {
+    const { page = 1, limit = 100, status, search } = params || {};
     const queryParams: any = { page, limit };
-    if (productSizeId) queryParams.productSizeId = productSizeId;
-    if (productGroupId) queryParams.productGroupId = productGroupId;
-    return apiCall<ProductsResponse>(API_ENDPOINTS.PRODUCTS.GET_ALL, {
+    if (status) queryParams.status = status;
+    if (search) queryParams.search = search;
+    return apiCall<ProductsResponse>(`${API_ENDPOINTS.PRODUCTS.GET_ALL}/${productGroupId}`, {
       method: 'GET',
       params: queryParams,
     });
@@ -244,6 +256,16 @@ export const productsApi = {
     return apiCall<CreateProductsResponse>(API_ENDPOINTS.PRODUCTS.CREATE, {
       method: 'POST',
       data,
+    });
+  },
+  scan: async (serialNumber: string): Promise<ScanProductResponse> => {
+    // Đảm bảo endpoint được định nghĩa đúng
+    const scanEndpoint = API_ENDPOINTS.PRODUCTS?.SCAN || '/products/scan';
+    const endpoint = `${scanEndpoint}/${serialNumber}`;
+    console.log('🔍 Scanning QR with endpoint:', endpoint, 'serialNumber:', serialNumber);
+    console.log('🔍 API_ENDPOINTS.PRODUCTS:', API_ENDPOINTS.PRODUCTS);
+    return apiCall<ScanProductResponse>(endpoint, {
+      method: 'GET',
     });
   },
 };

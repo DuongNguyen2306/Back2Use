@@ -2,8 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_ENDPOINTS, REQUEST_TIMEOUT } from '../../constants/api';
 import {
   CreateBorrowTransactionRequest,
-  CreateBorrowTransactionResponse,
-  BorrowTransaction,
+  CreateBorrowTransactionResponse
 } from '../../types/product.types';
 import { apiClient } from './client';
 
@@ -100,6 +99,63 @@ export const borrowTransactionsApi = {
     borrowDto: CreateBorrowTransactionRequest
   ): Promise<CreateBorrowTransactionResponse> => {
     return borrowTransactionsApi.create(borrowDto);
+  },
+
+  // Get customer borrow transaction history
+  getCustomerHistory: async (params?: {
+    status?: string;
+    productName?: string;
+    borrowTransactionType?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<any> => {
+    try {
+      // Get token
+      let accessToken: string | undefined;
+      if (getCurrentAccessToken) {
+        try {
+          accessToken = await getCurrentAccessToken() || undefined;
+        } catch (error) {
+          console.warn('Error getting token from provider:', error);
+        }
+      }
+
+      if (!accessToken) {
+        try {
+          accessToken = await AsyncStorage.getItem('ACCESS_TOKEN') || undefined;
+        } catch (error) {
+          console.warn('Error getting token from AsyncStorage:', error);
+        }
+      }
+
+      if (!accessToken) {
+        throw new Error('No access token available. Please log in first.');
+      }
+
+      // Build query params
+      const queryParams = new URLSearchParams();
+      if (params?.status) queryParams.append('status', params.status);
+      if (params?.productName) queryParams.append('productName', params.productName);
+      if (params?.borrowTransactionType) queryParams.append('borrowTransactionType', params.borrowTransactionType);
+      if (params?.page) queryParams.append('page', String(params.page));
+      if (params?.limit) queryParams.append('limit', String(params.limit));
+
+      const endpoint = `${API_ENDPOINTS.BORROW_TRANSACTIONS.CUSTOMER_HISTORY}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+
+      const response = await apiClient.get(endpoint, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: REQUEST_TIMEOUT,
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Error getting customer borrow history:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to get borrow history';
+      throw new Error(errorMessage);
+    }
   },
 };
 

@@ -1,30 +1,133 @@
+import { borrowTransactionsApi } from "@/services/api/borrowTransactionService";
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { mockTransactions } from "../../../lib/mock-data";
+import { router } from "expo-router";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import CustomerHeader from "../../../components/CustomerHeader";
+
+interface CustomerBorrowHistoryItem {
+  _id: string;
+  customerId: string;
+  productId: {
+    _id: string;
+    productGroupId: {
+      _id: string;
+      name: string;
+      imageUrl?: string;
+    };
+    productSizeId: {
+      _id: string;
+      sizeName: string;
+    };
+    qrCode?: string;
+    serialNumber: string;
+    status: string;
+    reuseCount: number;
+  };
+  businessId: {
+    _id: string;
+    businessName: string;
+    businessAddress?: string;
+    businessPhone?: string;
+    businessType?: string;
+    businessLogoUrl?: string;
+  };
+  borrowTransactionType: string;
+  borrowDate: string;
+  dueDate: string;
+  depositAmount: number;
+  status: string;
+  isLateProcessed: boolean;
+  createdAt: string;
+  updatedAt: string;
+  qrCode?: string;
+}
 
 export default function CustomerTransactionHistory() {
+  const [transactions, setTransactions] = useState<CustomerBorrowHistoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
 
-  const filteredTransactions = mockTransactions.filter((transaction) => {
-    const matchesSearch = transaction.id.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || transaction.status === statusFilter;
-    const matchesType = typeFilter === "all" || transaction.type === typeFilter;
-    return matchesSearch && matchesStatus && matchesType;
+  const loadHistory = async () => {
+    try {
+      setLoading(true);
+      console.log('🔄 Loading customer borrow history...');
+      
+      const params: any = {
+        page: 1,
+        limit: 50,
+      };
+      
+      if (statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+      
+      if (typeFilter !== 'all') {
+        params.borrowTransactionType = typeFilter;
+      }
+      
+      if (searchTerm.trim()) {
+        params.productName = searchTerm.trim();
+      }
+      
+      const response = await borrowTransactionsApi.getCustomerHistory(params);
+      
+      console.log('📡 Customer Borrow History Response:', response);
+      
+      if (response.statusCode === 200 && response.data?.items) {
+        console.log('✅ Customer borrow history items:', response.data.items.length);
+        setTransactions(response.data.items);
+      } else {
+        setTransactions([]);
+      }
+    } catch (error: any) {
+      console.error('❌ Error loading borrow history:', error);
+      Alert.alert('Lỗi', error.message || 'Không thể tải lịch sử mượn');
+      setTransactions([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadHistory();
+  }, [statusFilter, typeFilter]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadHistory();
+  };
+
+  const filteredTransactions = transactions.filter((transaction) => {
+    if (searchTerm.trim()) {
+      const productName = transaction.productId?.productGroupId?.name?.toLowerCase() || '';
+      const businessName = transaction.businessId?.businessName?.toLowerCase() || '';
+      const searchLower = searchTerm.toLowerCase();
+      return productName.includes(searchLower) || businessName.includes(searchLower);
+    }
+    return true;
   });
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "complete":
+      case "completed":
+      case "returned":
         return "#16a34a";
+      case "pending_pickup":
+      case "pending":
+        return "#3B82F6";
       case "active":
+      case "borrowing":
         return "#0F4D3A";
-      case "failed":
-        return "#ef4444";
       case "overdue":
         return "#f59e0b";
+      case "rejected":
+      case "cancelled":
+        return "#ef4444";
       default:
         return "#6b7280";
     }
@@ -32,44 +135,61 @@ export default function CustomerTransactionHistory() {
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case "complete":
-        return "Completed";
+      case "completed":
+        return "Hoàn thành";
+      case "returned":
+        return "Đã trả";
+      case "pending_pickup":
+        return "Chờ nhận";
+      case "pending":
+        return "Chờ xử lý";
       case "active":
-        return "Active";
-      case "failed":
-        return "Failed";
+      case "borrowing":
+        return "Đang mượn";
       case "overdue":
-        return "Overdue";
+        return "Quá hạn";
+      case "rejected":
+        return "Từ chối";
+      case "cancelled":
+        return "Đã hủy";
       default:
         return status;
     }
   };
 
-  const handleTransactionPress = (transaction: any) => {
-    Alert.alert(
-      "Transaction Details",
-      `ID: ${transaction.id}\nType: ${transaction.type}\nStatus: ${transaction.status}\nAmount: $${transaction.depositAmount}`,
-      [{ text: "OK" }]
-    );
+  const isOverdue = (dueDate: string) => {
+    return new Date(dueDate) < new Date();
   };
 
-  const handleFeedbackPress = (transactionId: string) => {
-    Alert.alert("Feedback", `Leave feedback for transaction ${transactionId}?`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Submit", onPress: () => Alert.alert("Success", "Feedback submitted!") },
-    ]);
+  const handleTransactionPress = (transaction: CustomerBorrowHistoryItem) => {
+    const productName = transaction.productId?.productGroupId?.name || 'N/A';
+    const sizeName = transaction.productId?.productSizeId?.sizeName || 'N/A';
+    const businessName = transaction.businessId?.businessName || 'N/A';
+    const borrowDate = new Date(transaction.borrowDate).toLocaleDateString('vi-VN');
+    const dueDate = new Date(transaction.dueDate).toLocaleDateString('vi-VN');
+    
+    Alert.alert(
+      "Chi tiết giao dịch",
+      `Sản phẩm: ${productName} - ${sizeName}\n` +
+      `Cửa hàng: ${businessName}\n` +
+      `Ngày mượn: ${borrowDate}\n` +
+      `Hạn trả: ${dueDate}\n` +
+      `Tiền cọc: ${transaction.depositAmount.toLocaleString('vi-VN')} VNĐ\n` +
+      `Trạng thái: ${getStatusLabel(transaction.status)}`,
+      [{ text: "Đóng" }]
+    );
   };
 
   return (
     <View style={styles.container}>
+      <CustomerHeader />
+      
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => {}}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#0F4D3A" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Transaction History</Text>
-        <TouchableOpacity style={styles.filterButton} onPress={() => Alert.alert("Filter", "Filter options")}>
-          <Ionicons name="filter" size={20} color="#0F4D3A" />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Lịch sử mượn</Text>
+        <View style={{ width: 40 }} />
       </View>
 
       {/* Search and Filters */}
@@ -78,23 +198,24 @@ export default function CustomerTransactionHistory() {
           <Ionicons name="search" size={20} color="#6b7280" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search transactions..."
+            placeholder="Tìm kiếm sản phẩm hoặc cửa hàng..."
             value={searchTerm}
             onChangeText={setSearchTerm}
             placeholderTextColor="#6b7280"
+            onSubmitEditing={loadHistory}
           />
         </View>
         
         <View style={styles.filterRow}>
           <View style={styles.filterContainer}>
-            <Text style={styles.filterLabel}>Type</Text>
+            <Text style={styles.filterLabel}>Loại</Text>
             <View style={styles.filterButtons}>
               <TouchableOpacity
                 style={[styles.filterButton, typeFilter === "all" && styles.activeFilterButton]}
                 onPress={() => setTypeFilter("all")}
               >
                 <Text style={[styles.filterButtonText, typeFilter === "all" && styles.activeFilterButtonText]}>
-                  All
+                  Tất cả
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -102,15 +223,7 @@ export default function CustomerTransactionHistory() {
                 onPress={() => setTypeFilter("borrow")}
               >
                 <Text style={[styles.filterButtonText, typeFilter === "borrow" && styles.activeFilterButtonText]}>
-                  Borrow
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.filterButton, typeFilter === "return" && styles.activeFilterButton]}
-                onPress={() => setTypeFilter("return")}
-              >
-                <Text style={[styles.filterButtonText, typeFilter === "return" && styles.activeFilterButtonText]}>
-                  Return
+                  Mượn
                 </Text>
               </TouchableOpacity>
             </View>
@@ -119,30 +232,38 @@ export default function CustomerTransactionHistory() {
 
         <View style={styles.filterRow}>
           <View style={styles.filterContainer}>
-            <Text style={styles.filterLabel}>Status</Text>
+            <Text style={styles.filterLabel}>Trạng thái</Text>
             <View style={styles.filterButtons}>
               <TouchableOpacity
                 style={[styles.filterButton, statusFilter === "all" && styles.activeFilterButton]}
                 onPress={() => setStatusFilter("all")}
               >
                 <Text style={[styles.filterButtonText, statusFilter === "all" && styles.activeFilterButtonText]}>
-                  All
+                  Tất cả
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.filterButton, statusFilter === "complete" && styles.activeFilterButton]}
-                onPress={() => setStatusFilter("complete")}
+                style={[styles.filterButton, statusFilter === "pending_pickup" && styles.activeFilterButton]}
+                onPress={() => setStatusFilter("pending_pickup")}
               >
-                <Text style={[styles.filterButtonText, statusFilter === "complete" && styles.activeFilterButtonText]}>
-                  Complete
+                <Text style={[styles.filterButtonText, statusFilter === "pending_pickup" && styles.activeFilterButtonText]}>
+                  Chờ nhận
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.filterButton, statusFilter === "active" && styles.activeFilterButton]}
-                onPress={() => setStatusFilter("active")}
+                style={[styles.filterButton, statusFilter === "borrowing" && styles.activeFilterButton]}
+                onPress={() => setStatusFilter("borrowing")}
               >
-                <Text style={[styles.filterButtonText, statusFilter === "active" && styles.activeFilterButtonText]}>
-                  Active
+                <Text style={[styles.filterButtonText, statusFilter === "borrowing" && styles.activeFilterButtonText]}>
+                  Đang mượn
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.filterButton, statusFilter === "completed" && styles.activeFilterButton]}
+                onPress={() => setStatusFilter("completed")}
+              >
+                <Text style={[styles.filterButtonText, statusFilter === "completed" && styles.activeFilterButtonText]}>
+                  Hoàn thành
                 </Text>
               </TouchableOpacity>
             </View>
@@ -151,79 +272,67 @@ export default function CustomerTransactionHistory() {
       </View>
 
       {/* Transactions List */}
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {filteredTransactions.length === 0 ? (
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#0F4D3A" />
+            <Text style={styles.loadingText}>Đang tải...</Text>
+          </View>
+        ) : filteredTransactions.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="receipt" size={48} color="#6b7280" />
-            <Text style={styles.emptyTitle}>No transactions found</Text>
-            <Text style={styles.emptySubtitle}>Try adjusting your search or filters</Text>
+            <Ionicons name="receipt-outline" size={48} color="#6b7280" />
+            <Text style={styles.emptyTitle}>Không tìm thấy giao dịch</Text>
+            <Text style={styles.emptySubtitle}>Thử điều chỉnh bộ lọc hoặc tìm kiếm</Text>
           </View>
         ) : (
-          filteredTransactions.map((transaction) => (
-            <TouchableOpacity
-              key={transaction.id}
-              style={styles.transactionCard}
-              onPress={() => handleTransactionPress(transaction)}
-            >
-              <View style={styles.transactionHeader}>
-                <View style={styles.transactionIcon}>
-                  <Ionicons
-                    name={transaction.type === "borrow" ? "arrow-up" : "arrow-down"}
-                    size={20}
-                    color={transaction.type === "borrow" ? "#0F4D3A" : "#16a34a"}
-                  />
-                </View>
-                <View style={styles.transactionInfo}>
-                  <Text style={styles.transactionTitle}>
-                    {transaction.type === "borrow" ? "Borrowed Container" : "Returned Container"}
-                  </Text>
-                  <Text style={styles.transactionDate}>
-                    {new Date(transaction.borrowedAt).toLocaleDateString()}
-                  </Text>
-                  <Text style={styles.transactionId}>ID: {transaction.id}</Text>
-                </View>
-                <View style={styles.transactionAmount}>
-                  <Text style={styles.amountText}>${transaction.depositAmount.toFixed(2)}</Text>
-                  <View style={[styles.statusBadge, { backgroundColor: getStatusColor(transaction.status) + "20" }]}>
-                    <Text style={[styles.statusText, { color: getStatusColor(transaction.status) }]}>
-                      {getStatusLabel(transaction.status)}
+          filteredTransactions.map((transaction) => {
+            const productName = transaction.productId?.productGroupId?.name || 'N/A';
+            const sizeName = transaction.productId?.productSizeId?.sizeName || 'N/A';
+            const businessName = transaction.businessId?.businessName || 'N/A';
+            const productImage = transaction.productId?.productGroupId?.imageUrl;
+            const overdue = isOverdue(transaction.dueDate);
+            
+            return (
+              <TouchableOpacity
+                key={transaction._id}
+                style={styles.transactionCard}
+                onPress={() => handleTransactionPress(transaction)}
+              >
+                <View style={styles.transactionHeader}>
+                  {productImage && (
+                    <Image source={{ uri: productImage }} style={styles.productImage} />
+                  )}
+                  <View style={styles.transactionInfo}>
+                    <Text style={styles.transactionTitle}>{productName}</Text>
+                    <Text style={styles.transactionSubtitle}>Kích thước: {sizeName}</Text>
+                    <Text style={styles.businessName}>{businessName}</Text>
+                    <Text style={styles.transactionDate}>
+                      Mượn: {new Date(transaction.borrowDate).toLocaleDateString('vi-VN')}
+                    </Text>
+                    <Text style={[styles.dueDate, overdue && styles.dueDateOverdue]}>
+                      Hạn trả: {new Date(transaction.dueDate).toLocaleDateString('vi-VN')}
+                      {overdue && ' ⚠️'}
                     </Text>
                   </View>
+                  <View style={styles.transactionAmount}>
+                    <Text style={styles.amountText}>
+                      {transaction.depositAmount.toLocaleString('vi-VN')} VNĐ
+                    </Text>
+                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(transaction.status) + "20" }]}>
+                      <Text style={[styles.statusText, { color: getStatusColor(transaction.status) }]}>
+                        {getStatusLabel(transaction.status)}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
-              </View>
-
-              {transaction.lateFee && (
-                <View style={styles.lateFeeContainer}>
-                  <Text style={styles.lateFeeText}>Late fee: +${transaction.lateFee.toFixed(2)}</Text>
-                </View>
-              )}
-
-              {transaction.rejectionReason && (
-                <View style={styles.rejectionContainer}>
-                  <Text style={styles.rejectionText}>Rejection reason: {transaction.rejectionReason}</Text>
-                </View>
-              )}
-
-              <View style={styles.transactionActions}>
-                {transaction.status === "complete" && transaction.type === "return" && (
-                  <TouchableOpacity
-                    style={styles.feedbackButton}
-                    onPress={() => handleFeedbackPress(transaction.id)}
-                  >
-                    <Ionicons name="star" size={16} color="#0F4D3A" />
-                    <Text style={styles.feedbackButtonText}>Rate</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity style={styles.detailsButton}>
-                  <Ionicons name="eye" size={16} color="#6b7280" />
-                  <Text style={styles.detailsButtonText}>Details</Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          ))
+              </TouchableOpacity>
+            );
+          })
         )}
       </ScrollView>
-      
     </View>
   );
 }
@@ -250,11 +359,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     color: "#111827",
-  },
-  filterButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: "#F9FAFB",
   },
   searchSection: {
     backgroundColor: "#fff",
@@ -293,6 +397,7 @@ const styles = StyleSheet.create({
   filterButtons: {
     flexDirection: "row",
     gap: 8,
+    flexWrap: "wrap",
   },
   filterButton: {
     paddingHorizontal: 12,
@@ -318,6 +423,16 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 32,
   },
+  loadingContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 48,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#6b7280",
+  },
   emptyState: {
     alignItems: "center",
     justifyContent: "center",
@@ -342,20 +457,22 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: "#e5e7eb",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   transactionHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: 8,
   },
-  transactionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#f3f4f6",
-    alignItems: "center",
-    justifyContent: "center",
+  productImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
     marginRight: 12,
+    backgroundColor: "#f3f4f6",
   },
   transactionInfo: {
     flex: 1,
@@ -366,23 +483,39 @@ const styles = StyleSheet.create({
     color: "#111827",
     marginBottom: 4,
   },
-  transactionDate: {
+  transactionSubtitle: {
     fontSize: 14,
+    color: "#6b7280",
+    marginBottom: 4,
+  },
+  businessName: {
+    fontSize: 14,
+    color: "#3B82F6",
+    fontWeight: "500",
+    marginBottom: 8,
+  },
+  transactionDate: {
+    fontSize: 12,
     color: "#6b7280",
     marginBottom: 2,
   },
-  transactionId: {
+  dueDate: {
     fontSize: 12,
-    color: "#9ca3af",
+    color: "#6b7280",
+  },
+  dueDateOverdue: {
+    color: "#f59e0b",
+    fontWeight: "600",
   },
   transactionAmount: {
     alignItems: "flex-end",
+    marginLeft: 12,
   },
   amountText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
     color: "#111827",
-    marginBottom: 4,
+    marginBottom: 8,
   },
   statusBadge: {
     paddingHorizontal: 8,
@@ -392,60 +525,5 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: "600",
-  },
-  lateFeeContainer: {
-    backgroundColor: "#fef3c7",
-    borderRadius: 6,
-    padding: 8,
-    marginBottom: 8,
-  },
-  lateFeeText: {
-    fontSize: 12,
-    color: "#d97706",
-    fontWeight: "600",
-  },
-  rejectionContainer: {
-    backgroundColor: "#fee2e2",
-    borderRadius: 6,
-    padding: 8,
-    marginBottom: 8,
-  },
-  rejectionText: {
-    fontSize: 12,
-    color: "#dc2626",
-    fontWeight: "600",
-  },
-  transactionActions: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 8,
-  },
-  feedbackButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f0f9ff",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 4,
-  },
-  feedbackButtonText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#0F4D3A",
-  },
-  detailsButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f3f4f6",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 4,
-  },
-  detailsButtonText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#6b7280",
   },
 });

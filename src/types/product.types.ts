@@ -46,7 +46,7 @@ export interface CreateBorrowTransactionRequest {
   businessId: string;
   depositValue: number;
   durationInDays: number;
-  type: 'online' | 'offline';
+  type: 'online' | 'at_store'; // 'online' = mượn online (quét QR trước), 'at_store' = mượn trực tiếp tại cửa hàng
 }
 
 export interface BorrowTransaction {
@@ -71,4 +71,4 @@ export interface CreateBorrowTransactionResponse {
   data: BorrowTransaction;
   success?: boolean;
 }
-
+ 

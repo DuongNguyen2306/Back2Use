@@ -122,7 +122,7 @@ export const uploadAvatarWithAutoRefresh = async (imageUri: string): Promise<Upl
   return uploadAvatar(imageUri, token);
 };
 
-// Upload avatar - POST /users/edit-avatar
+// Upload avatar - PUT /users/edit-avatar
 export const uploadAvatar = async (imageUri: string, token: string): Promise<UploadAvatarResponse> => {
   try {
     console.log('📸 uploadAvatar called with:', {
@@ -147,9 +147,9 @@ export const uploadAvatar = async (imageUri: string, token: string): Promise<Upl
       name: 'avatar.jpg',
     } as any);
 
-    console.log('📤 Sending avatar upload request to: /users/edit-avatar');
+    console.log('📤 Sending avatar upload request to:', API_ENDPOINTS.USER.EDIT_AVATAR);
 
-    const response = await apiClient.post('/users/edit-avatar', formData, {
+    const response = await apiClient.put(API_ENDPOINTS.USER.EDIT_AVATAR, formData, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'multipart/form-data',
@@ -162,13 +162,21 @@ export const uploadAvatar = async (imageUri: string, token: string): Promise<Upl
 
     const result = response.data;
     
-    if (response.status === 201) {
+    // Handle both 200 and 201 status codes
+    if (response.status === 200 || response.status === 201) {
       console.log('✅ Avatar uploaded successfully');
+      // Try to extract avatarUrl from different response structures
+      const avatarUrl = result?.data?.avatarUrl || 
+                       result?.data?.avatar || 
+                       result?.avatarUrl || 
+                       result?.avatar ||
+                       (typeof result === 'string' ? result : '');
+      
       return {
         success: true,
         message: 'Avatar uploaded successfully',
         data: {
-          avatarUrl: result.data?.avatarUrl || result.avatarUrl || ''
+          avatarUrl: avatarUrl
         }
       };
     } else {
@@ -177,6 +185,12 @@ export const uploadAvatar = async (imageUri: string, token: string): Promise<Upl
     }
   } catch (error: any) {
     console.error('Error uploading avatar:', error);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      response: error.response?.data,
+      status: error.response?.status,
+    });
     if (error.code === 'ECONNABORTED') {
       throw new Error('Upload timeout. Please check your connection and try again.');
     }

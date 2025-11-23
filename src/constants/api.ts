@@ -16,6 +16,7 @@ export const API_ENDPOINTS = {
     PROFILE: '/users/me',
     GET_BY_ID: '/users', // GET /users/{id}
     UPDATE_PROFILE: '/users/edit-profile',
+    EDIT_AVATAR: '/users/edit-avatar', // PUT /users/edit-avatar
     CHANGE_PASSWORD: '/auth/change-password', // Thử endpoint auth
   },
   BUSINESS: {
@@ -65,8 +66,9 @@ export const API_ENDPOINTS = {
   },
   PRODUCTS: {
     GET_BY_ID: '/products', // GET /products/{id}
-    GET_ALL: '/products', // GET /products?productSizeId=&page=&limit=
+    GET_ALL: '/products', // GET /products/{productGroupId}?page=&limit=&status=&search=
     CREATE: '/products', // POST /products
+    SCAN: '/products/scan', // GET /products/scan/{serialNumber}
   },
   PRODUCT_GROUPS: {
     GET_ALL: '/product-groups', // GET /product-groups?limit=&page=
@@ -79,6 +81,7 @@ export const API_ENDPOINTS = {
   BORROW_TRANSACTIONS: {
     CREATE: '/borrow-transactions', // POST /borrow-transactions
     GET_MY: '/borrow-transactions/my', // GET /borrow-transactions/my
+    CUSTOMER_HISTORY: '/borrow-transactions/customer-history', // GET /borrow-transactions/customer-history
   },
 } as const;
 

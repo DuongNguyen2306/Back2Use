@@ -1,26 +1,32 @@
+import { borrowTransactionsApi } from "@/services/api/borrowTransactionService";
+import { productsApi } from "@/services/api/businessService";
+import { getCurrentUserProfileWithAutoRefresh } from "@/services/api/userService";
+import { mockTransactions } from "@/utils/mockData";
 import { Ionicons } from "@expo/vector-icons";
 import { Camera, CameraView } from "expo-camera";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
-    Alert,
-    Dimensions,
-    Image,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    Vibration,
-    View
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  Modal,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Vibration,
+  View
 } from "react-native";
 import CustomerHeader from "../../../components/CustomerHeader";
 import { StandaloneAIChecker } from "../../../components/StandaloneAIChecker";
 import { useAuth } from "../../../context/AuthProvider";
 import { useI18n } from "../../../hooks/useI18n";
 import { useTokenRefresh } from "../../../hooks/useTokenRefresh";
-import { getCurrentUserProfileWithAutoRefresh } from "@/services/api/userService";
-import { mockTransactions } from "@/utils/mockData";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -31,8 +37,11 @@ export default function CustomerDashboard() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [userData, setUserData] = useState<any>(null);
   const [showAIQualityCheck, setShowAIQualityCheck] = useState(false);
+  const [showProductModal, setShowProductModal] = useState(false);
   const [scannedItem, setScannedItem] = useState<any>(null);
+  const [borrowing, setBorrowing] = useState(false);
   const [showBalance, setShowBalance] = useState(false); // Mặc định ẩn số tiền
+  const [durationInDays, setDurationInDays] = useState<string>('30'); // Số ngày mượn, mặc định 30
   // use layout navigation; no local tab state here
   const scanLock = useRef(false);
 
@@ -50,6 +59,10 @@ export default function CustomerDashboard() {
       if (state.accessToken) {
         try {
           const user = await getCurrentUserProfileWithAutoRefresh();
+          console.log('🔍 Dashboard - Loaded User Data:', user);
+          console.log('💰 Dashboard - Wallet:', user.wallet);
+          console.log('💰 Dashboard - Balance:', user.wallet?.balance);
+          console.log('💰 Dashboard - AvailableBalance:', (user.wallet as any)?.availableBalance);
           setUserData(user);
         } catch (error: any) {
           // Don't log network errors as errors - they're expected when offline
@@ -69,6 +82,24 @@ export default function CustomerDashboard() {
     loadUserData();
   }, [state.accessToken]);
 
+  // Reload user data when product modal opens to get latest balance
+  useEffect(() => {
+    if (showProductModal && state.accessToken) {
+      const reloadUserData = async () => {
+        try {
+          const user = await getCurrentUserProfileWithAutoRefresh();
+          console.log('🔄 Reloading user data for product modal...');
+          console.log('💰 Updated Wallet Balance:', user.wallet?.balance);
+          console.log('💰 Updated AvailableBalance:', (user.wallet as any)?.availableBalance);
+          setUserData(user);
+        } catch (error) {
+          console.error('Error reloading user data:', error);
+        }
+      };
+      reloadUserData();
+    }
+  }, [showProductModal, state.accessToken]);
+
   const user = userData || {
     id: "1",
     name: "User",
@@ -78,7 +109,7 @@ export default function CustomerDashboard() {
     walletBalance: 125.5,
   };
 
-  const userTransactions = mockTransactions.filter((t) => t.customerId === user?.id);
+  const userTransactions = mockTransactions.filter((t) => (t as any).customerId === user?.id || (t as any).userId === user?.id);
   // Mock data for active borrows
   const mockActiveBorrows = [
     {
@@ -134,25 +165,328 @@ export default function CustomerDashboard() {
 
   const stopScanning = () => setShowQRScanner(false);
 
-  const onBarcode = (e: { data?: string }) => {
+  const onBarcode = async (e: { data?: string }) => {
     if (scanLock.current) return;
     scanLock.current = true;
-    const data = e?.data ?? "";
+    const serialNumber = e?.data ?? "";
+    console.log('📱 QR Code scanned:', serialNumber);
+    
+    if (!serialNumber || serialNumber.trim() === '') {
+      Alert.alert('Error', 'Invalid QR code');
+      scanLock.current = false;
+      return;
+    }
+    
     Vibration.vibrate(Platform.OS === "ios" ? 30 : 50);
     setShowQRScanner(false);
     
-    // Simulate processing and show AI Quality Check
-    setTimeout(() => {
-      const mockItem = {
-        id: Math.random().toString(),
-        name: "Food Container",
-        type: "container",
-        data: data,
-      };
-      setScannedItem(mockItem);
-      setShowAIQualityCheck(true);
+    try {
+      // Gọi API để lấy thông tin sản phẩm từ serial number
+      console.log('🔄 Calling productsApi.scan with:', serialNumber);
+      const response = await productsApi.scan(serialNumber);
+      
+      console.log('📦 API Response:', JSON.stringify(response, null, 2));
+      
+      // API trả về: { success: true, data: { product: {...}, qrCode: "...", serialNumber: "...", ... } }
+      // Hoặc: { statusCode: 200, data: {...} }
+      const responseData: any = response;
+      let productData: any = null;
+      let qrCode: string = '';
+      let productStatus: string = '';
+      
+      if (responseData.success && responseData.data) {
+        // Trường hợp response có success: true
+        const data: any = responseData.data;
+        productData = data.product || data;
+        qrCode = data.qrCode || '';
+        productStatus = data.status || '';
+      } else if (responseData.statusCode === 200 && responseData.data) {
+        // Trường hợp response có statusCode
+        const data: any = responseData.data;
+        productData = data.product || data;
+        qrCode = data.qrCode || '';
+        productStatus = data.status || '';
+      }
+      
+      if (productData) {
+        console.log('✅ Product data found:', productData);
+        
+        // Xử lý productGroupId có thể là object hoặc string
+        const productGroupName = productData.productGroupId && typeof productData.productGroupId === 'object' 
+          ? productData.productGroupId.name 
+          : "Product";
+        
+        // Xử lý productSizeId
+        const productSizeName = productData.productSizeId && typeof productData.productSizeId === 'object'
+          ? productData.productSizeId.sizeName
+          : "Unknown";
+        
+        const scannedItem = {
+          id: productData._id || productData.id,
+          name: productGroupName || "Product",
+          size: productSizeName,
+          type: "container",
+          data: serialNumber,
+          product: productData, // Lưu thông tin sản phẩm đầy đủ
+          qrCode: qrCode || productData.qrCode || '',
+          status: productStatus || productData.status || 'available',
+        };
+        
+        console.log('📱 Scanned item created:', scannedItem);
+        setScannedItem(scannedItem);
+        setDurationInDays('30'); // Reset về mặc định khi mở modal mới
+        setShowProductModal(true);
+      } else {
+        console.error('❌ No product data in response');
+        Alert.alert('Error', responseData.message || 'Product not found');
+      }
+    } catch (error: any) {
+      console.error('Error scanning QR:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to scan product';
+      Alert.alert('Error', errorMessage);
+    } finally {
       scanLock.current = false;
-    }, 1000);
+    }
+  };
+
+  const handleBorrow = async () => {
+    if (!scannedItem || !scannedItem.product) {
+      Alert.alert('Error', 'Thông tin sản phẩm không hợp lệ');
+      return;
+    }
+
+    if (scannedItem.status !== 'available') {
+      Alert.alert('Thông báo', 'Sản phẩm này hiện không có sẵn để mượn.');
+      return;
+    }
+
+    // Reload user data để lấy số dư mới nhất trước khi kiểm tra
+    let currentUserData = userData;
+    try {
+      console.log('🔄 Reloading user data before borrow check...');
+      const freshUser = await getCurrentUserProfileWithAutoRefresh();
+      console.log('💰 Fresh User Data:', freshUser);
+      console.log('💰 Fresh Wallet:', freshUser.wallet);
+      console.log('💰 Fresh Balance:', freshUser.wallet?.balance);
+      console.log('💰 Fresh AvailableBalance:', (freshUser.wallet as any)?.availableBalance);
+      currentUserData = freshUser;
+      setUserData(freshUser);
+    } catch (error) {
+      console.error('Error reloading user data:', error);
+      // Continue with existing userData if reload fails
+    }
+
+    const product = scannedItem.product;
+    const depositValue = product.productSizeId?.depositValue || 0;
+    
+    // Kiểm tra số dư ví trước khi cho phép mượn
+    // Handle both balance and availableBalance fields
+    const walletBalance = (currentUserData as any)?.wallet?.availableBalance ?? 
+                         (currentUserData as any)?.wallet?.balance ?? 
+                         0;
+    
+    console.log('💰 Borrow Check - Wallet Balance:', walletBalance);
+    console.log('💰 Borrow Check - Deposit Value:', depositValue);
+    console.log('💰 Borrow Check - UserData:', currentUserData);
+    console.log('💰 Borrow Check - Wallet Object:', (currentUserData as any)?.wallet);
+    console.log('💰 Borrow Check - Comparison:', walletBalance, '<', depositValue, '=', walletBalance < depositValue);
+    
+    if (walletBalance < depositValue) {
+      const shortage = depositValue - walletBalance;
+      console.log('⚠️ Insufficient balance - Shortage:', shortage);
+      Alert.alert(
+        'Số dư không đủ',
+        `Số dư ví của bạn không đủ để đặt mượn sản phẩm này.\n\n` +
+        `Số dư hiện tại: ${walletBalance.toLocaleString('vi-VN')} VNĐ\n` +
+        `Tiền cọc cần: ${depositValue.toLocaleString('vi-VN')} VNĐ\n` +
+        `Còn thiếu: ${shortage.toLocaleString('vi-VN')} VNĐ\n\n` +
+        `Vui lòng nạp thêm tiền vào ví để tiếp tục.`,
+        [
+          {
+            text: 'Hủy',
+            style: 'cancel',
+          },
+          {
+            text: 'Nạp tiền',
+            onPress: () => {
+              setShowProductModal(false);
+              router.push('/(protected)/customer/customer-wallet');
+            },
+          },
+        ]
+      );
+      return;
+    }
+    
+    // Kiểm tra số ngày mượn
+    const days = parseInt(durationInDays, 10);
+    if (isNaN(days) || days <= 0) {
+      Alert.alert('Lỗi', 'Vui lòng nhập số ngày mượn hợp lệ (lớn hơn 0)');
+      return;
+    }
+
+    console.log('✅ Balance sufficient, proceeding to confirm...');
+
+    // Confirm borrow
+    Alert.alert(
+      'Xác nhận đặt mượn',
+      `Bạn có chắc chắn muốn đặt mượn sản phẩm này?\n\n` +
+      `Tiền cọc: ${depositValue.toLocaleString('vi-VN')} VNĐ\n` +
+      `Số dư hiện tại: ${walletBalance.toLocaleString('vi-VN')} VNĐ\n` +
+      `Số dư sau khi trừ: ${(walletBalance - depositValue).toLocaleString('vi-VN')} VNĐ\n` +
+      `Thời gian mượn: ${days} ngày`,
+      [
+        {
+          text: 'Hủy',
+          style: 'cancel',
+        },
+        {
+          text: 'Xác nhận',
+          onPress: async () => {
+            try {
+              setBorrowing(true);
+              console.log('📦 Creating borrow transaction...');
+
+              // FIX CHẮC 100% - businessId đúng trong mọi trường hợp
+              let businessId: string | undefined;
+
+              // Ưu tiên cao nhất: product.business (khi populate)
+              if (product.business) {
+                businessId = typeof product.business === 'object' 
+                  ? product.business._id || product.business.id 
+                  : product.business;
+              }
+
+              // Nếu không có thì lấy từ businessId trực tiếp trên product
+              if (!businessId && product.businessId) {
+                businessId = typeof product.businessId === 'object'
+                  ? product.businessId._id || product.businessId.id
+                  : product.businessId;
+              }
+
+              // Cuối cùng mới lấy từ productGroupId (rất hiếm khi cần)
+              if (!businessId && product.productGroupId?.business) {
+                businessId = typeof product.productGroupId.business === 'object'
+                  ? product.productGroupId.business._id || product.productGroupId.business.id
+                  : product.productGroupId.business;
+              }
+
+              if (!businessId && typeof product.productGroupId?.businessId === 'object') {
+                businessId = product.productGroupId.businessId._id || product.productGroupId.businessId.id;
+              }
+
+              if (!businessId && typeof product.productGroupId?.businessId === 'string') {
+                businessId = product.productGroupId.businessId;
+              }
+
+              console.log('🔍 Product object structure:', {
+                hasBusiness: !!product.business,
+                hasBusinessId: !!product.businessId,
+                hasProductGroupId: !!product.productGroupId,
+                productGroupIdHasBusiness: !!(product.productGroupId as any)?.business,
+                productGroupIdHasBusinessId: !!(product.productGroupId as any)?.businessId,
+              });
+              console.log('🔍 Extracted businessId:', businessId);
+
+              if (!businessId) {
+                console.error('❌ Cannot extract businessId from product:', JSON.stringify(product, null, 2));
+                throw new Error('Không tìm thấy thông tin cửa hàng. Vui lòng thử lại hoặc liên hệ hỗ trợ.');
+              }
+
+              // Lấy productId
+              const productId = product._id || product.id;
+              if (!productId) {
+                console.error('❌ Cannot find productId in product:', product);
+                throw new Error('Không tìm thấy ID sản phẩm. Vui lòng thử lại.');
+              }
+
+              const borrowDto = {
+                productId,
+                businessId,
+                depositValue,
+                durationInDays: days,
+                type: "online" as const, // ← CỨ ĐỂ CỨNG THẾ NÀY LÀ CHẮC ĂN NHẤT
+              };
+
+              console.log('📦 FINAL borrowDto gửi đi:', {
+                productId,
+                businessId,
+                depositValue,
+                durationInDays: days,
+                type: 'online'
+              });
+              console.log('📦 Borrow DTO (full):', JSON.stringify(borrowDto, null, 2));
+
+              const response = await borrowTransactionsApi.createWithAutoRefresh(borrowDto);
+              
+              console.log('✅ Borrow transaction created:', response);
+
+              Alert.alert(
+                'Thành công',
+                'Yêu cầu mượn đã được gửi! Vui lòng đến cửa hàng để nhận sản phẩm.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      setShowProductModal(false);
+                      setScannedItem(null);
+                      // Reload user data để cập nhật số dư
+                      if (state.accessToken) {
+                        getCurrentUserProfileWithAutoRefresh().then(setUserData).catch(console.error);
+                      }
+                    },
+                  },
+                ]
+              );
+            } catch (error: any) {
+              console.error('❌ Error creating borrow transaction:', error);
+              
+              // Xử lý lỗi cụ thể cho "Insufficient wallet balance"
+              const errorMessage = error?.response?.data?.message || error?.message || 'Không thể tạo yêu cầu mượn. Vui lòng thử lại.';
+              const isInsufficientBalance = errorMessage.toLowerCase().includes('insufficient') || 
+                                           errorMessage.toLowerCase().includes('không đủ') ||
+                                           errorMessage.toLowerCase().includes('số dư');
+              
+              if (isInsufficientBalance) {
+                // Handle both balance and availableBalance fields
+                const currentBalance = (userData as any)?.wallet?.availableBalance ?? 
+                                     (userData as any)?.wallet?.balance ?? 
+                                     0;
+                const shortage = depositValue - currentBalance;
+                Alert.alert(
+                  'Số dư không đủ',
+                  `Số dư ví của bạn không đủ để đặt mượn sản phẩm này.\n\n` +
+                  `Số dư hiện tại: ${currentBalance.toLocaleString('vi-VN')} VNĐ\n` +
+                  `Tiền cọc cần: ${depositValue.toLocaleString('vi-VN')} VNĐ\n` +
+                  `Còn thiếu: ${shortage.toLocaleString('vi-VN')} VNĐ\n\n` +
+                  `Vui lòng nạp thêm tiền vào ví để tiếp tục.`,
+                  [
+                    {
+                      text: 'Đóng',
+                      style: 'cancel',
+                    },
+                    {
+                      text: 'Nạp tiền',
+                      onPress: () => {
+                        setShowProductModal(false);
+                        router.push('/(protected)/customer/customer-wallet');
+                      },
+                    },
+                  ]
+                );
+              } else {
+                Alert.alert(
+                  'Lỗi',
+                  errorMessage
+                );
+              }
+            } finally {
+              setBorrowing(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -420,6 +754,159 @@ export default function CustomerDashboard() {
          </View>
        )}
 
+       {/* Product Info Modal - Hiển thị sau khi quét QR */}
+       {showProductModal && scannedItem && (
+         <Modal
+           visible={showProductModal}
+           animationType="slide"
+           presentationStyle="pageSheet"
+           onRequestClose={() => setShowProductModal(false)}
+         >
+           <View style={styles.productModalContainer}>
+             <StatusBar barStyle="light-content" backgroundColor="#059669" />
+             <View style={styles.productModalHeader}>
+               <TouchableOpacity onPress={() => setShowProductModal(false)}>
+                 <Ionicons name="close" size={24} color="#FFFFFF" />
+               </TouchableOpacity>
+               <Text style={styles.productModalTitle}>Thông tin sản phẩm</Text>
+               <View style={{ width: 24 }} />
+             </View>
+
+             <ScrollView style={styles.productModalContent}>
+               {/* Product Image */}
+               {scannedItem.product?.productGroupId?.imageUrl && (
+                 <Image
+                   source={{ uri: scannedItem.product.productGroupId.imageUrl }}
+                   style={styles.productImage}
+                   resizeMode="cover"
+                 />
+               )}
+
+               {/* Product Info */}
+               <View style={styles.productInfoCard}>
+                 <Text style={styles.productName}>{scannedItem.name}</Text>
+                 {scannedItem.size && (
+                   <Text style={styles.productSize}>Kích thước: {scannedItem.size}</Text>
+                 )}
+                 
+                 {scannedItem.product?.productSizeId?.depositValue && (
+                   <View style={styles.depositInfo}>
+                     <Ionicons name="cash-outline" size={20} color="#059669" />
+                     <View style={{ flex: 1 }}>
+                       <Text style={styles.depositLabel}>Tiền cọc:</Text>
+                       <Text style={styles.depositValue}>
+                         {scannedItem.product.productSizeId.depositValue.toLocaleString('vi-VN')} VNĐ
+                       </Text>
+                     </View>
+                   </View>
+                 )}
+
+                 {/* Wallet Balance Info */}
+                 <View style={styles.balanceInfo}>
+                   <Ionicons name="wallet-outline" size={20} color="#3B82F6" />
+                   <View style={{ flex: 1 }}>
+                     <Text style={styles.balanceLabel}>Số dư ví hiện tại:</Text>
+                     {(() => {
+                       // Handle both balance and availableBalance fields
+                       const walletBalance = (userData as any)?.wallet?.availableBalance ?? 
+                                           (userData as any)?.wallet?.balance ?? 
+                                           0;
+                       const depositValue = scannedItem.product?.productSizeId?.depositValue || 0;
+                       const isInsufficient = walletBalance < depositValue;
+                       
+                       return (
+                         <>
+                           <Text style={[
+                             styles.balanceValue,
+                             isInsufficient && styles.balanceInsufficient
+                           ]}>
+                             {walletBalance.toLocaleString('vi-VN')} VNĐ
+                           </Text>
+                           {isInsufficient && (
+                             <Text style={styles.insufficientWarning}>
+                               ⚠️ Số dư không đủ. Vui lòng nạp thêm tiền.
+                             </Text>
+                           )}
+                         </>
+                       );
+                     })()}
+                   </View>
+                 </View>
+
+                 {scannedItem.status && (
+                   <View style={styles.statusInfo}>
+                     <View style={[
+                       styles.statusBadge,
+                       scannedItem.status === 'available' ? styles.statusAvailable : styles.statusUnavailable
+                     ]}>
+                       <Text style={[
+                         styles.statusText,
+                         scannedItem.status !== 'available' && { color: '#DC2626' }
+                       ]}>
+                         {scannedItem.status === 'available' ? 'Có sẵn' : 'Không có sẵn'}
+                       </Text>
+                     </View>
+                   </View>
+                 )}
+
+                 {scannedItem.product?.productGroupId?.description && (
+                   <Text style={styles.productDescription}>
+                     {scannedItem.product.productGroupId.description}
+                   </Text>
+                 )}
+
+                 {scannedItem.data && (
+                   <View style={styles.serialInfo}>
+                     <Text style={styles.serialLabel}>Serial Number:</Text>
+                     <Text style={styles.serialValue}>{scannedItem.data}</Text>
+                   </View>
+                 )}
+
+                 {/* Duration Input */}
+                 <View style={styles.durationInputContainer}>
+                   <Text style={styles.durationLabel}>Thời gian mượn (ngày) *</Text>
+                   <TextInput
+                     style={styles.durationInput}
+                     value={durationInDays}
+                     onChangeText={setDurationInDays}
+                     placeholder="Nhập số ngày mượn"
+                     keyboardType="numeric"
+                     placeholderTextColor="#9CA3AF"
+                   />
+                 </View>
+               </View>
+
+               {/* Borrow Button */}
+               {scannedItem.status === 'available' && (
+                 <TouchableOpacity
+                   style={[styles.borrowButton, borrowing && styles.borrowButtonDisabled]}
+                   onPress={handleBorrow}
+                   disabled={borrowing}
+                 >
+                   {borrowing ? (
+                     <ActivityIndicator size="small" color="#FFFFFF" />
+                   ) : (
+                     <>
+                       <Ionicons name="cube-outline" size={20} color="#FFFFFF" />
+                       <Text style={styles.borrowButtonText}>Mượn sản phẩm</Text>
+                     </>
+                   )}
+                 </TouchableOpacity>
+               )}
+
+               {scannedItem.status !== 'available' && (
+                 <View style={styles.unavailableMessage}>
+                   <Ionicons name="alert-circle-outline" size={24} color="#F59E0B" />
+                   <Text style={styles.unavailableText}>
+                     Sản phẩm này hiện không có sẵn để mượn
+                   </Text>
+                 </View>
+               )}
+             </ScrollView>
+           </View>
+         </Modal>
+       )}
+
        {showAIQualityCheck && (
          <View style={styles.aiQualityOverlay}>
            <View style={styles.aiQualityContainer}>
@@ -485,9 +972,7 @@ const styles = StyleSheet.create({
   stickyHeaderTitle: { fontSize: 18, fontWeight: '800', color: '#111827' },
   sectionPad: { paddingHorizontal: 16 },
   balanceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  balanceLabel: { fontSize: 14, fontWeight: '600', color: '#111827' },
   balanceContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  balanceValue: { fontSize: 16, fontWeight: '800', color: '#00704A' },
   balanceHidden: { fontSize: 16, fontWeight: '800', color: '#00704A', letterSpacing: 2 },
   eyeButton: { padding: 4 },
   cardGrid: { flexDirection: 'row', gap: 10 },
@@ -589,6 +1074,182 @@ const styles = StyleSheet.create({
   impactStat: { flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
   impactValue: { color: '#fff', fontWeight: '900', fontSize: 20, marginBottom: 4 },
   impactLabel: { color: 'rgba(255,255,255,0.9)', fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  // Product Modal Styles
+  productModalContainer: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
+  productModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 16,
+    backgroundColor: '#059669',
+  },
+  productModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  productModalContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  productImage: {
+    width: '100%',
+    height: 250,
+    borderRadius: 16,
+    marginTop: 20,
+    backgroundColor: '#E5E7EB',
+  },
+  productInfoCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginTop: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  productName: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  productSize: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginBottom: 16,
+  },
+  depositInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F0FDF4',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  depositLabel: {
+    fontSize: 16,
+    color: '#374151',
+    fontWeight: '600',
+  },
+  depositValue: {
+    fontSize: 18,
+    color: '#059669',
+    fontWeight: '700',
+    marginLeft: 'auto',
+  },
+  statusInfo: {
+    marginBottom: 16,
+  },
+  statusBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  statusAvailable: {
+    backgroundColor: '#F0FDF4',
+  },
+  statusUnavailable: {
+    backgroundColor: '#FEF2F2',
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#059669',
+  },
+  productDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  serialInfo: {
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  serialLabel: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginBottom: 4,
+  },
+  serialValue: {
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  durationInputContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  durationLabel: {
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  durationInput: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#111827',
+  },
+  borrowButton: {
+    backgroundColor: '#059669',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginTop: 20,
+    marginBottom: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  borrowButtonDisabled: {
+    opacity: 0.6,
+  },
+  borrowButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  unavailableMessage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FFFBEB',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 20,
+    marginBottom: 30,
+  },
+  unavailableText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#92400E',
+    fontWeight: '600',
+  },
   bottomNav: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#E5E7EB', flexDirection: 'row', justifyContent: 'space-around', paddingBottom: 10, paddingTop: 10 },
   navItem: { alignItems: 'center' },
   navText: { fontSize: 10, marginTop: 4, color: '#6B7280', fontWeight: '700' },
@@ -681,5 +1342,34 @@ const styles = StyleSheet.create({
   },
   aiQualityCloseButton: {
     padding: 8,
+  },
+  balanceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#F0F9FF',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  balanceLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  balanceValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  balanceInsufficient: {
+    color: '#DC2626',
+  },
+  insufficientWarning: {
+    fontSize: 12,
+    color: '#DC2626',
+    marginTop: 8,
+    fontWeight: '600',
   },
 });

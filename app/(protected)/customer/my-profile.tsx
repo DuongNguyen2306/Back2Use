@@ -289,7 +289,7 @@ export default function MyProfile() {
       icon: 'time-outline',
       label: 'History',
       color: '#8B5CF6',
-      onPress: () => console.log('Navigate to History'),
+      onPress: () => router.push('/(protected)/customer/transaction-history'),
     },
     {
       id: 'leaderboard',
@@ -314,6 +314,13 @@ export default function MyProfile() {
     {
       title: t('profile').settings,
       items: [
+        {
+          id: 'history',
+          title: 'Lịch sử mượn',
+          subtitle: 'Xem lịch sử giao dịch mượn',
+          icon: 'time-outline' as keyof typeof Ionicons.glyphMap,
+          onPress: () => router.push('/(protected)/customer/transaction-history'),
+        },
         {
           id: 'language',
           title: t('profile').language,
@@ -362,7 +369,7 @@ export default function MyProfile() {
           id: 'switch-to-business',
           title: 'Chuyển sang tài khoản doanh nghiệp',
           subtitle: 'Chuyển đổi sang chế độ doanh nghiệp',
-          icon: 'business',
+          icon: 'briefcase' as keyof typeof Ionicons.glyphMap,
           onPress: () => handleSwitchRole('business'),
         }] : []),
       ]
@@ -379,10 +386,10 @@ export default function MyProfile() {
         },
         {
           id: 'history',
-          title: t('profile').transactionHistory,
-          subtitle: 'View transaction and activity history',
+          title: 'Lịch sử mượn',
+          subtitle: 'Xem lịch sử giao dịch mượn',
           icon: 'time',
-          onPress: () => console.log('Navigate to History'),
+          onPress: () => router.push('/(protected)/customer/transaction-history'),
         },
         {
           id: 'rewards',
@@ -629,20 +636,25 @@ export default function MyProfile() {
       setUploadingAvatar(true);
       const response = await uploadAvatarWithAutoRefresh(imageUri);
       
-      if (response.data) {
-        const avatarUrl = typeof response.data === 'string' ? response.data : (response.data as any)?.avatarUrl || response.data;
+      // Extract avatarUrl from response
+      const avatarUrl = response?.data?.avatarUrl || 
+                       (typeof response.data === 'string' ? response.data : '') ||
+                       (response as any)?.avatarUrl || '';
+      
+      if (avatarUrl) {
         setUser(prev => prev ? { ...prev, avatar: avatarUrl } : null);
-        
         toast({
           title: "Success",
           description: "Avatar updated successfully",
         });
+      } else {
+        throw new Error('No avatar URL returned from server');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading avatar:', error);
       toast({
         title: "Error",
-        description: "Failed to upload avatar",
+        description: error.message || "Failed to upload avatar",
       });
     } finally {
       setUploadingAvatar(false);
