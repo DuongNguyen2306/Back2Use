@@ -1,5 +1,5 @@
 // API Configuration Constants
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.0.199:8000';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.1.8:8000';
 
 // API Endpoints
 export const API_ENDPOINTS = {
@@ -36,6 +36,7 @@ export const API_ENDPOINTS = {
     NEARBY: '/businesses/nearby',
     HISTORY: '/businesses/history-business-form',
     GET_ALL: '/businesses',
+    GET_BY_ID: '/businesses', // GET /businesses/{id}
     PROFILE: '/businesses/profile',
   },
   ADMIN: {
@@ -66,8 +67,10 @@ export const API_ENDPOINTS = {
   },
   PRODUCTS: {
     GET_BY_ID: '/products', // GET /products/{id}
-    GET_ALL: '/products', // GET /products/{productGroupId}?page=&limit=&status=&search=
+    GET_ALL: '/products/group', // GET /products/group/{productGroupId}?page=&limit=&status=&search=
+    GET_CUSTOMER: '/products/customer', // GET /products/customer/{productGroupId}?page=&limit=
     CREATE: '/products', // POST /products
+    UPDATE: '/products', // PATCH /products/{id}
     SCAN: '/products/scan', // GET /products/scan/{serialNumber}
   },
   PRODUCT_GROUPS: {
@@ -82,6 +85,10 @@ export const API_ENDPOINTS = {
     CREATE: '/borrow-transactions', // POST /borrow-transactions
     GET_MY: '/borrow-transactions/my', // GET /borrow-transactions/my
     CUSTOMER_HISTORY: '/borrow-transactions/customer-history', // GET /borrow-transactions/customer-history
+    BUSINESS_HISTORY: '/borrow-transactions/business', // GET /borrow-transactions/business
+    CONFIRM: '/borrow-transactions/confirm', // PATCH /borrow-transactions/confirm/{id}
+    CUSTOMER_CANCEL: '/borrow-transactions/customer/cancel', // PATCH /borrow-transactions/customer/cancel/{id}
+    RETURN_CHECK: '/borrow-transactions', // POST /borrow-transactions/{serialNumber}/return-check
   },
 } as const;
 

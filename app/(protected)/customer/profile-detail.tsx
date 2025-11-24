@@ -3,11 +3,15 @@ import { getCurrentUserProfileWithAutoRefresh, updateUserProfileWithAutoRefresh,
 import { UpdateProfileRequest, User } from '@/types/auth.types';
 import { validateProfileForm, ValidationError } from '@/utils/validation';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -132,10 +136,17 @@ export default function ProfileDetail() {
 
   const handleSaveProfile = async () => {
     try {
+      // Debug: Check current role and token
+      console.log('🔍 Profile Save - Current Auth State:', {
+        role: auth.state.role,
+        isAuthenticated: auth.state.isAuthenticated,
+        hasAccessToken: !!auth.state.accessToken,
+      });
+
       // Validate form
-      const errors = validateProfileForm(formData);
-      if (errors.length > 0) {
-        setValidationErrors(errors);
+      const validationResult = validateProfileForm(formData);
+      if (!validationResult.isValid && validationResult.errors) {
+        setValidationErrors(validationResult.errors);
         toast({
           title: "Validation Error",
           description: "Please fix the errors in the form",
@@ -147,12 +158,82 @@ export default function ProfileDetail() {
       setValidationErrors([]);
 
       const updateData: UpdateProfileRequest = {
-        name: formData.name,
-        email: formData.email,
+        fullName: formData.name, // Backend expects fullName, not name
         phone: formData.phone,
         address: formData.address,
-        dateOfBirth: formData.dateOfBirth || undefined,
+        yob: formData.dateOfBirth || undefined, // Backend expects yob, not dateOfBirth
+        // Note: email is read-only, should not be sent
       };
+
+      console.log('📤 Profile Save - Update Data:', updateData);
+      console.log('📤 Profile Save - Current Role:', auth.state.role);
+
+      // Check if user has customer role, if not, try to switch
+      if (auth.state.role !== 'customer') {
+        console.log('⚠️ Current role is not customer, attempting to switch role...');
+        
+        try {
+          const switchResponse = await authApi.switchRole({ role: 'customer' });
+          
+          if (switchResponse.data?.accessToken && switchResponse.data?.refreshToken) {
+            // Save new tokens
+            await AsyncStorage.setItem('ACCESS_TOKEN', switchResponse.data.accessToken);
+            await AsyncStorage.setItem('REFRESH_TOKEN', switchResponse.data.refreshToken);
+            
+            // Update role in auth state
+            const newRole = switchResponse.data.user?.role as 'customer' | 'business' | 'admin';
+            if (newRole) {
+              await auth.actions.updateRole(newRole);
+            }
+            
+            // Calculate token expiry (1 hour from now)
+            const tokenExpiry = Date.now() + (60 * 60 * 1000);
+            await AsyncStorage.setItem('TOKEN_EXPIRY', tokenExpiry.toString());
+            
+            console.log('✅ Successfully switched to customer role');
+            toast({
+              title: "Success",
+              description: "Switched to customer account. Please try saving again.",
+            });
+            
+            // Retry the update after switching role
+            const updatedUser = await updateUserProfileWithAutoRefresh(updateData);
+            setUser(updatedUser);
+            
+            // Update formData with new user data
+            const updatedUserAny = updatedUser as any;
+            setFormData({
+              name: updatedUserAny.fullName || updatedUser.name || "",
+              email: updatedUser.email || "",
+              phone: updatedUserAny.phone || "",
+              address: updatedUserAny.address || "",
+              dateOfBirth: formatDateString(updatedUserAny.dateOfBirth || updatedUserAny.yob || ""),
+              notifications: updatedUserAny.notifications !== undefined ? updatedUserAny.notifications : true,
+              emailUpdates: updatedUserAny.emailUpdates !== undefined ? updatedUserAny.emailUpdates : true,
+              smsAlerts: updatedUserAny.smsAlerts !== undefined ? updatedUserAny.smsAlerts : false,
+            });
+            
+            setIsEditing(false);
+            toast({
+              title: "Success",
+              description: "Profile updated successfully",
+            });
+            setSaving(false);
+            return;
+          } else {
+            throw new Error('No token received from server');
+          }
+        } catch (switchError: any) {
+          console.error('❌ Failed to switch role:', switchError);
+          const errorMsg = `Current role is "${auth.state.role}", but API requires "customer" role. Failed to switch role: ${switchError.message}`;
+          toast({
+            title: "Role Error",
+            description: errorMsg,
+          });
+          setSaving(false);
+          return;
+        }
+      }
 
       const updatedUser = await updateUserProfileWithAutoRefresh(updateData);
       // updateUserProfileWithAutoRefresh returns User directly, not wrapped in response.data
@@ -172,6 +253,22 @@ export default function ProfileDetail() {
       });
       
       setIsEditing(false);
+      
+      // Reload user profile to ensure we have the latest data (including avatar if it was updated)
+      try {
+        const refreshedUser = await getCurrentUserProfileWithAutoRefresh();
+        setUser(refreshedUser);
+        console.log('✅ User profile refreshed after update');
+        
+        // Mark profile as updated to trigger refresh in other screens
+        await AsyncStorage.setItem('PROFILE_UPDATED_TIMESTAMP', Date.now().toString());
+      } catch (refreshError) {
+        console.error('⚠️ Failed to refresh user profile after update:', refreshError);
+        // Continue anyway, we already have the updated user
+        // Still mark as updated so other screens can refresh
+        await AsyncStorage.setItem('PROFILE_UPDATED_TIMESTAMP', Date.now().toString());
+      }
+      
       toast({
         title: "Success",
         description: "Profile updated successfully",
@@ -193,21 +290,66 @@ export default function ProfileDetail() {
       const response = await uploadAvatarWithAutoRefresh(imageUri);
       
       // Extract avatarUrl from response
-      const avatarUrl = response?.data?.avatarUrl || 
+      let avatarUrl = response?.data?.avatarUrl || 
                        (typeof response.data === 'string' ? response.data : '') ||
                        (response as any)?.avatarUrl || '';
       
-      if (avatarUrl) {
-        setUser(prev => prev ? { ...prev, avatar: avatarUrl } : null);
+      // If avatarUrl not found in response, fetch updated user profile
+      // This handles cases where server updates avatar but doesn't return URL
+      if (!avatarUrl) {
+        console.log('⚠️ Avatar URL not in response, fetching updated user profile...');
+        try {
+          const updatedUser = await getCurrentUserProfileWithAutoRefresh();
+          avatarUrl = updatedUser?.avatar || '';
+          console.log('✅ Fetched avatar from user profile:', avatarUrl);
+        } catch (profileError) {
+          console.error('❌ Failed to fetch user profile:', profileError);
+        }
+      }
+      
+      // Always reload user profile to get the latest data (including avatar)
+      // This ensures we have the most up-to-date information
+      try {
+        const updatedUser = await getCurrentUserProfileWithAutoRefresh();
+        setUser(updatedUser);
+        
+        // Mark profile as updated to trigger refresh in other screens
+        await AsyncStorage.setItem('PROFILE_UPDATED_TIMESTAMP', Date.now().toString());
+        
         toast({
           title: "Success",
           description: "Avatar updated successfully",
         });
-      } else {
-        throw new Error('No avatar URL returned from server');
+      } catch (profileError) {
+        console.error('❌ Failed to reload user profile:', profileError);
+        // Even if reload fails, update with the avatarUrl we have
+        if (avatarUrl) {
+          setUser(prev => prev ? { ...prev, avatar: avatarUrl } : null);
+        }
+        toast({
+          title: "Success",
+          description: "Avatar updated successfully",
+        });
       }
     } catch (error: any) {
       console.error('Error uploading avatar:', error);
+      // Check if error is just about missing URL but upload succeeded
+      if (error.message?.includes('No avatar URL returned')) {
+        // Try to fetch user profile to verify upload succeeded
+        try {
+          const updatedUser = await getCurrentUserProfileWithAutoRefresh();
+          if (updatedUser?.avatar) {
+            setUser(updatedUser);
+            toast({
+              title: "Success",
+              description: "Avatar updated successfully",
+            });
+            return; // Exit early, don't show error
+          }
+        } catch (profileError) {
+          console.error('❌ Failed to verify avatar upload:', profileError);
+        }
+      }
       toast({
         title: "Error",
         description: error.message || "Failed to upload avatar",
@@ -266,10 +408,20 @@ export default function ProfileDetail() {
         </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {isEditing ? (
-          /* Edit Profile Form */
-          <View style={styles.editFormCard}>
+      <KeyboardAvoidingView 
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <ScrollView 
+          style={styles.content} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scrollContent}
+        >
+          {isEditing ? (
+            /* Edit Profile Form */
+            <View style={styles.editFormCard}>
             <View style={styles.editFormHeader}>
               <Text style={styles.editFormTitle}>{t('profile').editProfile}</Text>
               <View style={styles.editFormActions}>
@@ -423,9 +575,10 @@ export default function ProfileDetail() {
           </View>
         )}
 
-        {/* Bottom spacing */}
-        <View style={styles.bottomSpacing} />
-      </ScrollView>
+          {/* Bottom spacing */}
+          <View style={styles.bottomSpacing} />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -468,9 +621,15 @@ const styles = StyleSheet.create({
   editButton: {
     padding: 8,
   },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   content: {
     flex: 1,
     paddingHorizontal: 16,
+  },
+  scrollContent: {
+    paddingBottom: 20,
   },
   loadingContainer: {
     flex: 1,
@@ -647,7 +806,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   bottomSpacing: {
-    height: 100,
+    height: 200,
   },
 });
-

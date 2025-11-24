@@ -1,27 +1,28 @@
+import { businessesApi } from '@/services/api/businessService';
+import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService';
+import { User } from '@/types/auth.types';
+import { Business } from '@/types/business.types';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    Alert,
-    Dimensions,
-    Image,
-    Linking,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  Dimensions,
+  Image,
+  Linking,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import MapView, { Marker, Region } from 'react-native-maps';
 import { useAuth } from '../../../context/AuthProvider';
 import { useI18n } from '../../../hooks/useI18n';
-import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService';
-import { businessesApi } from '@/services/api/businessService';
-import { Business, NearbyBusiness } from '@/types/business.types';
-import { User } from '@/types/auth.types';
-import { useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
@@ -35,6 +36,13 @@ export default function Stores() {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const router = useRouter();
   const [businessesLoading, setBusinessesLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  
+  // Pagination for stores
+  const [storePage, setStorePage] = useState(1);
+  const [storeTotalPages, setStoreTotalPages] = useState(1);
+  const [hasMoreStores, setHasMoreStores] = useState(true);
   const [userLocation, setUserLocation] = useState<{
     latitude: number;
     longitude: number;
@@ -96,7 +104,7 @@ export default function Stores() {
         });
         
         // Fetch all businesses
-        await loadAllBusinesses();
+        await loadAllBusinesses(1, false);
       } catch (error) {
         console.error('❌ Error getting location:', error);
         Alert.alert(
@@ -122,28 +130,48 @@ export default function Stores() {
         latitudeDelta: 0.05,
         longitudeDelta: 0.05,
       });
-      await loadAllBusinesses();
+      await loadAllBusinesses(1, false);
     };
 
-    const loadAllBusinesses = async () => {
+    const loadAllBusinesses = async (page: number = 1, append: boolean = false) => {
       try {
         setBusinessesLoading(true);
         
         const response = await businessesApi.getAll({
-          page: 1,
-          limit: 100, // Get more businesses to display on map
+          page: page,
+          limit: 20,
         });
         
         if (response.statusCode === 200 && response.data) {
           // Filter only active businesses
           const activeBusinesses = response.data.filter(business => business.isActive && !business.isBlocked);
-          setBusinesses(activeBusinesses);
+          
+          // Get pagination info
+          const totalPages = (response as any).totalPages || 1;
+          setStoreTotalPages(totalPages);
+          setHasMoreStores(page < totalPages);
+          
+          if (append) {
+            setBusinesses(prev => {
+              const combined = [...prev, ...activeBusinesses];
+              // Remove duplicates by ID
+              return combined.filter((business, index, self) =>
+                index === self.findIndex(b => b._id === business._id)
+              );
+            });
+          } else {
+            setBusinesses(activeBusinesses);
+          }
         } else {
-          setBusinesses([]);
+          if (!append) {
+            setBusinesses([]);
+          }
         }
       } catch (error) {
         console.error('Error fetching businesses:', error);
-        setBusinesses([]);
+        if (!append) {
+          setBusinesses([]);
+        }
       } finally {
         setBusinessesLoading(false);
       }
@@ -236,19 +264,44 @@ export default function Stores() {
     });
   };
 
-  // Filter businesses based on filter criteria
+  // Get unique categories from businesses
+  const categories = React.useMemo(() => {
+    const uniqueCategories = new Set<string>();
+    businesses.forEach(business => {
+      if (business.businessType) {
+        uniqueCategories.add(business.businessType);
+      }
+    });
+    return Array.from(uniqueCategories).sort();
+  }, [businesses]);
+
+  // Filter businesses based on filter criteria, search, and category
   const filteredStores = React.useMemo(() => {
     if (businesses.length === 0) {
       return [];
     }
     
-    // If no user location, return all businesses
+    // Apply search filter
+    let filtered = businesses;
+    if (searchQuery.trim()) {
+      filtered = businesses.filter(store =>
+        store.businessName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        store.businessAddress.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Apply category filter
+    if (selectedCategory !== 'all') {
+      filtered = filtered.filter(store => store.businessType === selectedCategory);
+    }
+    
+    // If no user location, return filtered businesses
     if (!userLocation) {
-      return businesses;
+      return filtered;
     }
     
     // Calculate distance for all stores
-    let stores = businesses.map(store => {
+    let stores = filtered.map(store => {
       const [longitude, latitude] = store.location.coordinates;
       const distance = calculateDistance(
         userLocation.latitude,
@@ -285,7 +338,7 @@ export default function Stores() {
     }
     
     return stores;
-  }, [businesses, activeFilter, userLocation]);
+  }, [businesses, activeFilter, userLocation, searchQuery, selectedCategory]);
 
   const renderStoreCard = (store: Business & { distance?: number }) => {
     const [longitude, latitude] = store.location.coordinates;
@@ -303,7 +356,11 @@ export default function Stores() {
           : null);
     
     return (
-      <View key={store._id} style={styles.storeCard}>
+      <TouchableOpacity 
+        key={store._id} 
+        style={styles.storeCard}
+        onPress={() => router.push(`/(protected)/customer/store-detail/${store._id}`)}
+      >
         {/* Logo - Left Side */}
         <View style={styles.storeLogoContainer}>
           {store.businessLogoUrl ? (
@@ -324,9 +381,24 @@ export default function Stores() {
           <Text style={styles.storeName} numberOfLines={1}>
             {store.businessName}
           </Text>
+          <Text style={styles.storeType} numberOfLines={1}>
+            {store.businessType}
+          </Text>
           <Text style={styles.storeAddress} numberOfLines={2}>
             {store.businessAddress}
           </Text>
+          
+          {/* Rating & Products Count */}
+          <View style={styles.storeMetaRow}>
+            <View style={styles.ratingContainer}>
+              <Ionicons name="star" size={14} color="#F59E0B" />
+              <Text style={styles.ratingText}>4.5</Text>
+            </View>
+            <View style={styles.productsCountContainer}>
+              <Ionicons name="cube-outline" size={14} color="#6B7280" />
+              <Text style={styles.productsCountText}>Products</Text>
+            </View>
+          </View>
           
           {/* Status & Distance Row */}
           <View style={styles.storeStatusRow}>
@@ -347,7 +419,10 @@ export default function Stores() {
         <View style={styles.storeActionsContainer}>
           <TouchableOpacity 
             style={styles.directionsButton}
-            onPress={() => handleDirections(store)}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleDirections(store);
+            }}
           >
             <Ionicons name="navigate" size={18} color="#FFFFFF" />
             <Text style={styles.directionsButtonText}>Directions</Text>
@@ -356,7 +431,8 @@ export default function Stores() {
           <View style={styles.secondaryButtonsRow}>
             <TouchableOpacity 
               style={[styles.secondaryIconButton, { marginLeft: 0 }]}
-              onPress={() => {
+              onPress={(e) => {
+                e.stopPropagation();
                 if (store.businessPhone) {
                   Linking.openURL(`tel:${store.businessPhone}`);
                 }
@@ -364,18 +440,9 @@ export default function Stores() {
             >
               <Ionicons name="call-outline" size={20} color="#6B7280" />
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.secondaryIconButton}
-              onPress={() => {
-                // Navigate to store details
-                console.log('View store details:', store._id);
-              }}
-            >
-              <Ionicons name="eye-outline" size={20} color="#6B7280" />
-            </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -527,7 +594,54 @@ export default function Stores() {
 
         {/* Store List Section */}
         <View style={styles.storeListSection}>
-          <Text style={styles.sectionTitle}>Nearby Stores</Text>
+          <Text style={styles.sectionTitle}>Stores</Text>
+          
+          {/* Search Bar */}
+          <View style={styles.searchContainer}>
+            <Ionicons name="search" size={20} color="#6B7280" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search stores..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholderTextColor="#9CA3AF"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={20} color="#6B7280" />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Category Filter */}
+          {categories.length > 0 && (
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.categoryContainer}
+              contentContainerStyle={styles.categoryContent}
+            >
+              <TouchableOpacity
+                style={[styles.categoryChip, selectedCategory === 'all' && styles.categoryChipActive]}
+                onPress={() => setSelectedCategory('all')}
+              >
+                <Text style={[styles.categoryChipText, selectedCategory === 'all' && styles.categoryChipTextActive]}>
+                  All
+                </Text>
+              </TouchableOpacity>
+              {categories.map((category) => (
+                <TouchableOpacity
+                  key={category}
+                  style={[styles.categoryChip, selectedCategory === category && styles.categoryChipActive]}
+                  onPress={() => setSelectedCategory(category)}
+                >
+                  <Text style={[styles.categoryChipText, selectedCategory === category && styles.categoryChipTextActive]}>
+                    {category}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
           
           {/* Filter Tabs */}
           <View style={styles.filterTabs}>
@@ -835,11 +949,42 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     marginBottom: 4,
   },
+  storeType: {
+    fontSize: 13,
+    color: '#00704A',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
   storeAddress: {
     fontSize: 13,
     color: '#6B7280',
     lineHeight: 18,
     marginBottom: 8,
+  },
+  storeMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 16,
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  ratingText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  productsCountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  productsCountText: {
+    fontSize: 13,
+    color: '#6B7280',
   },
   storeStatusRow: {
     flexDirection: 'row',
@@ -895,5 +1040,46 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  searchIcon: {
+    marginRight: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#111827',
+  },
+  categoryContainer: {
+    marginBottom: 16,
+  },
+  categoryContent: {
+    paddingRight: 20,
+  },
+  categoryChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    marginRight: 8,
+  },
+  categoryChipActive: {
+    backgroundColor: '#0F4D3A',
+  },
+  categoryChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  categoryChipTextActive: {
+    color: '#FFFFFF',
   },
 });

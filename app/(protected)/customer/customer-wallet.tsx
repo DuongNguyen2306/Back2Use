@@ -2,14 +2,20 @@ import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService
 import { walletApi, walletTransactionsApi, type WalletDetails, type WalletTransaction } from '@/services/api/walletService';
 import { User } from '@/types/auth.types';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
+import { router } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   AppState,
   Dimensions,
+  Image,
   Modal,
+  Platform,
   RefreshControl,
+  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -19,11 +25,10 @@ import {
   View
 } from 'react-native';
 import { WebView } from 'react-native-webview';
-import CustomerHeader from '../../../components/CustomerHeader';
 import { useAuth } from '../../../context/AuthProvider';
 import { useI18n } from '../../../hooks/useI18n';
 
-const { width } = Dimensions.get('window');
+const { width, height: screenHeight } = Dimensions.get('window');
 
 interface Transaction {
   id: string;
@@ -56,6 +61,11 @@ export default function CustomerWallet() {
   // Real transactions from API
   const [realTransactions, setRealTransactions] = useState<WalletTransaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
+  
+  // Pagination for transactions
+  const [transactionPage, setTransactionPage] = useState(1);
+  const [transactionTotalPages, setTransactionTotalPages] = useState(1);
+  const [hasMoreTransactions, setHasMoreTransactions] = useState(true);
   
   // Summary data from real transactions
   const [totalIncome, setTotalIncome] = useState(0);
@@ -93,9 +103,7 @@ export default function CustomerWallet() {
     }
   }, [showAddFunds, showWithdraw, amount, isPaymentProcessing, paymentResultShown]);
 
-  // Load user data and wallet
-  useEffect(() => {
-    const loadUserData = async () => {
+  const loadUserData = useCallback(async () => {
         try {
         setLoading(true);
         const userData = await getCurrentUserProfileWithAutoRefresh();
@@ -108,19 +116,19 @@ export default function CustomerWallet() {
           console.log('🔍 Customer Wallet data from API:', userData.wallet);
           console.log('💰 Customer Balance type:', typeof userData.wallet.balance);
           console.log('💰 Customer Balance value:', userData.wallet.balance);
-          console.log('💰 Customer Wallet full object:', JSON.stringify(userData.wallet, null, 2));
-          
-          // Handle both balance and availableBalance fields
-          const walletBalance = (userData.wallet as any).availableBalance ?? userData.wallet.balance ?? 0;
+        console.log('💰 Customer Wallet full object:', JSON.stringify(userData.wallet, null, 2));
+        
+        // Handle both balance and availableBalance fields
+        const walletBalance = (userData.wallet as any).availableBalance ?? userData.wallet.balance ?? 0;
           
           setWallet({
             _id: userData.wallet._id,
-            balance: typeof walletBalance === 'number' ? walletBalance : 0,
+          balance: typeof walletBalance === 'number' ? walletBalance : 0,
           });
-          
-          console.log('✅ Set wallet balance to:', walletBalance);
-        } else {
-          console.warn('⚠️ No wallet data in user profile');
+        
+        console.log('✅ Set wallet balance to:', walletBalance);
+      } else {
+        console.warn('⚠️ No wallet data in user profile');
         }
         } catch (error: any) {
         // Don't log network errors as errors - they're expected when offline
@@ -137,10 +145,48 @@ export default function CustomerWallet() {
       } finally {
         setLoading(false);
       }
-    };
-
-    loadUserData();
   }, []);
+
+  // Load user data and wallet on component mount
+  useEffect(() => {
+    loadUserData();
+  }, [loadUserData]);
+
+  // Reload user data when screen is focused (e.g., after returning from profile edit)
+  useFocusEffect(
+    useCallback(() => {
+      const checkAndReload = async () => {
+        try {
+          const lastUpdateTimestamp = await AsyncStorage.getItem('PROFILE_UPDATED_TIMESTAMP');
+          if (lastUpdateTimestamp) {
+            const lastUpdate = parseInt(lastUpdateTimestamp, 10);
+            const now = Date.now();
+            // Reload if profile was updated within the last 5 minutes
+            if (now - lastUpdate < 5 * 60 * 1000) {
+              console.log('🔄 Profile was recently updated, reloading user data...');
+              await loadUserData();
+              // Reload transactions after user data is loaded
+              if (wallet?._id) {
+                loadTransactions();
+              }
+            }
+          } else {
+            // Always reload when screen is focused to ensure fresh data
+            await loadUserData();
+            // Reload transactions after user data is loaded
+            if (wallet?._id) {
+              loadTransactions();
+            }
+          }
+        } catch (error) {
+          console.error('Error checking profile update:', error);
+          // Still try to load user data
+          await loadUserData();
+        }
+      };
+      checkAndReload();
+    }, [loadUserData, wallet?._id])
+  );
 
   // Listen for app state changes to refresh wallet after payment
   useEffect(() => {
@@ -162,42 +208,7 @@ export default function CustomerWallet() {
     if (wallet?._id) {
       loadTransactions();
     }
-  }, [transactionFilter, wallet?._id]);
-
-
-  const loadUserData = async () => {
-    try {
-      setLoading(true);
-      const userData = await getCurrentUserProfileWithAutoRefresh();
-      console.log('🔍 Wallet User Data:', userData);
-      console.log('💰 Wallet Balance:', userData.wallet);
-      setUser(userData);
-      
-      // Use wallet data directly from user profile
-      if (userData.wallet) {
-        console.log('🔍 Customer Wallet data from API:', userData.wallet);
-        console.log('💰 Customer Balance type:', typeof userData.wallet.balance);
-        console.log('💰 Customer Balance value:', userData.wallet.balance);
-        console.log('💰 Customer Wallet full object:', JSON.stringify(userData.wallet, null, 2));
-        
-        // Handle both balance and availableBalance fields
-        const walletBalance = (userData.wallet as any).availableBalance ?? userData.wallet.balance ?? 0;
-        
-        setWallet({
-          _id: userData.wallet._id,
-          balance: typeof walletBalance === 'number' ? walletBalance : 0,
-        });
-        
-        console.log('✅ Set wallet balance to:', walletBalance);
-      } else {
-        console.warn('⚠️ No wallet data in user profile');
-      }
-    } catch (error) {
-      console.error('Error loading user data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [wallet?._id]);
 
   const handleAddFunds = async () => {
     console.log('🚀 Starting add funds process...');
@@ -243,8 +254,8 @@ export default function CustomerWallet() {
         // Reload wallet data and transactions
         await loadUserData();
         await loadTransactions();
-        setShowAddFunds(false);
-        setAmount('');
+      setShowAddFunds(false);
+      setAmount('');
       }
     } catch (error: any) {
       console.error('❌ Add funds error:', error);
@@ -267,7 +278,8 @@ export default function CustomerWallet() {
       return;
     }
 
-    if (Number(amount) > (wallet.balance || 0)) {
+    const walletBalance = wallet?.balance || (wallet as any)?.availableBalance || 0;
+    if (Number(amount) > walletBalance) {
       Alert.alert('Error', 'Insufficient balance');
       return;
     }
@@ -509,47 +521,69 @@ export default function CustomerWallet() {
   const quickAmounts = [10000, 50000, 100000, 200000];
 
   // Load real transactions from API
-  const loadTransactions = async () => {
+  const loadTransactions = async (page: number = 1, append: boolean = false) => {
     if (!wallet?._id) return;
     
     try {
       setTransactionsLoading(true);
-      console.log('🔄 Loading customer transactions...');
+      console.log('🔄 Loading customer transactions...', { page, append });
       
       // Load cả personal và deposit_refund transactions
       const [personalResponse, depositRefundResponse] = await Promise.all([
         walletTransactionsApi.getMy({
           walletType: 'customer',
-          typeGroup: 'personal',
-          page: 1,
-          limit: 50,
+          typeGroup: 'personal', // deposit, withdraw
+          page: page,
+          limit: 20,
         }),
         walletTransactionsApi.getMy({
           walletType: 'customer',
-          typeGroup: 'deposit_refund',
-          page: 1,
-          limit: 50,
+          typeGroup: 'deposit_refund', // borrow_deposit, return_refund
+          page: page,
+          limit: 20,
         }),
       ]);
       
       console.log('📡 Personal Transactions API Response:', personalResponse);
       console.log('📡 Deposit Refund Transactions API Response:', depositRefundResponse);
       
+      // Get total pages from response (use the larger one)
+      const personalTotalPages = (personalResponse as any).totalPages || 1;
+      const depositRefundTotalPages = (depositRefundResponse as any).totalPages || 1;
+      const maxTotalPages = Math.max(personalTotalPages, depositRefundTotalPages);
+      setTransactionTotalPages(maxTotalPages);
+      setHasMoreTransactions(page < maxTotalPages);
+      
       // Merge cả 2 loại transactions và sort theo createdAt (mới nhất trước)
-      const allTransactions = [
+      const newTransactions = [
         ...(personalResponse.statusCode === 200 && personalResponse.data ? personalResponse.data : []),
         ...(depositRefundResponse.statusCode === 200 && depositRefundResponse.data ? depositRefundResponse.data : []),
       ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
-      console.log('✅ All customer transactions:', allTransactions);
-      console.log('✅ Total number of transactions:', allTransactions.length);
-      setRealTransactions(allTransactions);
+      if (append) {
+        // Append new transactions to existing ones
+        setRealTransactions(prev => {
+          const combined = [...prev, ...newTransactions];
+          // Remove duplicates by ID
+          const unique = combined.filter((transaction, index, self) =>
+            index === self.findIndex(t => t._id === transaction._id)
+          );
+          return unique.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        });
+      } else {
+        // Replace all transactions
+        setRealTransactions(newTransactions);
+      }
       
-      // Calculate summary - only count completed transactions
+      console.log('✅ All customer transactions:', newTransactions.length);
+      console.log('✅ Total pages:', maxTotalPages, 'Current page:', page);
+      
+      // Calculate summary - only count completed transactions from all loaded transactions
+      const allLoadedTransactions = append ? [...realTransactions, ...newTransactions] : newTransactions;
       let income = 0;
       let expenses = 0;
       
-      allTransactions.forEach(transaction => {
+      allLoadedTransactions.forEach(transaction => {
         // Only count completed transactions (not processing or failed)
         if (transaction.status === 'completed') {
           if (transaction.direction === 'in') {
@@ -561,12 +595,12 @@ export default function CustomerWallet() {
       });
       
       console.log('📊 Customer transactions breakdown:', {
-        total: allTransactions.length,
+        total: allLoadedTransactions.length,
         personal: personalResponse.statusCode === 200 && personalResponse.data ? personalResponse.data.length : 0,
         depositRefund: depositRefundResponse.statusCode === 200 && depositRefundResponse.data ? depositRefundResponse.data.length : 0,
-        completed: allTransactions.filter(t => t.status === 'completed').length,
-        processing: allTransactions.filter(t => t.status === 'processing').length,
-        failed: allTransactions.filter(t => t.status === 'failed').length,
+        completed: allLoadedTransactions.filter(t => t.status === 'completed').length,
+        processing: allLoadedTransactions.filter(t => t.status === 'processing').length,
+        failed: allLoadedTransactions.filter(t => t.status === 'failed').length,
       });
       
       setTotalIncome(income);
@@ -581,17 +615,51 @@ export default function CustomerWallet() {
 
   const forceRefresh = async () => {
     console.log('🔄 Force refreshing all data...');
+    setTransactionPage(1);
     await loadUserData();
-    await loadTransactions();
+    await loadTransactions(1, false);
+  };
+
+  const loadMoreTransactions = async () => {
+    if (!hasMoreTransactions || transactionsLoading) return;
+    const nextPage = transactionPage + 1;
+    setTransactionPage(nextPage);
+    await loadTransactions(nextPage, true);
   };
 
   if (loading) {
     return (
       <View style={styles.container}>
-        <CustomerHeader
-          title="Customer Wallet"
-          user={user}
-        />
+        <StatusBar barStyle="light-content" backgroundColor="#00704A" />
+        <View style={styles.headerBlock}>
+          <SafeAreaView>
+            <View style={styles.headerContent}>
+              <Text style={styles.headerTitle}>My Wallet</Text>
+              <View style={styles.headerRight}>
+                <TouchableOpacity 
+                  style={styles.refreshButton}
+                  onPress={forceRefresh}
+                >
+                  <Ionicons name="refresh" size={22} color="#FFFFFF" />
+                </TouchableOpacity>
+                {user && (
+                  <TouchableOpacity 
+                    style={styles.headerAvatar}
+                    onPress={() => router.push('/(protected)/customer/my-profile')}
+                  >
+                    {user.avatar ? (
+                      <Image source={{ uri: user.avatar }} style={styles.headerAvatarImage} />
+                    ) : (
+                      <Text style={styles.headerAvatarText}>
+                        {(user.name || user.fullName || 'U').charAt(0).toUpperCase()}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          </SafeAreaView>
+        </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#0F4D3A" />
           <Text style={styles.loadingText}>Loading...</Text>
@@ -602,60 +670,82 @@ export default function CustomerWallet() {
 
   return (
     <View style={styles.container}>
-      <CustomerHeader
-        title="Customer Wallet"
-        user={user}
-        rightAction={
-          <TouchableOpacity 
-            style={styles.iconGhost}
-            onPress={forceRefresh}
-          >
-            <Ionicons name="refresh" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-        }
-      />
-
-      <ScrollView 
-        style={styles.content} 
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={transactionsLoading}
-            onRefresh={forceRefresh}
-            colors={['#0F4D3A']}
-            tintColor="#0F4D3A"
-          />
-        }
-      >
-
-        {/* Balance Card */}
-        <View style={styles.balanceCard}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Available Balance</Text>
-            <TouchableOpacity 
-              style={styles.eyeButton}
-              onPress={() => setShowBalance(!showBalance)}
-            >
-              <Ionicons
-                name={showBalance ? "eye" : "eye-off"}
-                size={20}
-                color="rgba(255,255,255,0.8)"
-              />
-            </TouchableOpacity>
+      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
+      {/* Header Section - Clean Dark Green */}
+      <View style={styles.headerBlock}>
+        <SafeAreaView style={styles.headerSafeArea}>
+          <View style={styles.headerContent}>
+            <Text style={styles.headerTitle}>My Wallet</Text>
+            <View style={styles.headerRight}>
+              <TouchableOpacity 
+                style={styles.refreshButton}
+                onPress={forceRefresh}
+              >
+                <Ionicons name="refresh" size={22} color="#FFFFFF" />
+              </TouchableOpacity>
+              {user && (
+                <TouchableOpacity 
+                  style={styles.headerAvatar}
+                  onPress={() => router.push('/(protected)/customer/my-profile')}
+                >
+                  {user.avatar ? (
+                    <Image source={{ uri: user.avatar }} style={styles.headerAvatarImage} />
+                  ) : (
+                    <Text style={styles.headerAvatarText}>
+                      {(user.name || user.fullName || 'U').charAt(0).toUpperCase()}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
-          
-          <View style={styles.balanceContainer}>
-            {showBalance ? (
-              <Text style={styles.balanceAmount}>
-                {wallet?.balance && typeof wallet.balance === 'number' ? wallet.balance.toLocaleString('vi-VN') : '0'} VNĐ
-              </Text>
-            ) : (
-              <Text style={styles.balanceHidden}>•••••••• VNĐ</Text>
-            )}
+        </SafeAreaView>
+      </View>
+
+      {/* White/Light Gray Background Content */}
+      <View style={styles.whiteBackground}>
+        <ScrollView 
+          style={styles.content} 
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={transactionsLoading}
+              onRefresh={forceRefresh}
+              colors={['#00704A']}
+              tintColor="#00704A"
+            />
+          }
+        >
+          {/* Balance Card - Floating overlap */}
+          <View style={styles.balanceCard}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardTitle}>Available Balance</Text>
+              <TouchableOpacity 
+                style={styles.eyeButton}
+                onPress={() => setShowBalance(!showBalance)}
+              >
+                <Ionicons 
+                  name={showBalance ? "eye" : "eye-off"} 
+                  size={20} 
+                  color="rgba(255,255,255,0.8)"
+                />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.balanceContainer}>
+              {showBalance ? (
+                <Text style={styles.balanceAmount}>
+                  {wallet?.balance && typeof wallet.balance === 'number' 
+                    ? wallet.balance.toLocaleString('vi-VN') 
+                    : '0'} VNĐ
+                </Text>
+              ) : (
+                <Text style={styles.balanceHidden}>•••••••• VNĐ</Text>
+              )}
+            </View>
+            
+            <Text style={styles.cardSubtitle}>Customer Account</Text>
           </View>
-          
-          <Text style={styles.cardSubtitle}>Customer Account</Text>
-        </View>
 
         {/* Summary Cards */}
         <View style={styles.summarySection}>
@@ -679,10 +769,10 @@ export default function CustomerWallet() {
             </View>
           </View>
         </View>
-
+          
         {/* Action Buttons - Deposit & Withdraw */}
         <View style={styles.actionSection}>
-          <TouchableOpacity 
+            <TouchableOpacity 
             style={[styles.actionButton, styles.addFundsButton]}
             onPress={() => {
               console.log('💰 Deposit button pressed');
@@ -692,20 +782,20 @@ export default function CustomerWallet() {
           >
             <Ionicons name="add-circle" size={24} color="white" />
             <Text style={styles.actionButtonText}>Deposit</Text>
-          </TouchableOpacity>
+            </TouchableOpacity>
           
-          <TouchableOpacity 
+            <TouchableOpacity 
             style={[styles.actionButton, styles.withdrawButton]}
-            onPress={() => {
+              onPress={() => {
               console.log('💸 Withdraw button pressed');
-              setShowWithdraw(true);
-            }}
+                setShowWithdraw(true);
+              }}
             activeOpacity={0.8}
-          >
+            >
             <Ionicons name="remove-circle" size={24} color="white" />
             <Text style={styles.actionButtonText}>Withdraw</Text>
-          </TouchableOpacity>
-        </View>
+            </TouchableOpacity>
+      </View>
 
         {/* Transaction History Section */}
         <View style={styles.transactionHistorySection}>
@@ -743,53 +833,86 @@ export default function CustomerWallet() {
         </View>
 
         {/* Transaction List */}
-        <View style={styles.transactionHistorySection}>
-          {transactionsLoading ? (
-            <View style={styles.loadingContainer}>
+        <View style={styles.transactionSection}>
+              {transactionsLoading ? (
+                <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color="#0F4D3A" />
-              <Text style={styles.loadingText}>Loading transactions...</Text>
-            </View>
+                  <Text style={styles.loadingText}>Loading transactions...</Text>
+                </View>
           ) : (
             <>
               {filteredTransactions.length > 0 ? (
-                filteredTransactions.map((transaction) => (
-                  <View key={transaction._id} style={styles.transactionCard}>
-                    <View style={[styles.transactionIcon, { backgroundColor: transaction.direction === 'in' ? '#E6F7F7' : '#FCE8E8' }]}>
-                      <Ionicons 
-                        name={transaction.direction === 'in' ? 'arrow-up' : 'arrow-down'} 
-                        size={18} 
-                        color={transaction.direction === 'in' ? '#10B981' : '#EF4444'} 
-                      />
-                    </View>
-                    <View style={styles.transactionInfo}>
-                      <Text style={styles.transactionTitle}>
-                        {transaction.transactionType ? getTransactionTypeText(transaction.transactionType) : transaction.description}
-                      </Text>
-                      {transaction.description && transaction.transactionType && (
-                        <Text style={styles.transactionSubtitle}>{transaction.description}</Text>
-                      )}
-                      <Text style={styles.transactionDate}>
-                        {new Date(transaction.createdAt).toLocaleDateString('vi-VN', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </Text>
-                    </View>
-                    <View style={styles.transactionAmount}>
-                      <Text style={[styles.amountText, { color: transaction.direction === 'in' ? '#10B981' : '#EF4444' }]}>
-                        {transaction.direction === 'in' ? '+' : '-'}{transaction.amount.toLocaleString('vi-VN')} VNĐ
-                      </Text>
-                      <View style={[styles.statusBadge, { backgroundColor: getStatusColor(transaction.status) + "20" }]}>
-                        <Text style={[styles.statusText, { color: getStatusColor(transaction.status) }]}>
-                          {getStatusText(transaction.status)}
+                <>
+                  {filteredTransactions.map((transaction) => (
+                    <View key={transaction._id} style={styles.transactionCard}>
+                      <View style={[styles.transactionIcon, { backgroundColor: transaction.direction === 'in' ? '#E6F7F7' : '#FCE8E8' }]}>
+                        <Ionicons
+                          name={transaction.direction === 'in' ? 'arrow-up' : 'arrow-down'} 
+                          size={18}
+                          color={transaction.direction === 'in' ? '#10B981' : '#EF4444'} 
+                        />
+                      </View>
+                      <View style={styles.transactionInfo}>
+                        <Text style={styles.transactionTitle}>{transaction.description}</Text>
+                        <Text style={styles.transactionDate}>
+                          {new Date(transaction.createdAt).toLocaleDateString('en-US')}
                         </Text>
                       </View>
+                      <View style={styles.transactionAmount}>
+                        <Text style={[styles.amountText, { color: transaction.direction === 'in' ? '#10B981' : '#EF4444' }]}>
+                          {transaction.direction === 'in' ? '+' : '-'}{transaction.amount.toLocaleString('vi-VN')} VNĐ
+                        </Text>
+                        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(transaction.status) + "20" }]}>
+                          <Text style={[styles.statusText, { color: getStatusColor(transaction.status) }]}>
+                            {getStatusText(transaction.status)}
+                          </Text>
+                        </View>
+                      </View>
                     </View>
-                  </View>
-                ))
+                  ))}
+                  
+                  {/* Pagination */}
+                  {transactionTotalPages > 1 && (
+                    <View style={styles.paginationContainer}>
+                      <TouchableOpacity
+                        style={[styles.paginationButton, transactionPage === 1 && styles.paginationButtonDisabled]}
+                        onPress={() => {
+                          if (transactionPage > 1) {
+                            setTransactionPage(transactionPage - 1);
+                            loadTransactions(transactionPage - 1, false);
+                          }
+                        }}
+                        disabled={transactionPage === 1 || transactionsLoading}
+                      >
+                        <Ionicons name="chevron-back" size={20} color={transactionPage === 1 ? "#9CA3AF" : "#0F4D3A"} />
+                        <Text style={[styles.paginationButtonText, transactionPage === 1 && styles.paginationButtonTextDisabled]}>
+                          Previous
+                        </Text>
+                      </TouchableOpacity>
+
+                      <View style={styles.paginationInfo}>
+                        <Text style={styles.paginationText}>
+                          Page {transactionPage} of {transactionTotalPages}
+                        </Text>
+                      </View>
+
+                      <TouchableOpacity
+                        style={[styles.paginationButton, (!hasMoreTransactions || transactionPage >= transactionTotalPages) && styles.paginationButtonDisabled]}
+                        onPress={() => {
+                          if (hasMoreTransactions && transactionPage < transactionTotalPages) {
+                            loadMoreTransactions();
+                          }
+                        }}
+                        disabled={!hasMoreTransactions || transactionPage >= transactionTotalPages || transactionsLoading}
+                      >
+                        <Text style={[styles.paginationButtonText, (!hasMoreTransactions || transactionPage >= transactionTotalPages) && styles.paginationButtonTextDisabled]}>
+                          Next
+                        </Text>
+                        <Ionicons name="chevron-forward" size={20} color={(!hasMoreTransactions || transactionPage >= transactionTotalPages) ? "#9CA3AF" : "#0F4D3A"} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
               ) : (
                 <View style={styles.emptyState}>
                   <Ionicons name="receipt-outline" size={48} color="#9CA3AF" />
@@ -801,23 +924,24 @@ export default function CustomerWallet() {
           )}
         </View>
       </ScrollView>
+      </View>
 
       {/* Deposit Modal */}
-      <Modal
-        visible={showAddFunds}
+        <Modal
+          visible={showAddFunds}
         animationType="slide"
         presentationStyle="pageSheet"
-      >
+        >
         <View style={styles.modalContainer}>
           <StatusBar barStyle="light-content" backgroundColor="#0F4D3A" />
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowAddFunds(false)}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setShowAddFunds(false)}>
               <Text style={styles.cancelButton}>Cancel</Text>
-            </TouchableOpacity>
+              </TouchableOpacity>
             <Text style={styles.modalTitle}>Deposit</Text>
             <View style={{ width: 60 }} />
-          </View>
-
+            </View>
+              
           <ScrollView 
             style={styles.modalContent}
             contentContainerStyle={styles.modalContentScroll}
@@ -830,20 +954,20 @@ export default function CustomerWallet() {
               <TextInput
                 style={styles.amountInput}
                 placeholder="0"
-                value={amount}
-                onChangeText={setAmount}
+                  value={amount}
+                  onChangeText={setAmount}
                 keyboardType="numeric"
                 placeholderTextColor="#9CA3AF"
               />
             </View>
-
-            <View style={styles.quickAmounts}>
-              <TouchableOpacity 
-                style={styles.quickAmountButton}
+                
+              <View style={styles.quickAmounts}>
+                    <TouchableOpacity
+                      style={styles.quickAmountButton}
                 onPress={() => setAmount('100000')}
-              >
+                    >
                 <Text style={styles.quickAmountText}>100,000 VNĐ</Text>
-              </TouchableOpacity>
+                </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.quickAmountButton}
                 onPress={() => setAmount('500000')}
@@ -857,7 +981,7 @@ export default function CustomerWallet() {
                 <Text style={styles.quickAmountText}>1,000,000 VNĐ</Text>
               </TouchableOpacity>
             </View>
-
+              
             <TouchableOpacity 
               style={[styles.confirmButton, styles.addFundsConfirmButton]}
               onPress={handleAddFunds}
@@ -866,31 +990,31 @@ export default function CustomerWallet() {
               <Text style={styles.confirmButtonText}>
                 {isProcessing ? 'Processing...' : 'Deposit'}
               </Text>
-            </TouchableOpacity>
+              </TouchableOpacity>
           </ScrollView>
-        </View>
-      </Modal>
+              </View>
+        </Modal>
 
       {/* Withdraw Modal */}
-      <Modal
-        visible={showWithdraw}
+        <Modal
+          visible={showWithdraw}
         animationType="slide"
         presentationStyle="pageSheet"
       >
         <View style={styles.modalContainer}>
           <StatusBar barStyle="light-content" backgroundColor="#0F4D3A" />
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowWithdraw(false)}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setShowWithdraw(false)}>
               <Text style={styles.cancelButton}>Cancel</Text>
-            </TouchableOpacity>
+              </TouchableOpacity>
             <Text style={styles.modalTitle}>Withdraw</Text>
             <View style={{ width: 60 }} />
-          </View>
-
+            </View>
+              
           <View style={styles.modalContent}>
             <Text style={styles.modalSubtitle}>Enter amount to withdraw from your wallet</Text>
             <Text style={styles.balanceInfo}>
-              Available balance: {wallet?.balance ? wallet.balance.toLocaleString('vi-VN') : '0'} VNĐ
+              Available balance: {wallet ? (wallet.balance || (wallet as any)?.availableBalance || 0).toLocaleString('vi-VN') : '0'} VNĐ
             </Text>
             
             <View style={styles.amountInputContainer}>
@@ -898,14 +1022,14 @@ export default function CustomerWallet() {
               <TextInput
                 style={styles.amountInput}
                 placeholder="0"
-                value={amount}
-                onChangeText={setAmount}
+                  value={amount}
+                  onChangeText={setAmount}
                 keyboardType="numeric"
                 placeholderTextColor="#9CA3AF"
               />
             </View>
-
-            <TouchableOpacity 
+                
+                    <TouchableOpacity
               style={[styles.confirmButton, styles.withdrawConfirmButton]}
               onPress={handleWithdraw}
               disabled={isProcessing}
@@ -913,9 +1037,9 @@ export default function CustomerWallet() {
               <Text style={styles.confirmButtonText}>
                 {isProcessing ? 'Processing...' : 'Withdraw'}
               </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+                </TouchableOpacity>
+              </View>
+            </View>
       </Modal>
 
       {/* VNPay WebView Modal */}
@@ -928,10 +1052,10 @@ export default function CustomerWallet() {
           <View style={styles.webViewHeader}>
             <TouchableOpacity onPress={() => setShowPaymentWebView(false)}>
               <Text style={styles.cancelButton}>Cancel</Text>
-            </TouchableOpacity>
+              </TouchableOpacity>
             <Text style={styles.webViewTitle}>VNPay Payment</Text>
             <View style={{ width: 60 }} />
-          </View>
+            </View>
           
           <WebView
             source={{ uri: paymentUrl }}
@@ -956,8 +1080,8 @@ export default function CustomerWallet() {
               handlePaymentFailure();
             }}
           />
-        </View>
-      </Modal>
+              </View>
+        </Modal>
 
       {/* Payment Result Modal */}
       <Modal
@@ -1205,7 +1329,63 @@ export default function CustomerWallet() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
+    backgroundColor: '#00704A',
+  },
+  headerBlock: {
+    backgroundColor: '#00704A',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 20 : 50,
+    paddingBottom: 20, // Space for balance card overlap
+    paddingHorizontal: 20,
+  },
+  headerSafeArea: {
+    // SafeAreaView handles safe area automatically
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  refreshButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  headerAvatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  headerAvatarText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#00704A',
+  },
+  whiteBackground: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
   },
   content: {
     flex: 1,
@@ -1303,9 +1483,12 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  transactionSection: {
+    marginBottom: 20,
+  },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#1F2937',
     marginBottom: 16,
   },
@@ -1371,16 +1554,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 16,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   filterContainer: {
     flexDirection: 'row',
@@ -1504,7 +1685,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#0F4D3A',
     borderRadius: 16,
     padding: 20,
-    marginVertical: 20,
+    marginTop: 20, // Clear gap from header title
+    marginBottom: 20,
+    marginHorizontal: 0,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -1879,5 +2062,42 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  paginationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+  },
+  paginationButtonDisabled: {
+    opacity: 0.5,
+  },
+  paginationButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F4D3A',
+  },
+  paginationButtonTextDisabled: {
+    color: '#9CA3AF',
+  },
+  paginationInfo: {
+    alignItems: 'center',
+  },
+  paginationText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
   },
 });

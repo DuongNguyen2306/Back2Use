@@ -5,19 +5,20 @@ import { UpdateProfileRequest, User } from '@/types/auth.types';
 import { validateProfileForm, ValidationError } from '@/utils/validation';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Dimensions,
-  Image,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Dimensions,
+    Image,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import BusinessRegisterHistoryModal from '../../../components/BusinessRegisterHistoryModal';
 import BusinessRegisterModal from '../../../components/BusinessRegisterModal';
@@ -119,9 +120,7 @@ export default function MyProfile() {
     }
   };
 
-  // Load user data on component mount
-  useEffect(() => {
-    const loadUserData = async () => {
+  const loadUserData = useCallback(async () => {
       try {
         setLoading(true);
         const userData = await getCurrentUserProfileWithAutoRefresh();
@@ -139,20 +138,20 @@ export default function MyProfile() {
           smsAlerts: false,
         });
 
-        // Check if user already has business role FIRST
-        const userHasBusinessRole = userData.role === 'business' || auth.state.role === 'business';
-        if (userHasBusinessRole) {
-          setHasBusinessRole(true);
-          console.log('✅ User already has business role from userData or auth state');
-        }
-        
-        // Check for pending business registration (this may also set hasBusinessRole if approved)
+      // Check if user already has business role FIRST
+      const userHasBusinessRole = userData.role === 'business' || auth.state.role === 'business';
+      if (userHasBusinessRole) {
+        setHasBusinessRole(true);
+        console.log('✅ User already has business role from userData or auth state');
+      }
+      
+      // Check for pending business registration (this may also set hasBusinessRole if approved)
         await checkPendingBusiness();
-        
-        // Final check: ensure hasBusinessRole is set if user has business role
-        if (userData.role === 'business' || auth.state.role === 'business') {
-          setHasBusinessRole(true);
-        }
+      
+      // Final check: ensure hasBusinessRole is set if user has business role
+      if (userData.role === 'business' || auth.state.role === 'business') {
+        setHasBusinessRole(true);
+      }
       } catch (error: any) {
         // Don't show toast for network errors - they're expected when offline
         const isNetworkError = error?.message?.toLowerCase().includes('network') ||
@@ -172,10 +171,40 @@ export default function MyProfile() {
       } finally {
         setLoading(false);
       }
-    };
-
-    loadUserData();
   }, [toast, auth.state.role]);
+
+  // Load user data on component mount
+  useEffect(() => {
+    loadUserData();
+  }, [loadUserData]);
+
+  // Reload user data when screen is focused (e.g., after returning from profile edit)
+  useFocusEffect(
+    useCallback(() => {
+      const checkAndReload = async () => {
+        try {
+          const lastUpdateTimestamp = await AsyncStorage.getItem('PROFILE_UPDATED_TIMESTAMP');
+          if (lastUpdateTimestamp) {
+            const lastUpdate = parseInt(lastUpdateTimestamp, 10);
+            const now = Date.now();
+            // Reload if profile was updated within the last 5 minutes
+            if (now - lastUpdate < 5 * 60 * 1000) {
+              console.log('🔄 Profile was recently updated, reloading user data...');
+              await loadUserData();
+            }
+          } else {
+            // Always reload when screen is focused to ensure fresh data
+            await loadUserData();
+          }
+        } catch (error) {
+          console.error('Error checking profile update:', error);
+          // Still try to load user data
+          await loadUserData();
+        }
+      };
+      checkAndReload();
+    }, [loadUserData])
+  );
 
   // Check if user has pending business registration and load history
   const checkPendingBusiness = async () => {
@@ -684,53 +713,52 @@ export default function MyProfile() {
       
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Profile</Text>
+        <TouchableOpacity 
+          style={styles.headerLeft}
+          onPress={() => router.push('/(protected)/customer/profile-detail')}
+          activeOpacity={0.7}
+        >
+          {userAvatar ? (
+            <Image
+              source={{ uri: userAvatar }}
+              style={styles.headerAvatar}
+            />
+          ) : (
+            <View style={styles.headerAvatarPlaceholder}>
+              <Text style={styles.headerAvatarText}>
+                {userName.charAt(0).toUpperCase()}
+              </Text>
+      </View>
+          )}
+          <Text style={styles.headerName}>{userName}</Text>
+          {/* Only show switch role button if user has business role */}
+          {(hasBusinessRole || auth.state.role === 'business' || user?.role === 'business') && (
+                <TouchableOpacity 
+              style={styles.headerSwitchRoleButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleSwitchRole('business');
+              }}
+            >
+              <Ionicons name="swap-horizontal" size={20} color="#00704A" />
+                </TouchableOpacity>
+          )}
+        </TouchableOpacity>
         <View style={styles.headerRight}>
-          <TouchableOpacity 
+                <TouchableOpacity 
             style={styles.headerIconButton}
             onPress={() => router.push('/(protected)/customer/settings')}
           >
-            <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        </View>
-      </View>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* User Profile Card */}
-                <TouchableOpacity 
-          style={styles.profileCard}
-          onPress={() => router.push('/(protected)/customer/profile-detail')}
-        >
-          <View style={styles.profileCardContent}>
-            <View style={styles.profileLeft}>
-              {userAvatar ? (
-                <Image
-                  source={{ uri: userAvatar }}
-                  style={styles.profileAvatar}
-                />
-              ) : (
-                <View style={styles.profileAvatarPlaceholder}>
-                  <Text style={styles.profileAvatarText}>
-                    {userName.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-              )}
-              <Text style={styles.profileName}>{userName}</Text>
-            </View>
-            {/* Only show switch role button if user has business role */}
-            {(hasBusinessRole || auth.state.role === 'business' || user?.role === 'business') && (
-                <TouchableOpacity 
-                style={styles.switchRoleButton}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  handleSwitchRole('business');
-                }}
-                >
-                <Ionicons name="swap-horizontal" size={20} color="#00704A" />
-              </TouchableOpacity>
-                  )}
-          </View>
+            <Ionicons name="notifications-outline" size={24} color="#FFFFFF" />
                 </TouchableOpacity>
+              </View>
+            </View>
+
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={styles.scrollContentContainer}
+        showsVerticalScrollIndicator={false}
+      >
 
         {/* Shortcuts Grid */}
         <View style={styles.shortcutsGrid}>
@@ -746,7 +774,7 @@ export default function MyProfile() {
               <Text style={styles.shortcutLabel}>{shortcut.label}</Text>
             </TouchableOpacity>
           ))}
-            </View>
+              </View>
 
         {/* Collapsible Settings List */}
         <View style={styles.settingsList}>
@@ -757,7 +785,7 @@ export default function MyProfile() {
             <View style={styles.settingsListItemLeft}>
               <Ionicons name="help-circle-outline" size={24} color="#00704A" />
               <Text style={styles.settingsListItemText}>Help & Support</Text>
-            </View>
+              </View>
             <Ionicons 
               name={expandedHelp ? "chevron-up" : "chevron-down"} 
               size={20} 
@@ -809,48 +837,44 @@ export default function MyProfile() {
               >
                 <Text style={styles.expandedItemText}>Privacy</Text>
               </TouchableOpacity>
-              </View>
-          )}
+                </View>
+              )}
             </View>
             
         {/* Business Registration History - Always show if there's history */}
         {businessHistory.length > 0 && (
           <View style={styles.businessRegisterSection}>
-            <View style={styles.businessHistoryContainer}>
-              <Text style={styles.businessHistoryTitle}>Business Registration History</Text>
-              {businessHistory.slice(0, 1).map((item: any, index: number) => (
-                <View key={item._id || index} style={styles.businessHistoryCard}>
-                  <View style={styles.businessHistoryHeader}>
-                    <Text style={styles.businessHistoryName}>{item.businessName}</Text>
-                    <View style={[
-                      styles.statusBadge,
-                      item.status === 'approved' && styles.statusBadgeApproved,
-                      item.status === 'rejected' && styles.statusBadgeRejected,
-                      item.status === 'pending' && styles.statusBadgePending,
-                    ]}>
-                      <Text style={[
-                        styles.statusBadgeText,
-                        item.status === 'approved' && styles.statusBadgeTextApproved,
-                        item.status === 'rejected' && styles.statusBadgeTextRejected,
-                        item.status === 'pending' && styles.statusBadgeTextPending,
-                      ]}>
-                        {item.status === 'approved' ? 'Approved' : 
-                         item.status === 'rejected' ? 'Rejected' : 
-                         'Pending'}
-                  </Text>
-                </View>
-            </View>
-                </View>
-              ))}
+            <Text style={styles.businessHistoryTitle}>Business Registration History</Text>
+            {businessHistory.slice(0, 1).map((item: any, index: number) => (
                 <TouchableOpacity
-                style={styles.businessRegisterButton} 
+                key={item._id || index}
+                style={styles.businessHistoryCard}
                 onPress={() => setShowBusinessHistoryModal(true)}
+                activeOpacity={0.7}
               >
-                <Ionicons name="time-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={styles.businessRegisterButtonText}>View History Details</Text>
+                <View style={styles.businessHistoryHeader}>
+                  <Text style={styles.businessHistoryName}>{item.businessName}</Text>
+                  <View style={[
+                    styles.statusBadge,
+                    item.status === 'approved' && styles.statusBadgeApproved,
+                    item.status === 'rejected' && styles.statusBadgeRejected,
+                    item.status === 'pending' && styles.statusBadgePending,
+                  ]}>
+                    <Text style={[
+                      styles.statusBadgeText,
+                      item.status === 'approved' && styles.statusBadgeTextApproved,
+                      item.status === 'rejected' && styles.statusBadgeTextRejected,
+                      item.status === 'pending' && styles.statusBadgeTextPending,
+                    ]}>
+                      {item.status === 'approved' ? 'Approved' : 
+                       item.status === 'rejected' ? 'Rejected' : 
+                       'Pending'}
+                    </Text>
+                    </View>
+                    </View>
                 </TouchableOpacity>
+              ))}
             </View>
-          </View>
         )}
 
         {/* Business Registration Section - Only show register button if user doesn't have business role */}
@@ -895,10 +919,15 @@ export default function MyProfile() {
         )}
 
         {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
-
+        <View style={styles.logoutContainer}>
+          <TouchableOpacity 
+            style={styles.logoutButton} 
+            onPress={handleLogout}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.logoutText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Bottom spacing */}
         <View style={styles.bottomSpacing} />
@@ -997,7 +1026,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#00704A',
     paddingTop: 50,
-    paddingBottom: 20,
+    paddingBottom: 24,
     paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1009,10 +1038,58 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   headerTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  headerAvatar: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    marginRight: 16,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  headerAvatarPlaceholder: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    marginRight: 16,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  headerAvatarText: {
+    fontSize: 28,
+    fontWeight: '600',
+    color: '#00704A',
+  },
+  headerName: {
+    fontSize: 22,
+    fontWeight: '600',
     color: '#FFFFFF',
     flex: 1,
+  },
+  headerSwitchRoleButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   headerRight: {
     flexDirection: 'row',
@@ -1025,67 +1102,10 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 16,
+    paddingTop: 16,
   },
-  profileCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginTop: -40,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  profileCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  profileLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  profileAvatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    marginRight: 16,
-    borderWidth: 3,
-    borderColor: '#00704A',
-  },
-  profileAvatarPlaceholder: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    marginRight: 16,
-    backgroundColor: '#00704A',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#00704A',
-  },
-  profileAvatarText: {
-    fontSize: 32,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  profileName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  switchRoleButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#E5F7F0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#00704A',
+  scrollContentContainer: {
+    paddingBottom: 20,
   },
   shortcutsGrid: {
     flexDirection: 'row',
@@ -1164,13 +1184,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
   },
+  logoutContainer: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
   logoutButton: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: 'transparent',
     borderRadius: 12,
     paddingVertical: 16,
     paddingHorizontal: 24,
     alignItems: 'center',
-    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: '#DC2626',
   },
   logoutText: {
     fontSize: 16,
@@ -1178,7 +1203,7 @@ const styles = StyleSheet.create({
     color: '#DC2626',
   },
   bottomSpacing: {
-    height: 100,
+    height: 180,
   },
   userInfoCard: {
     backgroundColor: '#0F4D3A',
@@ -1363,7 +1388,7 @@ const styles = StyleSheet.create({
   },
   businessRegisterSection: {
     marginTop: 20,
-    marginBottom: 12,
+    marginBottom: 20,
   },
   businessHistoryContainer: {
     marginTop: 8,

@@ -1,22 +1,29 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import { Camera, CameraView } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
+import { useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    FlatList,
-    Image,
-    Modal,
-    RefreshControl,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  Modal,
+  Platform,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Vibration,
+  View
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
-import { businessesApi } from '../../../src/services/api/businessService';
+import { borrowTransactionsApi } from '../../../src/services/api/borrowTransactionService';
+import { businessesApi, productsApi as businessProductsApi } from '../../../src/services/api/businessService';
 import { BusinessProfile } from '../../../src/types/business.types';
 
 interface Transaction {
@@ -46,6 +53,7 @@ interface PackagingItem {
 
 export default function TransactionProcessingScreen() {
   const auth = useAuth();
+  const params = useLocalSearchParams();
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -55,6 +63,19 @@ export default function TransactionProcessingScreen() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [showUserModal, setShowUserModal] = useState(false);
+  
+  // Process return states
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnSerialNumber, setReturnSerialNumber] = useState('');
+  const [returnCondition, setReturnCondition] = useState('good');
+  const [returnNote, setReturnNote] = useState('');
+  const [returnImages, setReturnImages] = useState<string[]>([]);
+  const [processingReturn, setProcessingReturn] = useState(false);
+  
+  // QR Scanner states
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const scanLock = useRef(false);
 
   // Mock data
   const mockPackagingItems: PackagingItem[] = [
@@ -177,6 +198,67 @@ export default function TransactionProcessingScreen() {
     setRefreshing(false);
   };
 
+  // Open QR Scanner for return processing
+  const openQRScanner = async () => {
+    try {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      if (status === 'granted') {
+        setHasCameraPermission(true);
+        setShowQRScanner(true);
+      } else {
+        setHasCameraPermission(false);
+        Alert.alert('Camera Permission', 'Please grant camera permission to scan QR codes', [{ text: 'OK' }]);
+      }
+    } catch (error) {
+      console.error('Error requesting camera permission:', error);
+      Alert.alert('Error', 'Unable to open camera. Please try again.');
+    }
+  };
+
+  // Handle QR code scan
+  const onBarcodeScanned = async (e: any) => {
+    if (scanLock.current) return;
+    scanLock.current = true;
+    
+    const serialNumber = e?.data ?? '';
+    console.log('📱 QR Code scanned for return:', serialNumber);
+    
+    if (!serialNumber || serialNumber.trim() === '') {
+      Alert.alert('Error', 'Invalid QR code');
+      scanLock.current = false;
+      return;
+    }
+    
+    Vibration.vibrate(Platform.OS === 'ios' ? 30 : 50);
+    setShowQRScanner(false);
+    
+    try {
+      // Verify product exists by scanning
+      const response = await businessProductsApi.scan(serialNumber);
+      console.log('📦 Product scan response:', response);
+      
+      if (response && (response.success || response.statusCode === 200)) {
+        // Set serial number and open return modal
+        setReturnSerialNumber(serialNumber);
+        setReturnCondition('good');
+        setReturnNote('');
+        setReturnImages([]);
+        setShowReturnModal(true);
+      } else {
+        Alert.alert('Error', 'Product not found for this serial number');
+      }
+    } catch (error: any) {
+      console.error('Error scanning product:', error);
+      Alert.alert('Error', error?.message || 'Failed to verify product. Please try again.');
+    } finally {
+      scanLock.current = false;
+    }
+  };
+
+  const stopScanning = () => {
+    setShowQRScanner(false);
+  };
+
   const categorizeReturnTransaction = (transaction: Transaction) => {
     if (transaction.type !== 'return') return null;
 
@@ -253,7 +335,7 @@ export default function TransactionProcessingScreen() {
         matchesTab = category === 'success';
       } else if (tabType === 'overdue') {
         const overdueInfo = calculateOverdueInfo(transaction);
-        matchesTab = overdueInfo && overdueInfo.overdueDays > 0;
+        matchesTab = overdueInfo !== null && overdueInfo.overdueDays > 0;
       }
 
       return matchesSearch && matchesTab;
@@ -385,14 +467,22 @@ export default function TransactionProcessingScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Lịch sử giao dịch</Text>
-          <TouchableOpacity style={styles.profileIcon}>
-            {user?.avatar ? (
-              <Image source={{ uri: user.avatar }} style={styles.profileImage} />
-            ) : (
-              <Ionicons name="person-circle" size={32} color="#FFFFFF" />
-            )}
-          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Transaction History</Text>
+          <View style={styles.headerRight}>
+            <TouchableOpacity 
+              style={styles.scanButton}
+              onPress={openQRScanner}
+            >
+              <Ionicons name="qr-code-outline" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.profileIcon}>
+              {businessProfile?.businessLogoUrl ? (
+                <Image source={{ uri: businessProfile.businessLogoUrl }} style={styles.profileImage} />
+              ) : (
+                <Ionicons name="person-circle" size={32} color="#FFFFFF" />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -533,6 +623,30 @@ export default function TransactionProcessingScreen() {
                     <Text style={styles.notesText}>{selectedTransaction.notes}</Text>
                   </View>
                 )}
+
+                {/* Process Return Button - Only show for borrow transactions that haven't been returned */}
+                {selectedTransaction.type === 'borrow' && !selectedTransaction.returnedAt && (
+                  <TouchableOpacity
+                    style={styles.processReturnButton}
+                    onPress={() => {
+                      // Get serial number from transaction (assuming it's in the packaging item)
+                      const item = mockPackagingItems.find((p) => p.id === selectedTransaction.packagingItemId);
+                      if (item?.qrCode) {
+                        setReturnSerialNumber(item.qrCode);
+                        setReturnCondition('good');
+                        setReturnNote('');
+                        setReturnImages([]);
+                        setShowReturnModal(true);
+                        setShowDetailsModal(false);
+                      } else {
+                        Alert.alert('Error', 'Serial number not found for this transaction');
+                      }
+                    }}
+                  >
+                    <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                    <Text style={styles.processReturnButtonText}>Process Return</Text>
+                  </TouchableOpacity>
+                )}
               </ScrollView>
             )}
           </View>
@@ -591,6 +705,212 @@ export default function TransactionProcessingScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Process Return Modal */}
+      <Modal
+        visible={showReturnModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowReturnModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Process Return</Text>
+              <TouchableOpacity onPress={() => setShowReturnModal(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.modalBody}>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Serial Number *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={returnSerialNumber}
+                  onChangeText={setReturnSerialNumber}
+                  placeholder="Enter serial number"
+                  editable={false}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Condition *</Text>
+                <View style={styles.conditionContainer}>
+                  {['good', 'damaged', 'broken'].map((condition) => (
+                    <TouchableOpacity
+                      key={condition}
+                      style={[
+                        styles.conditionOption,
+                        returnCondition === condition && styles.conditionOptionActive
+                      ]}
+                      onPress={() => setReturnCondition(condition)}
+                    >
+                      <Text style={[
+                        styles.conditionOptionText,
+                        returnCondition === condition && styles.conditionOptionTextActive
+                      ]}>
+                        {condition.charAt(0).toUpperCase() + condition.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Note *</Text>
+                <TextInput
+                  style={[styles.formInput, styles.textArea]}
+                  value={returnNote}
+                  onChangeText={setReturnNote}
+                  placeholder="Enter return notes..."
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Images</Text>
+                <View style={styles.imagesContainer}>
+                  {returnImages.map((uri, index) => (
+                    <View key={index} style={styles.imagePreview}>
+                      <Image source={{ uri }} style={styles.imagePreviewImage} />
+                      <TouchableOpacity
+                        style={styles.removeImageButton}
+                        onPress={() => {
+                          setReturnImages(returnImages.filter((_, i) => i !== index));
+                        }}
+                      >
+                        <Ionicons name="close-circle" size={24} color="#EF4444" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {returnImages.length < 5 && (
+                    <TouchableOpacity
+                      style={styles.addImageButton}
+                      onPress={async () => {
+                        try {
+                          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                          if (status !== 'granted') {
+                            Alert.alert('Permission Denied', 'Camera roll permission is required to add images');
+                            return;
+                          }
+
+                          const result = await ImagePicker.launchImageLibraryAsync({
+                            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                            allowsEditing: true,
+                            aspect: [4, 3],
+                            quality: 0.8,
+                          });
+
+                          if (!result.canceled && result.assets[0]) {
+                            setReturnImages([...returnImages, result.assets[0].uri]);
+                          }
+                        } catch (error) {
+                          console.error('Error picking image:', error);
+                          Alert.alert('Error', 'Failed to pick image');
+                        }
+                      }}
+                    >
+                      <Ionicons name="camera" size={24} color="#0F4D3A" />
+                      <Text style={styles.addImageButtonText}>Add Image</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.submitButton, processingReturn && styles.submitButtonDisabled]}
+                onPress={async () => {
+                  if (!returnSerialNumber.trim()) {
+                    Alert.alert('Error', 'Serial number is required');
+                    return;
+                  }
+                  if (!returnNote.trim()) {
+                    Alert.alert('Error', 'Note is required');
+                    return;
+                  }
+
+                  try {
+                    setProcessingReturn(true);
+                    await borrowTransactionsApi.processReturnCheck(returnSerialNumber, {
+                      condition: returnCondition,
+                      note: returnNote,
+                      images: returnImages,
+                    });
+
+                    Alert.alert('Success', 'Return processed successfully', [
+                      {
+                        text: 'OK',
+                        onPress: () => {
+                          setShowReturnModal(false);
+                          setReturnSerialNumber('');
+                          setReturnCondition('good');
+                          setReturnNote('');
+                          setReturnImages([]);
+                          onRefresh();
+                        }
+                      }
+                    ]);
+                  } catch (error: any) {
+                    console.error('Error processing return:', error);
+                    Alert.alert('Error', error.message || 'Failed to process return');
+                  } finally {
+                    setProcessingReturn(false);
+                  }
+                }}
+                disabled={processingReturn}
+              >
+                {processingReturn ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                    <Text style={styles.submitButtonText}>Process Return</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* QR Scanner Modal for Return Processing */}
+      {showQRScanner && hasCameraPermission && (
+        <Modal
+          visible={showQRScanner}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={stopScanning}
+        >
+          <View style={styles.qrScannerOverlay}>
+            <TouchableOpacity 
+              style={styles.qrScannerBackdrop} 
+              onPress={stopScanning} 
+              activeOpacity={1} 
+            />
+            <View style={styles.qrScannerContainer}>
+              <View style={styles.qrScannerHeader}>
+                <Text style={styles.qrScannerTitle}>Scan QR Code for Return</Text>
+                <TouchableOpacity onPress={stopScanning}>
+                  <Ionicons name="close" size={24} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.qrScannerBox}>
+                <CameraView 
+                  style={styles.qrScannerCamera} 
+                  barcodeScannerSettings={{ barcodeTypes: ['qr'] }} 
+                  onBarcodeScanned={onBarcodeScanned} 
+                />
+              </View>
+              
+              <Text style={styles.qrScannerHint}>Align the QR code inside the frame to scan</Text>
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -620,6 +940,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    width: '100%',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  scanButton: {
+    padding: 8,
   },
   headerTitle: {
     fontSize: 24,
@@ -892,5 +1221,190 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#6B7280',
     paddingVertical: 16,
+  },
+  typeBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  borrowBadge: {
+    backgroundColor: '#DBEAFE',
+  },
+  returnBadge: {
+    backgroundColor: '#D1FAE5',
+  },
+  typeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  processReturnButton: {
+    backgroundColor: '#0F4D3A',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginTop: 20,
+    gap: 8,
+  },
+  processReturnButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  formGroup: {
+    marginBottom: 20,
+  },
+  formLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 8,
+  },
+  formInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#1F2937',
+    backgroundColor: '#FFFFFF',
+  },
+  textArea: {
+    minHeight: 100,
+    paddingTop: 12,
+  },
+  conditionContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  conditionOption: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFFFFF',
+  },
+  conditionOptionActive: {
+    backgroundColor: '#0F4D3A',
+    borderColor: '#0F4D3A',
+  },
+  conditionOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  conditionOptionTextActive: {
+    color: '#FFFFFF',
+  },
+  imagesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  imagePreview: {
+    position: 'relative',
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  imagePreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 12,
+  },
+  addImageButton: {
+    width: 100,
+    height: 100,
+    borderWidth: 2,
+    borderColor: '#0F4D3A',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  addImageButtonText: {
+    fontSize: 12,
+    color: '#0F4D3A',
+    fontWeight: '600',
+  },
+  submitButton: {
+    backgroundColor: '#0F4D3A',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 8,
+    marginTop: 20,
+    gap: 8,
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
+  },
+  submitButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  qrScannerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrScannerBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  qrScannerContainer: {
+    width: '100%',
+    maxWidth: 420,
+    alignItems: 'center',
+    padding: 20,
+  },
+  qrScannerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 20,
+  },
+  qrScannerTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  qrScannerBox: {
+    width: '100%',
+    aspectRatio: 3 / 4,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  qrScannerCamera: {
+    flex: 1,
+  },
+  qrScannerHint: {
+    color: '#FFFFFF',
+    opacity: 0.9,
+    fontSize: 14,
+    textAlign: 'center',
   },
 });

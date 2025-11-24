@@ -5,19 +5,22 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
-import { useAuth } from '../../context/AuthProvider';
-import { borrowTransactionsApi } from '../../src/services/api/borrowTransactionService';
-import { productsApi } from '../../src/services/api/productService';
-import { Product } from '../../src/types/product.types';
+import { useAuth } from '../../../../context/AuthProvider';
+import { borrowTransactionsApi } from '../../../../src/services/api/borrowTransactionService';
+import { productsApi } from '../../../../src/services/api/productService';
+import { getCurrentUserProfileWithAutoRefresh } from '../../../../src/services/api/userService';
+import { Product } from '../../../../src/types/product.types';
 
-export default function ItemDetailScreen() {
+export default function CustomerProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { state } = useAuth();
   const router = useRouter();
@@ -25,16 +28,9 @@ export default function ItemDetailScreen() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [borrowing, setBorrowing] = useState(false);
-  
-  // Update product states
-  const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [updating, setUpdating] = useState(false);
-  const [updateForm, setUpdateForm] = useState({
-    status: 'available' as 'available' | 'borrowed' | 'maintenance' | 'retired',
-    condition: '',
-    lastConditionNote: '',
-    lastConditionImage: '',
-  });
+  const [durationInDays, setDurationInDays] = useState<string>('30');
+  const [userData, setUserData] = useState<any>(null);
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
 
   // Fetch product details
   useEffect(() => {
@@ -50,29 +46,19 @@ export default function ItemDetailScreen() {
 
         const response = await productsApi.getByIdWithAutoRefresh(id);
         
-        console.log('📡 Full API Response:', JSON.stringify(response, null, 2));
-        
         if (response && response.data) {
-          console.log('✅ Setting product data:', response.data);
           setProduct(response.data);
-          console.log('✅ Product state set, productGroupId:', response.data.productGroupId);
-          console.log('✅ Product state set, productSizeId:', response.data.productSizeId);
         } else {
-          console.error('❌ No data in response:', response);
           Alert.alert('Lỗi', response?.message || 'Không tìm thấy sản phẩm.');
         }
       } catch (error: any) {
         console.error('❌ Error loading product:', error);
-        Alert.alert(
-          'Lỗi',
-          error.message || 'Không thể tải thông tin sản phẩm. Vui lòng thử lại.'
-        );
+        Alert.alert('Lỗi', error.message || 'Không thể tải thông tin sản phẩm. Vui lòng thử lại.');
       } finally {
         setLoading(false);
       }
     };
 
-    // Small delay to ensure navigation completes before loading
     const timer = setTimeout(() => {
       loadProduct();
     }, 100);
@@ -139,11 +125,19 @@ export default function ItemDetailScreen() {
                 return;
               }
 
+              // Parse duration from input
+              const duration = parseInt(durationInDays) || 7;
+              if (duration <= 0) {
+                Alert.alert('Lỗi', 'Vui lòng nhập số ngày mượn hợp lệ (lớn hơn 0).');
+                setBorrowing(false);
+                return;
+              }
+
               const borrowDto = {
                 productId: product._id,
                 businessId: businessId,
                 depositValue: depositValue,
-                durationInDays: 7,
+                durationInDays: duration,
                 type: 'online' as const,
               };
 
@@ -158,12 +152,7 @@ export default function ItemDetailScreen() {
                   {
                     text: 'OK',
                     onPress: () => {
-                      // Navigate to customer dashboard or transaction history
-                      if (state.role === 'customer') {
-                        router.replace('/(protected)/customer');
-                      } else {
-                        router.replace('/');
-                      }
+                      router.replace('/(protected)/customer');
                     },
                   },
                 ]
@@ -183,39 +172,6 @@ export default function ItemDetailScreen() {
     );
   };
 
-  // Handle update product
-  const handleUpdateProduct = async () => {
-    if (!product || !id) {
-      Alert.alert('Lỗi', 'Không tìm thấy thông tin sản phẩm.');
-      return;
-    }
-
-    try {
-      setUpdating(true);
-      console.log('🔄 Updating product:', id, 'with data:', updateForm);
-
-      const updates: any = {};
-      if (updateForm.status) updates.status = updateForm.status;
-      if (updateForm.condition) updates.condition = updateForm.condition;
-      if (updateForm.lastConditionNote) updates.lastConditionNote = updateForm.lastConditionNote;
-      if (updateForm.lastConditionImage) updates.lastConditionImage = updateForm.lastConditionImage;
-
-      const response = await productsApi.update(id, updates);
-
-      if (response.data) {
-        setProduct(response.data);
-        setShowUpdateModal(false);
-        Alert.alert('Thành công', 'Cập nhật sản phẩm thành công!');
-      } else {
-        throw new Error(response.message || 'Failed to update product');
-      }
-    } catch (error: any) {
-      console.error('❌ Error updating product:', error);
-      Alert.alert('Lỗi', error.message || 'Không thể cập nhật sản phẩm. Vui lòng thử lại.');
-    } finally {
-      setUpdating(false);
-    }
-  };
 
   // Always show header, even when loading
   return (
@@ -241,7 +197,6 @@ export default function ItemDetailScreen() {
           <Text style={styles.loadingText}>Đang tải thông tin sản phẩm...</Text>
         </View>
       ) : !product ? (
-        // Error state
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle-outline" size={64} color="#6B7280" />
           <Text style={styles.errorText}>Không tìm thấy thông tin sản phẩm</Text>
@@ -253,10 +208,8 @@ export default function ItemDetailScreen() {
           </TouchableOpacity>
         </View>
       ) : product.productGroupId ? (
-        // Product content
         <>
           {(() => {
-            // Safely extract business info
             const businessName = !product.businessId
               ? 'Cửa hàng'
               : typeof product.businessId === 'string'
@@ -286,122 +239,168 @@ export default function ItemDetailScreen() {
             return (
               <>
                 <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Product Image */}
-        {product.images && product.images.length > 0 ? (
-          <Image
-            source={{ uri: product.images[0] }}
-            style={styles.productImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={styles.productImagePlaceholder}>
-            <Ionicons name="cube-outline" size={64} color="#9CA3AF" />
-          </View>
-        )}
+                  {/* Product Image */}
+                  {(() => {
+                    // Try multiple image sources
+                    const imageUrl = 
+                      product.images?.[0] || 
+                      (product.productGroupId as any)?.imageUrl ||
+                      (product.productGroupId as any)?.image ||
+                      null;
+                    
+                    return imageUrl ? (
+                      <Image
+                        source={{ uri: imageUrl }}
+                        style={styles.productImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={styles.productImagePlaceholder}>
+                        <Ionicons name="cube-outline" size={64} color="#9CA3AF" />
+                        <Text style={styles.placeholderImageText}>No Image</Text>
+                      </View>
+                    );
+                  })()}
 
-        {/* Product Info */}
-        <View style={styles.content}>
-          {/* Product Name */}
-          <Text style={styles.productName}>
-            {(product.productGroupId as any)?.name || 'Sản phẩm'}
-          </Text>
+                  {/* Product Info */}
+                  <View style={styles.content}>
+                    <Text style={styles.productName}>
+                      {(product.productGroupId as any)?.name || 'Sản phẩm'}
+                    </Text>
 
-          {/* Status Badge */}
-          <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
-            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-            <Text style={[styles.statusText, { color: statusColor }]}>
-              {statusText}
-            </Text>
-          </View>
+                    {/* Status Badge */}
+                    <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
+                      <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+                      <Text style={[styles.statusText, { color: statusColor }]}>
+                        {statusText}
+                      </Text>
+                    </View>
 
-          {/* Product Details */}
-          <View style={styles.detailsSection}>
-            <Text style={styles.sectionTitle}>Thông tin sản phẩm</Text>
-            
-            <View style={styles.detailRow}>
-              <Ionicons name="cube" size={20} color="#6B7280" />
-              <Text style={styles.detailLabel}>Kích cỡ:</Text>
-              <Text style={styles.detailValue}>
-                {(product.productSizeId as any)?.name || (product.productSizeId as any)?.description || 'N/A'}
-              </Text>
-            </View>
+                    {/* Product Details */}
+                    <View style={styles.detailsSection}>
+                      <Text style={styles.sectionTitle}>Thông tin sản phẩm</Text>
+                      
+                      <View style={styles.detailRow}>
+                        <Ionicons name="cube" size={20} color="#6B7280" />
+                        <Text style={styles.detailLabel}>Kích cỡ:</Text>
+                        <Text style={styles.detailValue}>
+                          {(product.productSizeId as any)?.name || (product.productSizeId as any)?.description || 'N/A'}
+                        </Text>
+                      </View>
 
-            <View style={styles.detailRow}>
-              <Ionicons name="barcode" size={20} color="#6B7280" />
-              <Text style={styles.detailLabel}>Mã sản phẩm:</Text>
-              <Text style={styles.detailValue}>{product.serialNumber}</Text>
-            </View>
+                      <View style={styles.detailRow}>
+                        <Ionicons name="barcode" size={20} color="#6B7280" />
+                        <Text style={styles.detailLabel}>Mã sản phẩm:</Text>
+                        <Text style={styles.detailValue}>{product.serialNumber}</Text>
+                      </View>
 
-            {product.condition && (
-              <View style={styles.detailRow}>
-                <Ionicons name="shield-checkmark" size={20} color="#6B7280" />
-                <Text style={styles.detailLabel}>Tình trạng:</Text>
-                <Text style={styles.detailValue}>{product.condition}</Text>
-              </View>
-            )}
-          </View>
+                      {product.condition && (
+                        <View style={styles.detailRow}>
+                          <Ionicons name="shield-checkmark" size={20} color="#6B7280" />
+                          <Text style={styles.detailLabel}>Tình trạng:</Text>
+                          <Text style={styles.detailValue}>{product.condition}</Text>
+                        </View>
+                      )}
+                    </View>
 
-          {/* Pricing Section */}
-          {(product.productSizeId as any)?.depositValue || (product.productSizeId as any)?.rentalPrice ? (
-            <View style={styles.pricingSection}>
-              <Text style={styles.sectionTitle}>Thông tin giá</Text>
-              
-              {(product.productSizeId as any)?.depositValue && (
-                <View style={styles.priceRow}>
-                  <Text style={styles.priceLabel}>Tiền cọc:</Text>
-                  <Text style={styles.priceValue}>
-                    {((product.productSizeId as any).depositValue || 0).toLocaleString('vi-VN')} VNĐ
-                  </Text>
-                </View>
-              )}
+                    {/* Pricing Section */}
+                    <View style={styles.pricingSection}>
+                      <Text style={styles.sectionTitle}>Thông tin giá</Text>
+                      
+                      {(product.productSizeId as any)?.depositValue ? (
+                        <View style={styles.priceRow}>
+                          <Ionicons name="cash-outline" size={20} color="#0F4D3A" />
+                          <View style={styles.priceInfo}>
+                            <Text style={styles.priceLabel}>Tiền cọc:</Text>
+                            <Text style={styles.priceValue}>
+                              {((product.productSizeId as any).depositValue || 0).toLocaleString('vi-VN')} VNĐ
+                            </Text>
+                          </View>
+                        </View>
+                      ) : (
+                        <View style={styles.priceRow}>
+                          <Ionicons name="cash-outline" size={20} color="#6B7280" />
+                          <View style={styles.priceInfo}>
+                            <Text style={styles.priceLabel}>Tiền cọc:</Text>
+                            <Text style={styles.priceValue}>Chưa có thông tin</Text>
+                          </View>
+                        </View>
+                      )}
 
-              {(product.productSizeId as any)?.rentalPrice && (
-                <View style={styles.priceRow}>
-                  <Text style={styles.priceLabel}>Giá thuê:</Text>
-                  <Text style={styles.priceValue}>
-                    {((product.productSizeId as any).rentalPrice || 0).toLocaleString('vi-VN')} VNĐ
-                  </Text>
-                </View>
-              )}
-            </View>
-          ) : null}
+                      {(product.productSizeId as any)?.rentalPrice && (
+                        <View style={styles.priceRow}>
+                          <Ionicons name="pricetag-outline" size={20} color="#0F4D3A" />
+                          <View style={styles.priceInfo}>
+                            <Text style={styles.priceLabel}>Giá thuê:</Text>
+                            <Text style={styles.priceValue}>
+                              {((product.productSizeId as any).rentalPrice || 0).toLocaleString('vi-VN')} VNĐ
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+                    </View>
 
-          {/* Business Info */}
-          <View style={styles.businessSection}>
-            <Text style={styles.sectionTitle}>Cửa hàng</Text>
-            
-            <View style={styles.businessRow}>
-              {businessLogo ? (
-                <Image
-                  source={{ uri: businessLogo }}
-                  style={styles.businessLogo}
-                />
-              ) : (
-                <View style={styles.businessLogoPlaceholder}>
-                  <Ionicons name="storefront" size={24} color="#9CA3AF" />
-                </View>
-              )}
-              <Text style={styles.businessName}>{businessName}</Text>
-            </View>
-          </View>
+                    {/* Business Info */}
+                    <View style={styles.businessSection}>
+                      <Text style={styles.sectionTitle}>Cửa hàng</Text>
+                      
+                      <View style={styles.businessRow}>
+                        {businessLogo ? (
+                          <Image
+                            source={{ uri: businessLogo }}
+                            style={styles.businessLogo}
+                          />
+                        ) : (
+                          <View style={styles.businessLogoPlaceholder}>
+                            <Ionicons name="storefront" size={24} color="#9CA3AF" />
+                          </View>
+                        )}
+                        <Text style={styles.businessName}>{businessName}</Text>
+                      </View>
+                    </View>
 
-          {/* Description */}
-          {(product.productGroupId as any)?.description && (
-            <View style={styles.descriptionSection}>
-              <Text style={styles.sectionTitle}>Mô tả</Text>
-              <Text style={styles.descriptionText}>
-                {(product.productGroupId as any).description}
-              </Text>
-            </View>
-          )}
-                </View>
+                    {/* Description */}
+                    {(product.productGroupId as any)?.description && (
+                      <View style={styles.descriptionSection}>
+                        <Text style={styles.sectionTitle}>Mô tả</Text>
+                        <Text style={styles.descriptionText}>
+                          {(product.productGroupId as any).description}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Duration Input */}
+                    {product.status === 'available' && (
+                      <View style={styles.durationInputSection}>
+                        <Text style={styles.sectionTitle}>Thông tin mượn</Text>
+                        <View style={styles.durationInputContainer}>
+                          <Text style={styles.durationLabel}>Thời gian mượn (ngày) *</Text>
+                          <TextInput
+                            style={styles.durationInput}
+                            value={durationInDays}
+                            onChangeText={(text) => {
+                              // Only allow numbers
+                              const numericValue = text.replace(/[^0-9]/g, '');
+                              setDurationInDays(numericValue);
+                            }}
+                            placeholder="Nhập số ngày mượn"
+                            keyboardType="numeric"
+                            placeholderTextColor="#9CA3AF"
+                          />
+                          <Text style={styles.durationHint}>
+                            Số ngày bạn muốn mượn sản phẩm này
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
                 </ScrollView>
 
-                {/* Borrow Button */}
+                {/* Action Button - Borrow Only */}
                 {state.isAuthenticated && product.status === 'available' && (
                   <View style={styles.footer}>
                     <TouchableOpacity
-                      style={[styles.borrowButton, borrowing && styles.borrowButtonDisabled]}
+                      style={[styles.borrowButton, borrowing && styles.buttonDisabled]}
                       onPress={handleBorrow}
                       disabled={borrowing}
                     >
@@ -409,8 +408,8 @@ export default function ItemDetailScreen() {
                         <ActivityIndicator size="small" color="#fff" />
                       ) : (
                         <>
-                          <Ionicons name="cart" size={20} color="#fff" />
-                          <Text style={styles.borrowButtonText}>Đặt mượn sản phẩm này</Text>
+                          <Ionicons name="cube-outline" size={20} color="#fff" />
+                          <Text style={styles.borrowButtonText}>Mượn sản phẩm</Text>
                         </>
                       )}
                     </TouchableOpacity>
@@ -471,9 +470,6 @@ const styles = StyleSheet.create({
   },
   placeholder: {
     width: 40,
-  },
-  editButtonHeader: {
-    padding: 8,
   },
   scrollView: {
     flex: 1,
@@ -645,6 +641,33 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     lineHeight: 24,
   },
+  durationInputSection: {
+    marginBottom: 24,
+  },
+  durationInputContainer: {
+    marginTop: 12,
+  },
+  durationLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  durationInput: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#111827',
+  },
+  durationHint: {
+    marginTop: 8,
+    fontSize: 13,
+    color: '#6B7280',
+  },
   footer: {
     padding: 16,
     backgroundColor: '#fff',
@@ -652,21 +675,22 @@ const styles = StyleSheet.create({
     borderTopColor: '#E5E7EB',
   },
   borrowButton: {
-    backgroundColor: '#00704A',
+    width: '100%',
+    backgroundColor: '#0F4D3A',
+    borderRadius: 12,
+    paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 12,
     gap: 8,
   },
-  borrowButtonDisabled: {
-    opacity: 0.6,
-  },
   borrowButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
     color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   loginButton: {
     backgroundColor: '#00704A',

@@ -2,8 +2,7 @@ import { borrowTransactionsApi } from "@/services/api/borrowTransactionService";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import CustomerHeader from "../../../components/CustomerHeader";
+import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 interface CustomerBorrowHistoryItem {
   _id: string;
@@ -49,7 +48,6 @@ export default function CustomerTransactionHistory() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
 
   const loadHistory = async () => {
     try {
@@ -62,11 +60,13 @@ export default function CustomerTransactionHistory() {
       };
       
       if (statusFilter !== 'all') {
-        params.status = statusFilter;
-      }
-      
-      if (typeFilter !== 'all') {
-        params.borrowTransactionType = typeFilter;
+        // Map filter values to API status values
+        const statusMap: { [key: string]: string } = {
+          'borrowing': 'borrowing',
+          'pending_pickup': 'pending_pickup',
+          'completed': 'completed',
+        };
+        params.status = statusMap[statusFilter] || statusFilter;
       }
       
       if (searchTerm.trim()) {
@@ -95,7 +95,7 @@ export default function CustomerTransactionHistory() {
 
   useEffect(() => {
     loadHistory();
-  }, [statusFilter, typeFilter]);
+  }, [statusFilter]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -136,13 +136,10 @@ export default function CustomerTransactionHistory() {
   const getStatusLabel = (status: string) => {
     switch (status) {
       case "completed":
-        return "Hoàn thành";
       case "returned":
-        return "Đã trả";
+        return "Hoàn thành";
       case "pending_pickup":
         return "Chờ nhận";
-      case "pending":
-        return "Chờ xử lý";
       case "active":
       case "borrowing":
         return "Đang mượn";
@@ -153,7 +150,7 @@ export default function CustomerTransactionHistory() {
       case "cancelled":
         return "Đã hủy";
       default:
-        return status;
+        return "Chờ nhận";
     }
   };
 
@@ -182,93 +179,72 @@ export default function CustomerTransactionHistory() {
 
   return (
     <View style={styles.container}>
-      <CustomerHeader />
+      <StatusBar barStyle="light-content" backgroundColor="#0F4D3A" />
       
+      {/* Header - Dark Green Branded Style */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#0F4D3A" />
+          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Lịch sử mượn</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Search and Filters */}
+      {/* Search Bar */}
       <View style={styles.searchSection}>
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={20} color="#6b7280" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Tìm kiếm sản phẩm hoặc cửa hàng..."
+            placeholder="Tìm kiếm đơn hàng..."
             value={searchTerm}
             onChangeText={setSearchTerm}
-            placeholderTextColor="#6b7280"
+            placeholderTextColor="#9ca3af"
             onSubmitEditing={loadHistory}
           />
         </View>
-        
-        <View style={styles.filterRow}>
-          <View style={styles.filterContainer}>
-            <Text style={styles.filterLabel}>Loại</Text>
-            <View style={styles.filterButtons}>
-              <TouchableOpacity
-                style={[styles.filterButton, typeFilter === "all" && styles.activeFilterButton]}
-                onPress={() => setTypeFilter("all")}
-              >
-                <Text style={[styles.filterButtonText, typeFilter === "all" && styles.activeFilterButtonText]}>
-                  Tất cả
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.filterButton, typeFilter === "borrow" && styles.activeFilterButton]}
-                onPress={() => setTypeFilter("borrow")}
-              >
-                <Text style={[styles.filterButtonText, typeFilter === "borrow" && styles.activeFilterButtonText]}>
-                  Mượn
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+      </View>
 
-        <View style={styles.filterRow}>
-          <View style={styles.filterContainer}>
-            <Text style={styles.filterLabel}>Trạng thái</Text>
-            <View style={styles.filterButtons}>
-              <TouchableOpacity
-                style={[styles.filterButton, statusFilter === "all" && styles.activeFilterButton]}
-                onPress={() => setStatusFilter("all")}
-              >
-                <Text style={[styles.filterButtonText, statusFilter === "all" && styles.activeFilterButtonText]}>
-                  Tất cả
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.filterButton, statusFilter === "pending_pickup" && styles.activeFilterButton]}
-                onPress={() => setStatusFilter("pending_pickup")}
-              >
-                <Text style={[styles.filterButtonText, statusFilter === "pending_pickup" && styles.activeFilterButtonText]}>
-                  Chờ nhận
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.filterButton, statusFilter === "borrowing" && styles.activeFilterButton]}
-                onPress={() => setStatusFilter("borrowing")}
-              >
-                <Text style={[styles.filterButtonText, statusFilter === "borrowing" && styles.activeFilterButtonText]}>
-                  Đang mượn
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.filterButton, statusFilter === "completed" && styles.activeFilterButton]}
-                onPress={() => setStatusFilter("completed")}
-              >
-                <Text style={[styles.filterButtonText, statusFilter === "completed" && styles.activeFilterButtonText]}>
-                  Hoàn thành
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+      {/* Filter Chips - Horizontal Scrollable */}
+      <View style={styles.filterSection}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterChipsContainer}
+        >
+          <TouchableOpacity
+            style={[styles.filterChip, statusFilter === "all" && styles.filterChipActive]}
+            onPress={() => setStatusFilter("all")}
+          >
+            <Text style={[styles.filterChipText, statusFilter === "all" && styles.filterChipTextActive]}>
+              Tất cả
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, statusFilter === "borrowing" && styles.filterChipActive]}
+            onPress={() => setStatusFilter("borrowing")}
+          >
+            <Text style={[styles.filterChipText, statusFilter === "borrowing" && styles.filterChipTextActive]}>
+              Đang mượn
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, statusFilter === "pending_pickup" && styles.filterChipActive]}
+            onPress={() => setStatusFilter("pending_pickup")}
+          >
+            <Text style={[styles.filterChipText, statusFilter === "pending_pickup" && styles.filterChipTextActive]}>
+              Chờ nhận
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, statusFilter === "completed" && styles.filterChipActive]}
+            onPress={() => setStatusFilter("completed")}
+          >
+            <Text style={[styles.filterChipText, statusFilter === "completed" && styles.filterChipTextActive]}>
+              Hoàn thành
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
 
       {/* Transactions List */}
@@ -295,35 +271,48 @@ export default function CustomerTransactionHistory() {
             const productImage = transaction.productId?.productGroupId?.imageUrl;
             const overdue = isOverdue(transaction.dueDate);
             
+            const statusLabel = getStatusLabel(transaction.status);
+            const isPendingPickup = transaction.status === 'pending_pickup';
+            
             return (
               <TouchableOpacity
                 key={transaction._id}
                 style={styles.transactionCard}
                 onPress={() => handleTransactionPress(transaction)}
               >
-                <View style={styles.transactionHeader}>
-                  {productImage && (
-                    <Image source={{ uri: productImage }} style={styles.productImage} />
+                <View style={styles.cardContent}>
+                  {/* Left: Product Thumbnail */}
+                  {productImage ? (
+                    <Image source={{ uri: productImage }} style={styles.productThumbnail} />
+                  ) : (
+                    <View style={styles.productThumbnailPlaceholder}>
+                      <Ionicons name="cube-outline" size={24} color="#9ca3af" />
+                    </View>
                   )}
-                  <View style={styles.transactionInfo}>
-                    <Text style={styles.transactionTitle}>{productName}</Text>
-                    <Text style={styles.transactionSubtitle}>Kích thước: {sizeName}</Text>
-                    <Text style={styles.businessName}>{businessName}</Text>
-                    <Text style={styles.transactionDate}>
+                  
+                  {/* Middle: Product Info */}
+                  <View style={styles.productInfo}>
+                    <Text style={styles.productTitle}>{productName} - {sizeName}</Text>
+                    <Text style={styles.storeName}>{businessName}</Text>
+                    <Text style={styles.borrowDate}>
                       Mượn: {new Date(transaction.borrowDate).toLocaleDateString('vi-VN')}
                     </Text>
-                    <Text style={[styles.dueDate, overdue && styles.dueDateOverdue]}>
-                      Hạn trả: {new Date(transaction.dueDate).toLocaleDateString('vi-VN')}
-                      {overdue && ' ⚠️'}
-                    </Text>
                   </View>
-                  <View style={styles.transactionAmount}>
-                    <Text style={styles.amountText}>
+                  
+                  {/* Right: Price & Status */}
+                  <View style={styles.rightSection}>
+                    <Text style={styles.priceText}>
                       {transaction.depositAmount.toLocaleString('vi-VN')} VNĐ
                     </Text>
-                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(transaction.status) + "20" }]}>
-                      <Text style={[styles.statusText, { color: getStatusColor(transaction.status) }]}>
-                        {getStatusLabel(transaction.status)}
+                    <View style={[
+                      styles.statusBadge,
+                      isPendingPickup ? styles.statusBadgePending : styles.statusBadgeDefault
+                    ]}>
+                      <Text style={[
+                        styles.statusBadgeText,
+                        isPendingPickup ? styles.statusBadgeTextPending : styles.statusBadgeTextDefault
+                      ]}>
+                        {statusLabel}
                       </Text>
                     </View>
                   </View>
@@ -340,17 +329,16 @@ export default function CustomerTransactionHistory() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#F9FAFB",
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    paddingTop: 50,
+    paddingBottom: 16,
+    backgroundColor: "#0F4D3A", // Dark Green
   },
   backButton: {
     padding: 8,
@@ -358,66 +346,61 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#111827",
+    color: "#FFFFFF", // White
+    flex: 1,
+    textAlign: "center",
   },
   searchSection: {
-    backgroundColor: "#fff",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
   },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f3f4f6",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    marginBottom: 16,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: 12,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 12,
     fontSize: 16,
     color: "#111827",
   },
-  filterRow: {
-    marginBottom: 12,
+  filterSection: {
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
   },
-  filterContainer: {
+  filterChipsContainer: {
+    paddingHorizontal: 16,
     gap: 8,
   },
-  filterLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#374151",
-  },
-  filterButtons: {
-    flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-  filterButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#F3F4F6",
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "#fff",
+    borderColor: "#E5E7EB",
   },
-  activeFilterButton: {
+  filterChipActive: {
     backgroundColor: "#0F4D3A",
     borderColor: "#0F4D3A",
   },
-  filterButtonText: {
-    fontSize: 12,
+  filterChipText: {
+    fontSize: 14,
     fontWeight: "600",
-    color: "#6b7280",
+    color: "#6B7280",
   },
-  activeFilterButtonText: {
-    color: "#fff",
+  filterChipTextActive: {
+    color: "#FFFFFF",
   },
   scrollContent: {
     padding: 16,
@@ -451,79 +434,84 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   transactionCard: {
-    backgroundColor: "#fff",
+    backgroundColor: "#FFFFFF",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
+    marginHorizontal: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  transactionHeader: {
+  cardContent: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
   },
-  productImage: {
-    width: 60,
-    height: 60,
+  productThumbnail: {
+    width: 64,
+    height: 64,
     borderRadius: 8,
     marginRight: 12,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#F3F4F6",
   },
-  transactionInfo: {
+  productThumbnailPlaceholder: {
+    width: 64,
+    height: 64,
+    borderRadius: 8,
+    backgroundColor: "#F3F4F6",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  productInfo: {
     flex: 1,
+    marginRight: 12,
   },
-  transactionTitle: {
+  productTitle: {
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#111827",
     marginBottom: 4,
   },
-  transactionSubtitle: {
+  storeName: {
     fontSize: 14,
-    color: "#6b7280",
-    marginBottom: 4,
+    color: "#6B7280",
+    marginBottom: 6,
   },
-  businessName: {
-    fontSize: 14,
-    color: "#3B82F6",
-    fontWeight: "500",
-    marginBottom: 8,
+  borrowDate: {
+    fontSize: 13,
+    color: "#6B7280",
   },
-  transactionDate: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginBottom: 2,
-  },
-  dueDate: {
-    fontSize: 12,
-    color: "#6b7280",
-  },
-  dueDateOverdue: {
-    color: "#f59e0b",
-    fontWeight: "600",
-  },
-  transactionAmount: {
+  rightSection: {
     alignItems: "flex-end",
-    marginLeft: 12,
   },
-  amountText: {
+  priceText: {
     fontSize: 16,
     fontWeight: "700",
     color: "#111827",
     marginBottom: 8,
   },
   statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 12,
   },
-  statusText: {
+  statusBadgePending: {
+    backgroundColor: "#DBEAFE",
+  },
+  statusBadgeDefault: {
+    backgroundColor: "#F3F4F6",
+  },
+  statusBadgeText: {
     fontSize: 12,
     fontWeight: "600",
+  },
+  statusBadgeTextPending: {
+    color: "#3B82F6",
+  },
+  statusBadgeTextDefault: {
+    color: "#6B7280",
   },
 });

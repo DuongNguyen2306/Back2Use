@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -912,8 +913,17 @@ export default function InventoryManagementScreen() {
                       key={product._id || index}
                       style={styles.productItem}
                       onPress={() => {
-                        // TODO: Navigate to product detail
-                        console.log('Product pressed:', product);
+                        const productId = product._id || product.id;
+                        if (productId) {
+                          // Đóng modal trước khi navigate
+                          setShowProductListModal(false);
+                          // Delay nhỏ để đảm bảo modal đóng hoàn toàn trước khi navigate
+                          setTimeout(() => {
+                            router.push(`/(protected)/business/product-detail/${productId}`);
+                          }, 100);
+                        } else {
+                          console.error('Product ID not found:', product);
+                        }
                       }}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>

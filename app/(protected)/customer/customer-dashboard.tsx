@@ -3,9 +3,11 @@ import { productsApi } from "@/services/api/businessService";
 import { getCurrentUserProfileWithAutoRefresh } from "@/services/api/userService";
 import { mockTransactions } from "@/utils/mockData";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 import { Camera, CameraView } from "expo-camera";
 import { router } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -54,15 +56,14 @@ export default function CustomerDashboard() {
     return t('dashboard').greeting;
   };
 
-  useEffect(() => {
-    const loadUserData = async () => {
+  const loadUserData = useCallback(async () => {
       if (state.accessToken) {
         try {
           const user = await getCurrentUserProfileWithAutoRefresh();
-          console.log('🔍 Dashboard - Loaded User Data:', user);
-          console.log('💰 Dashboard - Wallet:', user.wallet);
-          console.log('💰 Dashboard - Balance:', user.wallet?.balance);
-          console.log('💰 Dashboard - AvailableBalance:', (user.wallet as any)?.availableBalance);
+        console.log('🔍 Dashboard - Loaded User Data:', user);
+        console.log('💰 Dashboard - Wallet:', user.wallet);
+        console.log('💰 Dashboard - Balance:', user.wallet?.balance);
+        console.log('💰 Dashboard - AvailableBalance:', (user.wallet as any)?.availableBalance);
           setUserData(user);
         } catch (error: any) {
           // Don't log network errors as errors - they're expected when offline
@@ -78,9 +79,39 @@ export default function CustomerDashboard() {
           // Continue with default user data
         }
       }
-    };
-    loadUserData();
   }, [state.accessToken]);
+
+  useEffect(() => {
+    loadUserData();
+  }, [loadUserData]);
+
+  // Reload user data when screen is focused (e.g., after returning from profile edit)
+  useFocusEffect(
+    useCallback(() => {
+      const checkAndReload = async () => {
+        try {
+          const lastUpdateTimestamp = await AsyncStorage.getItem('PROFILE_UPDATED_TIMESTAMP');
+          if (lastUpdateTimestamp) {
+            const lastUpdate = parseInt(lastUpdateTimestamp, 10);
+            const now = Date.now();
+            // Reload if profile was updated within the last 5 minutes
+            if (now - lastUpdate < 5 * 60 * 1000) {
+              console.log('🔄 Profile was recently updated, reloading user data...');
+              await loadUserData();
+            }
+          } else {
+            // Always reload when screen is focused to ensure fresh data
+            await loadUserData();
+          }
+        } catch (error) {
+          console.error('Error checking profile update:', error);
+          // Still try to load user data
+          await loadUserData();
+        }
+      };
+      checkAndReload();
+    }, [loadUserData])
+  );
 
   // Reload user data when product modal opens to get latest balance
   useEffect(() => {
@@ -225,7 +256,7 @@ export default function CustomerDashboard() {
           id: productData._id || productData.id,
           name: productGroupName || "Product",
           size: productSizeName,
-          type: "container",
+        type: "container",
           data: serialNumber,
           product: productData, // Lưu thông tin sản phẩm đầy đủ
           qrCode: qrCode || productData.qrCode || '',
@@ -441,13 +472,28 @@ export default function CustomerDashboard() {
             } catch (error: any) {
               console.error('❌ Error creating borrow transaction:', error);
               
-              // Xử lý lỗi cụ thể cho "Insufficient wallet balance"
+              // Xử lý lỗi cụ thể
               const errorMessage = error?.response?.data?.message || error?.message || 'Không thể tạo yêu cầu mượn. Vui lòng thử lại.';
+              
+              // Check for insufficient balance
               const isInsufficientBalance = errorMessage.toLowerCase().includes('insufficient') || 
                                            errorMessage.toLowerCase().includes('không đủ') ||
                                            errorMessage.toLowerCase().includes('số dư');
               
-              if (isInsufficientBalance) {
+              // Check for maximum concurrent borrow limit
+              const isLimitReached = errorMessage.toLowerCase().includes('maximum concurrent') || 
+                                     errorMessage.toLowerCase().includes('limit reached') ||
+                                     errorMessage.toLowerCase().includes('giới hạn');
+              
+              if (isLimitReached) {
+                Alert.alert(
+                  'Đã đạt giới hạn mượn',
+                  `Bạn đã đạt giới hạn số lượng sản phẩm có thể mượn đồng thời.\n\n` +
+                  `Vui lòng trả một số sản phẩm đang mượn trước khi mượn thêm.\n\n` +
+                  `Thông báo: ${errorMessage}`,
+                  [{ text: 'Đóng' }]
+                );
+              } else if (isInsufficientBalance) {
                 // Handle both balance and availableBalance fields
                 const currentBalance = (userData as any)?.wallet?.availableBalance ?? 
                                      (userData as any)?.wallet?.balance ?? 
@@ -496,104 +542,102 @@ export default function CustomerDashboard() {
         subtitle="Nice to meet you!" 
         user={user} 
       />
-          <View style={styles.pointsCard}>
-            <View style={{ position: "absolute", right: 16, top: 16, opacity: 0.08 }}>
-              <Image source={require("../../../assets/images/logo2.png")} style={{ width: 120, height: 120 }} />
+      {/* Floating White Card - Hero */}
+      <View style={styles.heroCard}>
+        <View style={styles.heroCardLeft}>
+          <Text style={styles.heroRankNumber}>{user?.rank || 8}</Text>
+          <Text style={styles.heroRankLabel}>Your Rank</Text>
             </View>
-            <Text style={styles.rewardHeader}>BACK2USE RANKS</Text>
-            <View style={styles.pointsRow}>
-              <Text style={styles.pointsValue}>{user?.rank || 8}</Text>
-            </View>
-            <TouchableOpacity onPress={startScanning}>
-              <Text style={styles.pointsCta}>{t('dashboard').scanToBorrow}</Text>
+        <TouchableOpacity 
+          style={styles.heroScanButton}
+          onPress={startScanning}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="qr-code-outline" size={28} color="#FFFFFF" />
+          <Text style={styles.heroScanButtonText}>Scan to Borrow</Text>
             </TouchableOpacity>
         </View>
 
       <View style={styles.whiteBackground}>
         <View style={styles.contentWrapper}>
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-            <View style={{ gap: 24, paddingTop: 24 }}>
+            <View style={{ gap: 24, paddingTop: 16 }}>
+              {/* Partner Brands Carousel */}
             <View style={styles.sectionPad}>
-              <View style={styles.balanceRow}>
-                <Text style={styles.balanceLabel}>Card Balance</Text>
-                <View style={styles.balanceContainer}>
-                  {showBalance ? (
-                    <Text style={styles.balanceValue}>{(user?.walletBalance ?? 0 * 25000).toLocaleString('vi-VN')} VND</Text>
-                  ) : (
-                    <Text style={styles.balanceHidden}>•••••••• VND</Text>
-                  )}
-                  <TouchableOpacity 
-                    style={styles.eyeButton}
-                    onPress={() => setShowBalance(!showBalance)}
-                  >
-                    <Ionicons 
-                      name={showBalance ? "eye" : "eye-off"} 
-                      size={16} 
-                      color="#00704A" 
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
+                <Text style={styles.sectionTitle}>Partner Brands</Text>
               <ScrollView 
                 horizontal 
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.cardScrollContainer}
-                contentInset={{ left: 0, right: 0 }}
-                contentInsetAdjustmentBehavior="never"
-              >
-                <View style={[styles.cardTile, { backgroundColor: "#0f172a", marginRight: 8 }]}>
-                  <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>BACK2USE</Text>
-                </View>
-                {[
-                  "https://i.pinimg.com/originals/23/4f/9b/234f9bbee27cd84a0a1ffba559d5bb4b.gif",
-                  "https://i.pinimg.com/736x/15/f3/78/15f378382068f1695de5a8f1a73a81e2.jpg",
-                  "https://i.pinimg.com/736x/ac/b8/ed/acb8edfe7de480f3de889444d3079ca1.jpg",
-                  "https://i.pinimg.com/1200x/f0/d8/ac/f0d8ac3b671863d6473cec480755cf47.jpg",
-                  
-                ].map((uri, i, arr) => (
+                  contentContainerStyle={styles.partnerCarouselContainer}
+                >
+                  {[
+                    { 
+                      image: "https://i.pinimg.com/736x/15/f3/78/15f378382068f1695de5a8f1a73a81e2.jpg",
+                      logo: "https://upload.wikimedia.org/wikipedia/en/thumb/d/d3/Starbucks_logo.svg/1200px-Starbucks_logo.svg.png",
+                      brand: "Starbucks"
+                    },
+                    { 
+                      image: "https://i.pinimg.com/736x/ac/b8/ed/acb8edfe7de480f3de889444d3079ca1.jpg",
+                      logo: "https://i.pinimg.com/736x/23/4f/9b/234f9bbee27cd84a0a1ffba559d5bb4b.jpg",
+                      brand: "Highlands"
+                    },
+                    { 
+                      image: "https://i.pinimg.com/1200x/f0/d8/ac/f0d8ac3b671863d6473cec480755cf47.jpg",
+                      logo: "https://i.pinimg.com/736x/c2/22/59/c22259cd5eea08886a0642857da34345.jpg",
+                      brand: "Phuc Long"
+                    },
+                    { 
+                      image: "https://i.pinimg.com/736x/66/fe/de/66fedec04f3aba15c6892be93406481d.jpg",
+                      logo: "https://i.pinimg.com/736x/cb/66/84/cb668448a69f7917c91cd06c0943901a.jpg",
+                      brand: "The Coffee House"
+                    },
+                  ].map((partner, index) => (
+                    <View key={index} style={styles.partnerCard}>
                   <Image
-                    key={uri}
-                    source={{ uri }}
-                    style={[styles.cardTileImg, { marginRight: i === arr.length - 1 ? 0 : 8 }]}
+                        source={{ uri: partner.image }}
+                        style={styles.partnerCardImage}
                     resizeMode="cover"
                   />
+                      <View style={styles.partnerCardOverlay}>
+                        <View style={styles.partnerLogoContainer}>
+                          <Image
+                            source={{ uri: partner.logo }}
+                            style={styles.partnerLogo}
+                            resizeMode="contain"
+                          />
+                        </View>
+                        <Text style={styles.partnerBrandName}>{partner.brand}</Text>
+                      </View>
+                    </View>
                 ))}
               </ScrollView>
             </View>
 
+              {/* Quick Actions */}
             <View style={styles.sectionPad}>
-              <View style={styles.recoHeader}>
-                <Text style={styles.recoTitle}>{t('dashboard').quickActions}</Text>
-                <TouchableOpacity>
-                  <Text style={styles.recoCta}>View All</Text>
-                </TouchableOpacity>
+                <View style={styles.quickActionsContainer}>
+                  <TouchableOpacity 
+                    style={styles.quickActionItem}
+                    onPress={() => router.push("/(protected)/customer/customer-wallet")}
+                  >
+                    <View style={[styles.quickActionIcon, { backgroundColor: "#10B981" }]}>
+                      <Ionicons name="wallet-outline" size={28} color="#FFFFFF" />
               </View>
-              
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.quickScrollContainer}
-              >
-                <TouchableOpacity style={styles.quickBtn} onPress={startScanning}>
-                  <View style={[styles.quickIcon, { backgroundColor: "#00704A" }]}>
-                    <Image source={require("../../../assets/images/qr.png")} style={{ width: 28, height: 28 }} />
+                    <Text style={styles.quickActionLabel}>Deposit</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={styles.quickActionItem}
+                    onPress={() => router.push("/(protected)/customer/stores")}
+                  >
+                    <View style={[styles.quickActionIcon, { backgroundColor: "#3B82F6" }]}>
+                      <Ionicons name="map-outline" size={28} color="#FFFFFF" />
                   </View>
-                  <Text style={styles.quickText}>QR</Text>
+                    <Text style={styles.quickActionLabel}>Stores</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/(protected)/customer/customer-wallet")}>
-                  <View style={[styles.quickIcon, { backgroundColor: "#00704A" }]}>
-                    <Image source={require("../../../assets/images/wallet.png")} style={{ width: 28, height: 28 }} />
-                  </View>
-                  <Text style={styles.quickText}>Wallet</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/(protected)/customer/stores")}>
-                  <View style={[styles.quickIcon, { backgroundColor: "#00704A" }]}>
-                    <Image source={require("../../../assets/images/store.png")} style={{ width: 28, height: 28 }} />
-                  </View>
-                  <Text style={styles.quickText}>Store</Text>
-                </TouchableOpacity>
+
                 <TouchableOpacity 
-                  style={styles.quickBtn} 
+                    style={styles.quickActionItem}
                   onPress={() => {
                     const mockItem = {
                       id: Math.random().toString(),
@@ -605,32 +649,28 @@ export default function CustomerDashboard() {
                     setShowAIQualityCheck(true);
                   }}
                 >
-                  <View style={[styles.quickIcon, { backgroundColor: "#00704A" }]}>
-                    <Image source={require("../../../assets/images/AI.png")} style={{ width: 28, height: 28 }} />
+                    <View style={[styles.quickActionIcon, { backgroundColor: "#8B5CF6" }]}>
+                      <Ionicons name="sparkles-outline" size={28} color="#FFFFFF" />
                   </View>
-                  <Text style={styles.quickText}>AI Check</Text>
+                    <Text style={styles.quickActionLabel}>AI Check</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/(protected)/customer/rewards")}>
-                  <View style={[styles.quickIcon, { backgroundColor: "#00704A" }]}>
-                    <Image source={require("../../../assets/images/rank.png")} style={{ width: 28, height: 28 }} />
+
+                  <TouchableOpacity 
+                    style={styles.quickActionItem}
+                    onPress={() => router.push("/(protected)/customer/rewards")}
+                  >
+                    <View style={[styles.quickActionIcon, { backgroundColor: "#F59E0B" }]}>
+                      <Ionicons name="trophy-outline" size={28} color="#FFFFFF" />
                   </View>
-                  <Text style={styles.quickText}>Rank</Text>
+                    <Text style={styles.quickActionLabel}>Rank</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.quickBtn} onPress={() => {
-                  // Add AI chatbot functionality here
-                  Alert.alert("AI Chatbot", "AI Chatbot feature coming soon!");
-                }}>
-                  <View style={[styles.quickIcon, { backgroundColor: "#00704A" }]}>
-                    <Image source={require("../../../assets/images/chatbot.png")} style={{ width: 28, height: 28 }} />
                   </View>
-                  <Text style={styles.quickText}>AI Chat</Text>
-                </TouchableOpacity>
-              </ScrollView>
             </View>
 
+              {/* Recommended Section */}
             <View style={styles.sectionPad}>
               <View style={styles.recoHeader}>
-                <Text style={styles.recoTitle}>{t('dashboard').recommended}</Text>
+                  <Text style={styles.recoTitle}>Recommended</Text>
                 <TouchableOpacity>
                   <Text style={styles.recoCta}>View All</Text>
                 </TouchableOpacity>
@@ -876,7 +916,7 @@ export default function CustomerDashboard() {
                  </View>
                </View>
 
-               {/* Borrow Button */}
+              {/* Borrow Button */}
                {scannedItem.status === 'available' && (
                  <TouchableOpacity
                    style={[styles.borrowButton, borrowing && styles.borrowButtonDisabled]}
@@ -932,28 +972,156 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#00704A' },
   whiteBackground: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    marginTop: 16,
-    marginHorizontal: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
+    backgroundColor: '#F9FAFB',
   },
   contentWrapper: {
     flex: 1,
     paddingBottom: 20,
   },
-  pointsCard: { backgroundColor: '#fff', borderRadius: 24, marginTop: 16, padding: 20, overflow: 'hidden' },
-  rewardHeader: { color: '#00704A', fontWeight: '800', fontSize: 11, letterSpacing: 1.2 },
-  rewardLevel: { color: 'rgba(0,112,74,0.7)', fontSize: 11, marginTop: 4, fontWeight: '600' },
-  pointsRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: 12 },
-  pointsValue: { color: '#FFA500', fontSize: 56, fontWeight: '900', lineHeight: 56 },
-  pointsMax: { color: 'rgba(0,112,74,0.6)', fontSize: 18, fontWeight: '700', marginLeft: 6, marginBottom: 6 },
-  pointsCta: { color: '#00704A', fontSize: 12, fontWeight: '600', marginTop: 8 },
+  // Hero Card Styles
+  heroCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    marginHorizontal: 16,
+    marginTop: -30, // Overlap with header
+    marginBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  heroCardLeft: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  heroRankNumber: {
+    fontSize: 64,
+    fontWeight: '900',
+    color: '#FF8C00',
+    lineHeight: 72,
+    marginBottom: 4,
+  },
+  heroRankLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  heroScanButton: {
+    backgroundColor: '#00704A',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    gap: 10,
+    shadowColor: '#00704A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+    minWidth: 160,
+  },
+  heroScanButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  // Partner Carousel Styles
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 16,
+  },
+  partnerCarouselContainer: {
+    paddingRight: 16,
+    gap: 16,
+  },
+  partnerCard: {
+    width: 280,
+    height: 180,
+    borderRadius: 16,
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  partnerCardImage: {
+    width: '100%',
+    height: '100%',
+  },
+  partnerCardOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  partnerLogoContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    padding: 8,
+    borderRadius: 12,
+    width: 60,
+    height: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  partnerLogo: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'contain',
+  },
+  partnerBrandName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    flex: 1,
+    marginLeft: 12,
+  },
+  // Quick Actions Styles
+  quickActionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  quickActionItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 8,
+  },
+  quickActionIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  quickActionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
+    textAlign: 'center',
+  },
   aiTestButton: {
     backgroundColor: '#FFA500',
     paddingVertical: 8,

@@ -1,6 +1,7 @@
 import { User } from '@/types/auth.types';
 import React from 'react';
 import {
+  Dimensions,
   Image,
   SafeAreaView,
   StatusBar,
@@ -9,6 +10,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+
+const { height: screenHeight } = Dimensions.get('window');
 
 interface CustomerHeaderProps {
   title: string;
@@ -33,6 +36,13 @@ export default function CustomerHeader({
     <>
       <StatusBar barStyle="light-content" backgroundColor={backgroundColor} />
       <SafeAreaView style={[styles.header, { backgroundColor }]}>
+        {/* Background Decoration */}
+        <View style={styles.backgroundDecoration}>
+          <View style={styles.decorativeCircle1} />
+          <View style={styles.decorativeCircle2} />
+          <View style={styles.decorativeCircle3} />
+        </View>
+        
         <View style={styles.topBar}>
           <Text style={styles.brandTitle}>BACK2USE</Text>
         </View>
@@ -72,17 +82,57 @@ export default function CustomerHeader({
 const styles = StyleSheet.create({
   header: {
     backgroundColor: '#00704A',
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
     paddingTop: 5,
-    paddingBottom: 20,
+    paddingBottom: 40, // Increased to accommodate floating card
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
+    minHeight: screenHeight * 0.25, // 25% of screen height
+    maxHeight: screenHeight * 0.30, // 30% of screen height
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  backgroundDecoration: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0.1,
+  },
+  decorativeCircle1: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#FFFFFF',
+    top: -40,
+    right: -20,
+  },
+  decorativeCircle2: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FFFFFF',
+    bottom: -20,
+    left: -10,
+  },
+  decorativeCircle3: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FFFFFF',
+    top: '50%',
+    right: 30,
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: 8,
+    zIndex: 1,
   },
   brandTitle: {
     color: '#fff',
@@ -94,9 +144,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    zIndex: 1,
   },
   greetingLeft: {
     flex: 1,
+    paddingRight: 16,
   },
   greetingSub: {
     color: 'rgba(255,255,255,0.9)',
@@ -112,6 +165,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    paddingLeft: 16,
   },
   avatarLg: {
     width: 50,

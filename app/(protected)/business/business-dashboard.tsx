@@ -1,6 +1,7 @@
 "use client"
 
 import { Ionicons } from "@expo/vector-icons"
+import AsyncStorage from "@react-native-async-storage/async-storage"
 import { router } from "expo-router"
 import { useEffect, useState } from "react"
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
@@ -10,7 +11,6 @@ import { useAuth } from "../../../context/AuthProvider"
 import { businessesApi } from "../../../src/services/api/businessService"
 import { BusinessProfile } from "../../../src/types/business.types"
 import { mockPackagingItems, mockStores, mockTransactions } from "../../../src/utils/mockData"
-import AsyncStorage from "@react-native-async-storage/async-storage"
 
 const STORAGE_KEYS = {
   BUSINESS_WELCOME_SHOWN: 'BUSINESS_WELCOME_SHOWN',
@@ -19,7 +19,6 @@ const STORAGE_KEYS = {
 export default function BusinessDashboard() {
   const { state: authState, actions: authActions } = useAuth()
   const [activeTab, setActiveTab] = useState("overview")
-  const [showReturnModal, setShowReturnModal] = useState(false)
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [showWelcomeModal, setShowWelcomeModal] = useState(false)
@@ -196,7 +195,13 @@ export default function BusinessDashboard() {
 
             <TouchableOpacity
               style={styles.processButtonContainer}
-              onPress={() => setShowReturnModal(true)}
+              onPress={() => {
+                // Navigate to transaction-processing and trigger QR scanner
+                router.push({
+                  pathname: '/(protected)/business/transaction-processing',
+                  params: { openQRScanner: 'true' }
+                });
+              }}
               activeOpacity={0.8}
             >
               <View style={styles.processButton}>

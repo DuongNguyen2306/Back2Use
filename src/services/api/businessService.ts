@@ -3,12 +3,12 @@ import { API_ENDPOINTS } from '../../constants/api';
 import {
   BusinessFormHistoryResponse,
   BusinessProfileResponse,
-  BusinessRegisterRequest,
-  BusinessRegisterResponse,
-  GetAllBusinessesResponse,
-  MaterialCreateRequest,
-  MaterialItem,
-  NearbyBusinessesResponse,
+    BusinessRegisterRequest,
+    BusinessRegisterResponse,
+    GetAllBusinessesResponse,
+    MaterialCreateRequest,
+    MaterialItem,
+    NearbyBusinessesResponse,
   PaginatedResponse
 } from '../../types/business.types';
 import { apiCall, apiClient } from './client';
@@ -305,6 +305,26 @@ export const subscriptionsApi = {
 };
 
 // Businesses
+export interface BusinessDetailResponse {
+  statusCode: number;
+  message: string;
+  data: {
+    business: Business;
+    productGroups: Array<{
+      _id: string;
+      materialId?: any;
+      businessId: string;
+      name: string;
+      description?: string;
+      imageUrl?: string;
+      isDeleted: boolean;
+      createdAt: string;
+      updatedAt: string;
+      __v?: number;
+    }>;
+  };
+}
+
 export const businessesApi = {
   getNearby: async (params: { longitude: number; latitude: number; radius?: number; page?: number; limit?: number; }): Promise<NearbyBusinessesResponse> => {
     const { longitude, latitude, radius = 2000, page = 1, limit = 10 } = params;
@@ -318,6 +338,15 @@ export const businessesApi = {
     return apiCall<GetAllBusinessesResponse>(API_ENDPOINTS.BUSINESSES.GET_ALL, {
       method: 'GET',
       params: { page, limit },
+    });
+  },
+  getById: async (businessId: string): Promise<BusinessDetailResponse> => {
+    // Use GET_ALL endpoint with ID appended, since GET_BY_ID might not be defined
+    const endpoint = `${API_ENDPOINTS.BUSINESSES.GET_ALL}/${businessId}`;
+    console.log('🔍 Getting business by ID:', businessId);
+    console.log('🔍 Endpoint:', endpoint);
+    return apiCall<BusinessDetailResponse>(endpoint, {
+      method: 'GET',
     });
   },
   getProfile: async (): Promise<BusinessProfileResponse> => {

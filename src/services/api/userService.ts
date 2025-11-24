@@ -158,19 +158,99 @@ export const uploadAvatar = async (imageUri: string, token: string): Promise<Upl
     });
 
     console.log('📥 Avatar upload response status:', response.status);
-    console.log('📥 Avatar upload response data:', response.data);
+    console.log('📥 Avatar upload response data (full):', JSON.stringify(response.data, null, 2));
+    console.log('📥 Avatar upload response data (type):', typeof response.data);
+    console.log('📥 Avatar upload response data (keys):', response.data ? Object.keys(response.data) : 'null');
 
     const result = response.data;
     
     // Handle both 200 and 201 status codes
     if (response.status === 200 || response.status === 201) {
       console.log('✅ Avatar uploaded successfully');
+      
       // Try to extract avatarUrl from different response structures
-      const avatarUrl = result?.data?.avatarUrl || 
-                       result?.data?.avatar || 
-                       result?.avatarUrl || 
-                       result?.avatar ||
-                       (typeof result === 'string' ? result : '');
+      // Check multiple possible paths
+      let avatarUrl = '';
+      
+      // Path 1: result.data.avatarUrl
+      if (result?.data?.avatarUrl) {
+        avatarUrl = result.data.avatarUrl;
+        console.log('✅ Found avatarUrl at: result.data.avatarUrl');
+      }
+      // Path 2: result.data.avatar
+      else if (result?.data?.avatar) {
+        avatarUrl = result.data.avatar;
+        console.log('✅ Found avatarUrl at: result.data.avatar');
+      }
+      // Path 3: result.avatarUrl
+      else if (result?.avatarUrl) {
+        avatarUrl = result.avatarUrl;
+        console.log('✅ Found avatarUrl at: result.avatarUrl');
+      }
+      // Path 4: result.avatar
+      else if (result?.avatar) {
+        avatarUrl = result.avatar;
+        console.log('✅ Found avatarUrl at: result.avatar');
+      }
+      // Path 5: result is a string (direct URL)
+      else if (typeof result === 'string') {
+        avatarUrl = result;
+        console.log('✅ Found avatarUrl as direct string');
+      }
+      // Path 6: result.data is a string
+      else if (typeof result?.data === 'string') {
+        avatarUrl = result.data;
+        console.log('✅ Found avatarUrl at: result.data (string)');
+      }
+      // Path 7: Check if result has statusCode 200 and data nested
+      else if (result?.statusCode === 200 && result?.data) {
+        if (typeof result.data === 'string') {
+          avatarUrl = result.data;
+          console.log('✅ Found avatarUrl at: result.data (statusCode 200)');
+        } else if (result.data.avatarUrl) {
+          avatarUrl = result.data.avatarUrl;
+          console.log('✅ Found avatarUrl at: result.data.avatarUrl (statusCode 200)');
+        } else if (result.data.avatar) {
+          avatarUrl = result.data.avatar;
+          console.log('✅ Found avatarUrl at: result.data.avatar (statusCode 200)');
+        }
+      }
+      
+      console.log('🔍 Extracted avatarUrl:', avatarUrl || 'NOT FOUND');
+      
+      // If avatarUrl not found in response, try to fetch from user profile
+      // This handles cases where server updates avatar but doesn't return URL in response
+      if (!avatarUrl) {
+        console.log('⚠️ Avatar URL not in response, fetching updated user profile...');
+        try {
+          console.log('🔄 Attempting to fetch updated user profile...');
+          const updatedUser = await getCurrentUserProfile(token);
+          if (updatedUser?.avatar) {
+            avatarUrl = updatedUser.avatar;
+            console.log('✅ Found avatarUrl from user profile:', avatarUrl);
+          } else {
+            console.log('⚠️ Avatar not found in user profile either. Upload may have succeeded but avatar not set.');
+          }
+        } catch (profileError) {
+          console.error('❌ Failed to fetch user profile:', profileError);
+          // Don't throw error here - upload may have succeeded
+        }
+      }
+      
+      // Even if we can't get the URL, the upload might have succeeded
+      // So we return success and let the caller fetch the updated profile
+      if (!avatarUrl) {
+        console.log('⚠️ Avatar URL not found, but upload may have succeeded. Returning success with empty URL.');
+        console.log('📋 Full response structure:', JSON.stringify(result, null, 2));
+        // Return success with empty URL - caller should fetch updated profile
+        return {
+          success: true,
+          message: 'Avatar uploaded successfully (please refresh to see changes)',
+          data: {
+            avatarUrl: '' // Empty URL indicates caller should fetch updated profile
+          }
+        };
+      }
       
       return {
         success: true,
@@ -209,6 +289,21 @@ export const updateUserProfile = async (updates: UpdateProfileRequest, token: st
     
     if (!token) {
       throw new Error('No access token provided');
+    }
+
+    // Decode token to check role
+    try {
+      const tokenParts = token.split('.');
+      if (tokenParts.length === 3) {
+        const payload = JSON.parse(atob(tokenParts[1]));
+        console.log('🔍 Token payload:', {
+          role: payload.role,
+          userId: payload.userId || payload.sub || payload.id,
+          exp: payload.exp,
+        });
+      }
+    } catch (e) {
+      console.warn('⚠️ Could not decode token:', e);
     }
 
     console.log('📤 Sending request to:', `${API_ENDPOINTS.USER.UPDATE_PROFILE}`);
