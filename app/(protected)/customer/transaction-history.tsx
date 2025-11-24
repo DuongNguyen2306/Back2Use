@@ -48,6 +48,7 @@ export default function CustomerTransactionHistory() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
 
   const loadHistory = async () => {
     try {
@@ -84,8 +85,7 @@ export default function CustomerTransactionHistory() {
         setTransactions([]);
       }
     } catch (error: any) {
-      console.error('❌ Error loading borrow history:', error);
-      Alert.alert('Lỗi', error.message || 'Không thể tải lịch sử mượn');
+      Alert.alert('Error', 'Failed to load borrow history');
       setTransactions([]);
     } finally {
       setLoading(false);
@@ -127,6 +127,7 @@ export default function CustomerTransactionHistory() {
         return "#f59e0b";
       case "rejected":
       case "cancelled":
+      case "canceled":
         return "#ef4444";
       default:
         return "#6b7280";
@@ -137,20 +138,21 @@ export default function CustomerTransactionHistory() {
     switch (status) {
       case "completed":
       case "returned":
-        return "Hoàn thành";
+        return "Completed";
       case "pending_pickup":
-        return "Chờ nhận";
+        return "Pending Pickup";
       case "active":
       case "borrowing":
-        return "Đang mượn";
+        return "Borrowing";
       case "overdue":
-        return "Quá hạn";
+        return "Overdue";
       case "rejected":
-        return "Từ chối";
+        return "Rejected";
       case "cancelled":
-        return "Đã hủy";
+      case "canceled":
+        return "Cancelled";
       default:
-        return "Chờ nhận";
+        return "Pending Pickup";
     }
   };
 
@@ -166,14 +168,64 @@ export default function CustomerTransactionHistory() {
     const dueDate = new Date(transaction.dueDate).toLocaleDateString('vi-VN');
     
     Alert.alert(
-      "Chi tiết giao dịch",
-      `Sản phẩm: ${productName} - ${sizeName}\n` +
-      `Cửa hàng: ${businessName}\n` +
-      `Ngày mượn: ${borrowDate}\n` +
-      `Hạn trả: ${dueDate}\n` +
-      `Tiền cọc: ${transaction.depositAmount.toLocaleString('vi-VN')} VNĐ\n` +
-      `Trạng thái: ${getStatusLabel(transaction.status)}`,
-      [{ text: "Đóng" }]
+      "Transaction Details",
+      `Product: ${productName} - ${sizeName}\n` +
+      `Store: ${businessName}\n` +
+      `Borrow Date: ${borrowDate}\n` +
+      `Due Date: ${dueDate}\n` +
+      `Deposit: ${transaction.depositAmount.toLocaleString('vi-VN')} VNĐ\n` +
+      `Status: ${getStatusLabel(transaction.status)}`,
+      [{ text: "Close" }]
+    );
+  };
+
+  const handleCancel = async (transactionId: string) => {
+    Alert.alert(
+      'Confirm Cancel',
+      'Are you sure you want to cancel this borrow order?',
+      [
+        {
+          text: 'No',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setCancelingId(transactionId);
+              await borrowTransactionsApi.cancel(transactionId);
+              
+              // Update transaction status locally immediately
+              setTransactions(prevTransactions =>
+                prevTransactions.map(t =>
+                  t._id === transactionId
+                    ? { ...t, status: 'cancelled' }
+                    : t
+                )
+              );
+              
+              Alert.alert('Success', 'Borrow order cancelled successfully.');
+              
+              // Reload history to get latest data
+              await loadHistory();
+            } catch (error: any) {
+              const errorMessage = error?.response?.data?.message || error?.message || '';
+              if (errorMessage.toLowerCase().includes('cannot cancel') || 
+                  errorMessage.toLowerCase().includes('không thể hủy')) {
+                Alert.alert(
+                  'Cannot Cancel',
+                  'This borrow order cannot be cancelled. It may have been confirmed or already processed.'
+                );
+              } else {
+                Alert.alert('Error', 'Failed to cancel borrow order. Please try again later.');
+              }
+            } finally {
+              setCancelingId(null);
+            }
+          },
+        },
+      ]
     );
   };
 
@@ -186,7 +238,7 @@ export default function CustomerTransactionHistory() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Lịch sử mượn</Text>
+        <Text style={styles.headerTitle}>Borrowing History</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -196,7 +248,7 @@ export default function CustomerTransactionHistory() {
           <Ionicons name="search" size={20} color="#6b7280" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Tìm kiếm đơn hàng..."
+            placeholder="Search orders..."
             value={searchTerm}
             onChangeText={setSearchTerm}
             placeholderTextColor="#9ca3af"
@@ -217,7 +269,7 @@ export default function CustomerTransactionHistory() {
             onPress={() => setStatusFilter("all")}
           >
             <Text style={[styles.filterChipText, statusFilter === "all" && styles.filterChipTextActive]}>
-              Tất cả
+              All
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -225,7 +277,7 @@ export default function CustomerTransactionHistory() {
             onPress={() => setStatusFilter("borrowing")}
           >
             <Text style={[styles.filterChipText, statusFilter === "borrowing" && styles.filterChipTextActive]}>
-              Đang mượn
+              Borrowing
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -233,7 +285,7 @@ export default function CustomerTransactionHistory() {
             onPress={() => setStatusFilter("pending_pickup")}
           >
             <Text style={[styles.filterChipText, statusFilter === "pending_pickup" && styles.filterChipTextActive]}>
-              Chờ nhận
+              Pending Pickup
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -241,7 +293,7 @@ export default function CustomerTransactionHistory() {
             onPress={() => setStatusFilter("completed")}
           >
             <Text style={[styles.filterChipText, statusFilter === "completed" && styles.filterChipTextActive]}>
-              Hoàn thành
+              Completed
             </Text>
           </TouchableOpacity>
         </ScrollView>
@@ -255,13 +307,13 @@ export default function CustomerTransactionHistory() {
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#0F4D3A" />
-            <Text style={styles.loadingText}>Đang tải...</Text>
+            <Text style={styles.loadingText}>Loading...</Text>
           </View>
         ) : filteredTransactions.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="receipt-outline" size={48} color="#6b7280" />
-            <Text style={styles.emptyTitle}>Không tìm thấy giao dịch</Text>
-            <Text style={styles.emptySubtitle}>Thử điều chỉnh bộ lọc hoặc tìm kiếm</Text>
+            <Text style={styles.emptyTitle}>No transactions found</Text>
+            <Text style={styles.emptySubtitle}>Try adjusting filters or search</Text>
           </View>
         ) : (
           filteredTransactions.map((transaction) => {
@@ -272,15 +324,21 @@ export default function CustomerTransactionHistory() {
             const overdue = isOverdue(transaction.dueDate);
             
             const statusLabel = getStatusLabel(transaction.status);
-            const isPendingPickup = transaction.status === 'pending_pickup';
+            const isPendingPickup = transaction.status === 'pending_pickup' || transaction.status === 'pending';
+            const isCancelled = transaction.status === 'cancelled' || transaction.status === 'canceled';
+            
+            const canCancel = isPendingPickup && !isCancelled;
+            const isCanceling = cancelingId === transaction._id;
             
             return (
-              <TouchableOpacity
+              <View
                 key={transaction._id}
                 style={styles.transactionCard}
-                onPress={() => handleTransactionPress(transaction)}
               >
-                <View style={styles.cardContent}>
+                <TouchableOpacity
+                  style={styles.cardContent}
+                  onPress={() => handleTransactionPress(transaction)}
+                >
                   {/* Left: Product Thumbnail */}
                   {productImage ? (
                     <Image source={{ uri: productImage }} style={styles.productThumbnail} />
@@ -295,7 +353,7 @@ export default function CustomerTransactionHistory() {
                     <Text style={styles.productTitle}>{productName} - {sizeName}</Text>
                     <Text style={styles.storeName}>{businessName}</Text>
                     <Text style={styles.borrowDate}>
-                      Mượn: {new Date(transaction.borrowDate).toLocaleDateString('vi-VN')}
+                      Borrowed: {new Date(transaction.borrowDate).toLocaleDateString('en-US')}
                     </Text>
                   </View>
                   
@@ -306,18 +364,40 @@ export default function CustomerTransactionHistory() {
                     </Text>
                     <View style={[
                       styles.statusBadge,
-                      isPendingPickup ? styles.statusBadgePending : styles.statusBadgeDefault
+                      isPendingPickup ? styles.statusBadgePending : 
+                      isCancelled ? styles.statusBadgeCancelled :
+                      styles.statusBadgeDefault
                     ]}>
                       <Text style={[
                         styles.statusBadgeText,
-                        isPendingPickup ? styles.statusBadgeTextPending : styles.statusBadgeTextDefault
+                        isPendingPickup ? styles.statusBadgeTextPending : 
+                        isCancelled ? styles.statusBadgeTextCancelled :
+                        styles.statusBadgeTextDefault
                       ]}>
                         {statusLabel}
                       </Text>
                     </View>
                   </View>
-                </View>
-              </TouchableOpacity>
+                </TouchableOpacity>
+                
+                {/* Cancel Button - Only show for pending transactions (not cancelled) */}
+                {canCancel && !isCancelled && (
+                  <TouchableOpacity
+                    style={[styles.cancelButton, isCanceling && styles.cancelButtonDisabled]}
+                    onPress={() => handleCancel(transaction._id)}
+                    disabled={isCanceling}
+                  >
+                    {isCanceling ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <>
+                        <Ionicons name="close-circle-outline" size={18} color="#FFFFFF" />
+                        <Text style={styles.cancelButtonText}>Cancel Order</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
             );
           })
         )}
@@ -445,6 +525,25 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  cancelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EF4444',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 12,
+    gap: 6,
+  },
+  cancelButtonDisabled: {
+    opacity: 0.6,
+  },
+  cancelButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   cardContent: {
     flexDirection: "row",
     alignItems: "center",
@@ -513,5 +612,11 @@ const styles = StyleSheet.create({
   },
   statusBadgeTextDefault: {
     color: "#6B7280",
+  },
+  statusBadgeCancelled: {
+    backgroundColor: "#FEE2E2",
+  },
+  statusBadgeTextCancelled: {
+    color: "#EF4444",
   },
 });

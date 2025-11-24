@@ -272,9 +272,7 @@ export default function CustomerDashboard() {
         Alert.alert('Error', responseData.message || 'Product not found');
       }
     } catch (error: any) {
-      console.error('Error scanning QR:', error);
-      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to scan product';
-      Alert.alert('Error', errorMessage);
+      Alert.alert('Error', 'Failed to scan product. Please try again.');
     } finally {
       scanLock.current = false;
     }
@@ -470,10 +468,9 @@ export default function CustomerDashboard() {
                 ]
               );
             } catch (error: any) {
-              console.error('❌ Error creating borrow transaction:', error);
               
               // Xử lý lỗi cụ thể
-              const errorMessage = error?.response?.data?.message || error?.message || 'Không thể tạo yêu cầu mượn. Vui lòng thử lại.';
+              const errorMessage = error?.response?.data?.message || error?.message || '';
               
               // Check for insufficient balance
               const isInsufficientBalance = errorMessage.toLowerCase().includes('insufficient') || 
@@ -488,10 +485,20 @@ export default function CustomerDashboard() {
               if (isLimitReached) {
                 Alert.alert(
                   'Đã đạt giới hạn mượn',
-                  `Bạn đã đạt giới hạn số lượng sản phẩm có thể mượn đồng thời.\n\n` +
-                  `Vui lòng trả một số sản phẩm đang mượn trước khi mượn thêm.\n\n` +
-                  `Thông báo: ${errorMessage}`,
-                  [{ text: 'Đóng' }]
+                  'Bạn đã đạt giới hạn số lượng sản phẩm có thể mượn đồng thời (tối đa 3 sản phẩm).\n\nVui lòng trả một số sản phẩm đang mượn trước khi mượn thêm.',
+                  [
+                    {
+                      text: 'Xem lịch sử mượn',
+                      onPress: () => {
+                        setShowProductModal(false);
+                        router.push('/(protected)/customer/transaction-history');
+                      },
+                    },
+                    {
+                      text: 'Đóng',
+                      style: 'cancel',
+                    },
+                  ]
                 );
               } else if (isInsufficientBalance) {
                 // Handle both balance and availableBalance fields
@@ -523,7 +530,7 @@ export default function CustomerDashboard() {
               } else {
                 Alert.alert(
                   'Lỗi',
-                  errorMessage
+                  'Không thể tạo yêu cầu mượn. Vui lòng thử lại sau.'
                 );
               }
             } finally {

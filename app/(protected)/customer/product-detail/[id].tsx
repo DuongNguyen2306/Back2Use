@@ -30,7 +30,6 @@ export default function CustomerProductDetailScreen() {
   const [borrowing, setBorrowing] = useState(false);
   const [durationInDays, setDurationInDays] = useState<string>('30');
   const [userData, setUserData] = useState<any>(null);
-  const [selectedProduct, setSelectedProduct] = useState<any>(null);
 
   // Fetch product details
   useEffect(() => {
@@ -66,6 +65,21 @@ export default function CustomerProductDetailScreen() {
     return () => clearTimeout(timer);
   }, [id]);
 
+  // Load user data to get wallet balance
+  useEffect(() => {
+    const loadUserData = async () => {
+      if (state.accessToken && state.isAuthenticated) {
+        try {
+          const user = await getCurrentUserProfileWithAutoRefresh();
+          setUserData(user);
+        } catch (error: any) {
+          console.error('Error loading user data:', error);
+        }
+      }
+    };
+    loadUserData();
+  }, [state.accessToken, state.isAuthenticated]);
+
   // Handle borrow button press
   const handleBorrow = async () => {
     if (!product || !state.isAuthenticated) {
@@ -78,13 +92,62 @@ export default function CustomerProductDetailScreen() {
       return;
     }
 
+    // Reload user data to get latest balance
+    let currentUserData = userData;
+    try {
+      console.log('🔄 Reloading user data before borrow check...');
+      currentUserData = await getCurrentUserProfileWithAutoRefresh();
+      setUserData(currentUserData);
+    } catch (error: any) {
+      console.error('Error reloading user data:', error);
+    }
+
     // Get deposit value safely
     const depositValue = (product.productSizeId as any)?.depositValue || 0;
     
-    // Confirm borrow
+    if (depositValue === 0) {
+      Alert.alert('Lỗi', 'Không tìm thấy thông tin tiền cọc.');
+      return;
+    }
+
+    // Parse duration from input
+    const duration = parseInt(durationInDays) || 30;
+    if (duration <= 0) {
+      Alert.alert('Lỗi', 'Vui lòng nhập số ngày mượn hợp lệ (lớn hơn 0).');
+      return;
+    }
+
+    // Get wallet balance
+    const walletBalance = currentUserData?.wallet?.balance || 
+                          (currentUserData?.wallet as any)?.availableBalance || 
+                          0;
+    const balanceAfterDeduction = walletBalance - depositValue;
+
+    // Check if balance is sufficient
+    if (balanceAfterDeduction < 0) {
+      Alert.alert(
+        'Số dư không đủ',
+        `Số dư hiện tại của bạn không đủ để đặt mượn sản phẩm này.\n\nTiền cọc: ${depositValue.toLocaleString('vi-VN')} VNĐ\nSố dư hiện tại: ${walletBalance.toLocaleString('vi-VN')} VNĐ`,
+        [
+          {
+            text: 'Hủy',
+            style: 'cancel',
+          },
+          {
+            text: 'Nạp tiền',
+            onPress: () => {
+              router.push('/(protected)/customer/customer-wallet');
+            },
+          },
+        ]
+      );
+      return;
+    }
+    
+    // Confirm borrow with full details
     Alert.alert(
       'Xác nhận đặt mượn',
-      `Bạn có chắc chắn muốn đặt mượn sản phẩm này?\n\nTiền cọc: ${depositValue.toLocaleString('vi-VN')} VNĐ\nThời gian mượn: 7 ngày`,
+      `Bạn có chắc chắn muốn đặt mượn sản phẩm này?\n\nTiền cọc: ${depositValue.toLocaleString('vi-VN')} VNĐ\nSố dư hiện tại: ${walletBalance.toLocaleString('vi-VN')} VNĐ\nSố dư sau khi trừ: ${balanceAfterDeduction.toLocaleString('vi-VN')} VNĐ\nThời gian mượn: ${duration} ngày`,
       [
         {
           text: 'Hủy',
@@ -117,22 +180,6 @@ export default function CustomerProductDetailScreen() {
                 return;
               }
 
-              const depositValue = (product.productSizeId as any)?.depositValue || 0;
-              
-              if (depositValue === 0) {
-                Alert.alert('Lỗi', 'Không tìm thấy thông tin tiền cọc.');
-                setBorrowing(false);
-                return;
-              }
-
-              // Parse duration from input
-              const duration = parseInt(durationInDays) || 7;
-              if (duration <= 0) {
-                Alert.alert('Lỗi', 'Vui lòng nhập số ngày mượn hợp lệ (lớn hơn 0).');
-                setBorrowing(false);
-                return;
-              }
-
               const borrowDto = {
                 productId: product._id,
                 businessId: businessId,
@@ -158,11 +205,39 @@ export default function CustomerProductDetailScreen() {
                 ]
               );
             } catch (error: any) {
-              console.error('❌ Error creating borrow transaction:', error);
-              Alert.alert(
-                'Lỗi',
-                error.message || 'Không thể tạo yêu cầu mượn. Vui lòng thử lại.'
-              );
+              // Extract error message from multiple possible locations
+              const errorMessage = 
+                error?.response?.data?.message || 
+                error?.message || 
+                '';
+              
+              // Check for maximum concurrent borrow limit error (case-insensitive)
+              const lowerErrorMessage = errorMessage.toLowerCase();
+              if (lowerErrorMessage.includes('maximum concurrent') || 
+                  lowerErrorMessage.includes('concurrent borrow limit') ||
+                  lowerErrorMessage.includes('limit reached')) {
+                Alert.alert(
+                  'Đã đạt giới hạn mượn',
+                  'Bạn đã đạt giới hạn số lượng sản phẩm có thể mượn đồng thời (tối đa 3 sản phẩm).\n\nVui lòng trả một số sản phẩm đang mượn trước khi mượn thêm.',
+                  [
+                    {
+                      text: 'Xem lịch sử mượn',
+                      onPress: () => {
+                        router.push('/(protected)/customer/transaction-history');
+                      },
+                    },
+                    {
+                      text: 'Đóng',
+                      style: 'cancel',
+                    },
+                  ]
+                );
+              } else {
+                Alert.alert(
+                  'Lỗi',
+                  'Không thể tạo yêu cầu mượn. Vui lòng thử lại sau.'
+                );
+              }
             } finally {
               setBorrowing(false);
             }
