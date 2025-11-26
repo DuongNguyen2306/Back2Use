@@ -1,8 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
+    Alert,
     Dimensions,
     Image,
+    RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
@@ -10,6 +13,8 @@ import {
     View,
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
+import { leaderboardApi, LeaderboardEntry } from '../../../src/services/api/userService';
+import { getCurrentUserProfileWithAutoRefresh } from '../../../src/services/api/userService';
 
 const { width } = Dimensions.get('window');
 
@@ -27,6 +32,102 @@ interface LeaderboardUser {
 export default function Leaderboard() {
   const auth = useAuth();
   const [activeFilter, setActiveFilter] = useState<'today' | 'week' | 'all'>('today');
+  const [leaderboardData, setLeaderboardData] = useState<LeaderboardUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserName, setCurrentUserName] = useState<string>('User');
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<string | undefined>(undefined);
+
+  // Load current user info
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      try {
+        const user = await getCurrentUserProfileWithAutoRefresh();
+        setCurrentUserId(user._id || null);
+        setCurrentUserName(user.fullName || user.name || 'User');
+        setCurrentUserAvatar(user.avatar);
+      } catch (error) {
+        console.error('Error loading current user:', error);
+      }
+    };
+    loadCurrentUser();
+  }, []);
+
+  // Load leaderboard data
+  const loadLeaderboard = async (filter: 'today' | 'week' | 'all') => {
+    try {
+      setLoading(true);
+      
+      const now = new Date();
+      let params: any = {
+        page: 1,
+        limit: 100,
+      };
+
+      // Map filter to API parameters
+      if (filter === 'today') {
+        // Today = current month
+        params.month = now.getMonth() + 1; // 1-12
+        params.year = now.getFullYear();
+      } else if (filter === 'week') {
+        // Week = current month (API doesn't have week filter, use current month)
+        params.month = now.getMonth() + 1;
+        params.year = now.getFullYear();
+      } else {
+        // All = no month/year filter, get all
+        // Or use current month as default
+        params.month = now.getMonth() + 1;
+        params.year = now.getFullYear();
+      }
+
+      console.log('📊 Loading leaderboard with params:', params);
+      const response = await leaderboardApi.getMonthly(params);
+      
+      console.log('📊 Leaderboard response:', response);
+
+      // Map API data to LeaderboardUser format
+      const mappedData: LeaderboardUser[] = response.data.map((entry: LeaderboardEntry) => {
+        const customer = entry.customerId;
+        const isCurrentUser = currentUserId && customer._id === currentUserId;
+        
+        return {
+          id: entry._id,
+          name: customer.fullName || 'Unknown User',
+          username: customer.phone || customer._id.substring(0, 8),
+          avatar: undefined, // API doesn't return avatar
+          score: entry.rankingPoints,
+          rank: entry.rank,
+          trend: 'same' as const, // API doesn't provide trend, default to 'same'
+          isCurrentUser: isCurrentUser || false,
+        };
+      });
+
+      setLeaderboardData(mappedData);
+    } catch (error: any) {
+      console.error('Error loading leaderboard:', error);
+      Alert.alert('Error', error.message || 'Failed to load leaderboard. Please try again.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Load data when filter changes
+  useEffect(() => {
+    loadLeaderboard(activeFilter);
+  }, [activeFilter, currentUserId]);
+
+  // Handle filter change
+  const handleFilterChange = (filter: 'today' | 'week' | 'all') => {
+    setActiveFilter(filter);
+  };
+
+  // Handle refresh
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadLeaderboard(activeFilter);
+  };
 
   const getTimeBasedGreeting = () => {
     const hour = new Date().getHours();
@@ -43,19 +144,6 @@ export default function Leaderboard() {
       hour12: false 
     });
   };
-
-  const leaderboardData: LeaderboardUser[] = [
-    { id: '1', name: 'John Smith', username: 'johnsmith', score: 256, rank: 1, trend: 'up', avatar: null },
-    { id: '2', name: 'Sarah Johnson', username: 'sarahj', score: 234, rank: 2, trend: 'down', avatar: null },
-    { id: '3', name: 'Mike Wilson', username: 'mikew', score: 198, rank: 3, trend: 'up', avatar: null },
-    { id: '4', name: 'Emma Davis', username: 'emmad', score: 187, rank: 4, trend: 'same', avatar: null },
-    { id: '5', name: 'David Brown', username: 'davidb', score: 176, rank: 5, trend: 'up', avatar: null },
-    { id: '6', name: 'Lisa Anderson', username: 'lisa', score: 165, rank: 6, trend: 'down', avatar: null },
-    { id: '7', name: 'Tom Miller', username: 'tomm', score: 154, rank: 7, trend: 'up', avatar: null },
-    { id: '8', name: 'Anna Taylor', username: 'anna', score: 143, rank: 8, trend: 'same', avatar: null },
-    { id: '9', name: 'Chris Moore', username: 'chris', score: 132, rank: 9, trend: 'down', avatar: null },
-    { id: '10', name: 'User Name', username: 'user', score: 121, rank: 10, trend: 'up', isCurrentUser: true },
-  ];
 
   const top3Users = leaderboardData.slice(0, 3);
   const remainingUsers = leaderboardData.slice(3);
@@ -182,10 +270,14 @@ export default function Leaderboard() {
         <View style={styles.greetingRow}>
           <View>
             <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-            <Text style={styles.greetingName}>User Name</Text>
+            <Text style={styles.greetingName}>{currentUserName}</Text>
           </View>
           <View style={styles.avatarLg}>
-            <Text style={styles.avatarLgText}>U</Text>
+            {currentUserAvatar ? (
+              <Image source={{ uri: currentUserAvatar }} style={styles.avatarLgImage} />
+            ) : (
+              <Text style={styles.avatarLgText}>{currentUserName.charAt(0).toUpperCase()}</Text>
+            )}
           </View>
         </View>
       </View>
@@ -200,31 +292,48 @@ export default function Leaderboard() {
       <View style={styles.filterTabs}>
         <TouchableOpacity
           style={[styles.filterTab, activeFilter === 'today' && styles.activeFilterTab]}
-          onPress={() => setActiveFilter('today')}
+          onPress={() => handleFilterChange('today')}
         >
           <Text style={[styles.filterTabText, activeFilter === 'today' && styles.activeFilterTabText]}>
-            Hôm nay
+            Today
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.filterTab, activeFilter === 'week' && styles.activeFilterTab]}
-          onPress={() => setActiveFilter('week')}
+          onPress={() => handleFilterChange('week')}
         >
           <Text style={[styles.filterTabText, activeFilter === 'week' && styles.activeFilterTabText]}>
-            Tuần
+            Week
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.filterTab, activeFilter === 'all' && styles.activeFilterTab]}
-          onPress={() => setActiveFilter('all')}
+          onPress={() => handleFilterChange('all')}
         >
           <Text style={[styles.filterTabText, activeFilter === 'all' && styles.activeFilterTabText]}>
-            Tất cả
+            All
           </Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#0F4D3A" />
+          <Text style={styles.loadingText}>Loading leaderboard...</Text>
+        </View>
+      ) : (
+      <ScrollView 
+        style={styles.scrollContent} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#0F4D3A']}
+            tintColor="#0F4D3A"
+          />
+        }
+      >
         {/* Podium Section */}
         <View style={styles.podiumSection}>
           <View style={styles.podiumContainer}>
@@ -241,11 +350,19 @@ export default function Leaderboard() {
 
         {/* Main Leaderboard List */}
         <View style={styles.leaderboardSection}>
-          <View style={styles.leaderboardList}>
-            {remainingUsers.map(user => renderLeaderboardItem(user))}
-          </View>
+          {remainingUsers.length > 0 ? (
+            <View style={styles.leaderboardList}>
+              {remainingUsers.map(user => renderLeaderboardItem(user))}
+            </View>
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="trophy-outline" size={64} color="#9CA3AF" />
+              <Text style={styles.emptyText}>No leaderboard data available</Text>
+            </View>
+          )}
         </View>
       </ScrollView>
+      )}
 
       {/* Current User's Rank - Sticky Bottom */}
       {currentUser && (
@@ -367,6 +484,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: '#00704A',
+  },
+  avatarLgImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 25,
   },
   sectionHeader: {
     paddingHorizontal: 20,
@@ -656,5 +778,28 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111827',
     marginLeft: 4,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 20,
+  },
+  emptyText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
   },
 });

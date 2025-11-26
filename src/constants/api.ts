@@ -1,5 +1,5 @@
 // API Configuration Constants
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.1.8:8000';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://10.1.192.148:8000';
 
 // API Endpoints
 export const API_ENDPOINTS = {
@@ -10,7 +10,7 @@ export const API_ENDPOINTS = {
     RESET_PASSWORD: '/auth/reset-password',
     LOGOUT: '/auth/logout',
     REFRESH_TOKEN: '/auth/refresh-token',
-    SWITCH_ROLE: '/auth/switch-role',
+    SWITCH_ROLE: '/auth/switch-role', 
   },
   USER: {
     PROFILE: '/users/me',
@@ -31,6 +31,9 @@ export const API_ENDPOINTS = {
     TRANSACTIONS: '/customer/transactions',
     REWARDS: '/customer/rewards',
     STORES: '/customer/stores',
+  },
+  LEADERBOARD: {
+    MONTHLY: '/monthly-leaderboards', // GET /monthly-leaderboards?month=&year=&rankMin=&rankMax=&minPoints=&maxPoints=&page=&limit=
   },
   BUSINESSES: {
     NEARBY: '/businesses/nearby',

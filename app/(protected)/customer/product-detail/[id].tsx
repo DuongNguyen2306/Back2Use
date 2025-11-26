@@ -5,7 +5,6 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -31,7 +30,7 @@ export default function CustomerProductDetailScreen() {
   const [durationInDays, setDurationInDays] = useState<string>('30');
   const [userData, setUserData] = useState<any>(null);
 
-  // Fetch product details
+  // Fetch product details - dùng scan API để lấy đầy đủ thông tin (giống customer dashboard)
   useEffect(() => {
     const loadProduct = async () => {
       if (!id) {
@@ -43,16 +42,63 @@ export default function CustomerProductDetailScreen() {
         console.log('🔍 Loading product with ID:', id);
         setLoading(true);
 
-        const response = await productsApi.getByIdWithAutoRefresh(id);
+        // Thử gọi scan API trước (giả sử id là serialNumber)
+        let productData: any = null;
+        try {
+          console.log('🔄 Trying productsApi.scan with id:', id);
+          const scanResponse = await productsApi.scan(id);
+          const responseData: any = scanResponse;
+          
+          if (responseData.success && responseData.data) {
+            const data: any = responseData.data;
+            productData = data.product || data;
+          } else if (responseData.statusCode === 200 && responseData.data) {
+            const data: any = responseData.data;
+            productData = data.product || data;
+          }
+        } catch (scanError) {
+          console.log('⚠️ Scan API failed, trying getById...');
+          // Nếu scan không được, thử getById để lấy serialNumber, rồi scan lại
+          const getByIdResponse = await productsApi.getByIdWithAutoRefresh(id);
+          if (getByIdResponse && getByIdResponse.data) {
+            const tempProduct = getByIdResponse.data;
+            const serialNumber = tempProduct.serialNumber;
+            if (serialNumber) {
+              console.log('🔄 Calling scan API with serialNumber:', serialNumber);
+              const scanResponse = await productsApi.scan(serialNumber);
+              const responseData: any = scanResponse;
+              
+              if (responseData.success && responseData.data) {
+                const data: any = responseData.data;
+                productData = data.product || data;
+              } else if (responseData.statusCode === 200 && responseData.data) {
+                const data: any = responseData.data;
+                productData = data.product || data;
+              }
+            } else {
+              // Nếu không có serialNumber, dùng product từ getById
+              productData = tempProduct;
+            }
+          }
+        }
         
-        if (response && response.data) {
-          setProduct(response.data);
+        if (productData) {
+          console.log('📦 Product Data Structure:', JSON.stringify(productData, null, 2));
+          console.log('📦 productSizeId:', productData.productSizeId);
+          console.log('📦 productSizeId type:', typeof productData.productSizeId);
+          
+          // Log depositValue
+          if (productData.productSizeId && typeof productData.productSizeId === 'object') {
+            console.log('💰 depositValue from productSizeId:', (productData.productSizeId as any)?.depositValue);
+          }
+          
+          setProduct(productData);
         } else {
-          Alert.alert('Lỗi', response?.message || 'Không tìm thấy sản phẩm.');
+          Alert.alert('Error', 'Product not found');
         }
       } catch (error: any) {
         console.error('❌ Error loading product:', error);
-        Alert.alert('Lỗi', error.message || 'Không thể tải thông tin sản phẩm. Vui lòng thử lại.');
+        Alert.alert('Error', error.message || 'Failed to load product information. Please try again.');
       } finally {
         setLoading(false);
       }
@@ -102,39 +148,91 @@ export default function CustomerProductDetailScreen() {
       console.error('Error reloading user data:', error);
     }
 
-    // Get deposit value safely
-    const depositValue = (product.productSizeId as any)?.depositValue || 0;
+    // Get deposit value safely - check multiple possible locations (giống customer dashboard)
+    let depositValue = 0;
     
-    if (depositValue === 0) {
-      Alert.alert('Lỗi', 'Không tìm thấy thông tin tiền cọc.');
-      return;
+    console.log('🔍 Full Product Object for depositValue:', JSON.stringify(product, null, 2));
+    console.log('🔍 productSizeId:', product.productSizeId);
+    console.log('🔍 productSizeId type:', typeof product.productSizeId);
+    
+    // Check if productSizeId is an object with depositValue
+    if (product.productSizeId && typeof product.productSizeId === 'object') {
+      const productSize = product.productSizeId as any;
+      console.log('🔍 productSizeId object keys:', Object.keys(productSize));
+      console.log('🔍 productSizeId full:', JSON.stringify(productSize, null, 2));
+      
+      // Try multiple possible field names
+      depositValue = productSize.depositValue || 
+                     productSize.basePrice || 
+                     productSize.price || 
+                     0;
+      
+      console.log('💰 Found depositValue from productSizeId:', depositValue);
     }
-
-    // Parse duration from input
-    const duration = parseInt(durationInDays) || 30;
-    if (duration <= 0) {
-      Alert.alert('Lỗi', 'Vui lòng nhập số ngày mượn hợp lệ (lớn hơn 0).');
-      return;
+    
+    // If still 0, check productGroupId.productSizeId
+    if (depositValue === 0 && product.productGroupId) {
+      const productGroup = product.productGroupId as any;
+      console.log('🔍 productGroupId:', productGroup);
+      if (productGroup.productSizeId && typeof productGroup.productSizeId === 'object') {
+        const pgSize = productGroup.productSizeId;
+        depositValue = pgSize.depositValue || pgSize.basePrice || pgSize.price || 0;
+        console.log('💰 Found depositValue from productGroupId.productSizeId:', depositValue);
+      }
     }
-
-    // Get wallet balance
-    const walletBalance = currentUserData?.wallet?.balance || 
-                          (currentUserData?.wallet as any)?.availableBalance || 
-                          0;
-    const balanceAfterDeduction = walletBalance - depositValue;
-
-    // Check if balance is sufficient
-    if (balanceAfterDeduction < 0) {
+    
+    console.log('💰 Final Deposit Value Check:', {
+      hasProductSizeId: !!product.productSizeId,
+      productSizeIdType: typeof product.productSizeId,
+      depositValue,
+      productSizeIdKeys: product.productSizeId && typeof product.productSizeId === 'object' 
+        ? Object.keys(product.productSizeId as any) 
+        : []
+    });
+    
+    // If depositValue is still 0, show error - backend requires valid depositValue
+    if (depositValue === 0 || !depositValue || isNaN(depositValue)) {
+      console.error('❌ Cannot find depositValue. Product structure:', {
+        productSizeId: product.productSizeId,
+        productGroupId: product.productGroupId,
+        allKeys: Object.keys(product),
+      });
       Alert.alert(
-        'Số dư không đủ',
-        `Số dư hiện tại của bạn không đủ để đặt mượn sản phẩm này.\n\nTiền cọc: ${depositValue.toLocaleString('vi-VN')} VNĐ\nSố dư hiện tại: ${walletBalance.toLocaleString('vi-VN')} VNĐ`,
+        'Error',
+        'Unable to find deposit information for this product. The product may not be properly configured. Please contact support or try another product.'
+      );
+      return;
+    }
+    
+    // Kiểm tra số dư ví trước khi cho phép mượn
+    // Handle both balance and availableBalance fields
+    const walletBalance = (currentUserData as any)?.wallet?.availableBalance ?? 
+                         (currentUserData as any)?.wallet?.balance ?? 
+                         0;
+    
+    console.log('💰 Borrow Check - Wallet Balance:', walletBalance);
+    console.log('💰 Borrow Check - Deposit Value:', depositValue);
+    console.log('💰 Borrow Check - UserData:', currentUserData);
+    console.log('💰 Borrow Check - Wallet Object:', (currentUserData as any)?.wallet);
+    console.log('💰 Borrow Check - Comparison:', walletBalance, '<', depositValue, '=', walletBalance < depositValue);
+    
+    if (walletBalance < depositValue) {
+      const shortage = depositValue - walletBalance;
+      console.log('⚠️ Insufficient balance - Shortage:', shortage);
+      Alert.alert(
+        'Insufficient Balance',
+        `Your wallet balance is insufficient to borrow this product.\n\n` +
+        `Current balance: ${walletBalance.toLocaleString('vi-VN')} VNĐ\n` +
+        `Required deposit: ${depositValue.toLocaleString('vi-VN')} VNĐ\n` +
+        `Shortage: ${shortage.toLocaleString('vi-VN')} VNĐ\n\n` +
+        `Please top up your wallet to continue.`,
         [
           {
-            text: 'Hủy',
+            text: 'Cancel',
             style: 'cancel',
           },
           {
-            text: 'Nạp tiền',
+            text: 'Top Up',
             onPress: () => {
               router.push('/(protected)/customer/customer-wallet');
             },
@@ -144,57 +242,122 @@ export default function CustomerProductDetailScreen() {
       return;
     }
     
-    // Confirm borrow with full details
+    // Kiểm tra số ngày mượn
+    const days = parseInt(durationInDays, 10);
+    if (isNaN(days) || days <= 0) {
+      Alert.alert('Error', 'Please enter a valid number of borrowing days (greater than 0)');
+      return;
+    }
+
+    console.log('✅ Balance sufficient, proceeding to confirm...');
+    
+    // Confirm borrow
     Alert.alert(
-      'Xác nhận đặt mượn',
-      `Bạn có chắc chắn muốn đặt mượn sản phẩm này?\n\nTiền cọc: ${depositValue.toLocaleString('vi-VN')} VNĐ\nSố dư hiện tại: ${walletBalance.toLocaleString('vi-VN')} VNĐ\nSố dư sau khi trừ: ${balanceAfterDeduction.toLocaleString('vi-VN')} VNĐ\nThời gian mượn: ${duration} ngày`,
+      'Confirm Borrow',
+      `Are you sure you want to borrow this product?\n\n` +
+      `Deposit: ${depositValue.toLocaleString('vi-VN')} VNĐ\n` +
+      `Current balance: ${walletBalance.toLocaleString('vi-VN')} VNĐ\n` +
+      `Balance after deduction: ${(walletBalance - depositValue).toLocaleString('vi-VN')} VNĐ\n` +
+      `Borrowing duration: ${days} days`,
       [
         {
-          text: 'Hủy',
+          text: 'Cancel',
           style: 'cancel',
         },
         {
-          text: 'Xác nhận',
+          text: 'Confirm',
           onPress: async () => {
             try {
               setBorrowing(true);
               console.log('📦 Creating borrow transaction...');
 
-              // Extract businessId safely
+              // FIX CHẮC 100% - businessId đúng trong mọi trường hợp (giống customer dashboard)
               let businessId: string | undefined;
-              if (!product.businessId) {
-                Alert.alert('Lỗi', 'Không tìm thấy thông tin cửa hàng.');
-                setBorrowing(false);
-                return;
+
+              // Ưu tiên cao nhất: product.business (khi populate)
+              if (product.business) {
+                businessId = typeof product.business === 'object' 
+                  ? product.business._id || product.business.id 
+                  : product.business;
               }
-              
-              if (typeof product.businessId === 'string') {
-                businessId = product.businessId;
-              } else {
-                businessId = (product.businessId as any)?._id || (product.businessId as any)?.id;
+
+              // Nếu không có thì lấy từ businessId trực tiếp trên product
+              if (!businessId && product.businessId) {
+                businessId = typeof product.businessId === 'object'
+                  ? product.businessId._id || product.businessId.id
+                  : product.businessId;
               }
-              
+
+              // Cuối cùng mới lấy từ productGroupId (rất hiếm khi cần)
+              if (!businessId && product.productGroupId?.business) {
+                businessId = typeof product.productGroupId.business === 'object'
+                  ? product.productGroupId.business._id || product.productGroupId.business.id
+                  : product.productGroupId.business;
+              }
+
+              if (!businessId && typeof product.productGroupId?.businessId === 'object') {
+                businessId = product.productGroupId.businessId._id || product.productGroupId.businessId.id;
+              }
+
+              if (!businessId && typeof product.productGroupId?.businessId === 'string') {
+                businessId = product.productGroupId.businessId;
+              }
+
+              console.log('🔍 Product object structure:', {
+                hasBusiness: !!product.business,
+                hasBusinessId: !!product.businessId,
+                hasProductGroupId: !!product.productGroupId,
+                productGroupIdHasBusiness: !!(product.productGroupId as any)?.business,
+                productGroupIdHasBusinessId: !!(product.productGroupId as any)?.businessId,
+              });
+              console.log('🔍 Extracted businessId:', businessId);
+
               if (!businessId) {
-                Alert.alert('Lỗi', 'Không tìm thấy ID cửa hàng.');
+                console.error('❌ Cannot extract businessId from product:', JSON.stringify(product, null, 2));
+                throw new Error('Cannot find store information. Please try again or contact support.');
+              }
+
+              // Lấy productId
+              const productId = product._id || product.id;
+              if (!productId) {
+                console.error('❌ Cannot find productId in product:', product);
+                throw new Error('Cannot find product ID. Please try again.');
+              }
+
+              // Validate depositValue before sending
+              if (!depositValue || depositValue <= 0 || isNaN(depositValue)) {
+                Alert.alert(
+                  'Error',
+                  'Invalid deposit value. Please contact support or try another product.'
+                );
                 setBorrowing(false);
                 return;
               }
 
               const borrowDto = {
-                productId: product._id,
-                businessId: businessId,
-                depositValue: depositValue,
-                durationInDays: duration,
-                type: 'online' as const,
+                productId,
+                businessId,
+                depositValue: depositValue, // Must be valid > 0
+                durationInDays: days,
+                type: "online" as const, // ← CỨ ĐỂ CỨNG THẾ NÀY LÀ CHẮC ĂN NHẤT
               };
+
+              console.log('📦 FINAL borrowDto gửi đi:', {
+                productId,
+                businessId,
+                depositValue,
+                durationInDays: days,
+                type: 'online'
+              });
+              console.log('📦 Borrow DTO (full):', JSON.stringify(borrowDto, null, 2));
 
               const response = await borrowTransactionsApi.createWithAutoRefresh(borrowDto);
               
               console.log('✅ Borrow transaction created:', response);
 
               Alert.alert(
-                'Thành công',
-                'Yêu cầu mượn đã được gửi! Vui lòng đến cửa hàng để nhận sản phẩm.',
+                'Success',
+                'Borrow request has been sent! Please visit the store to receive the product.',
                 [
                   {
                     text: 'OK',
@@ -205,37 +368,78 @@ export default function CustomerProductDetailScreen() {
                 ]
               );
             } catch (error: any) {
-              // Extract error message from multiple possible locations
-              const errorMessage = 
-                error?.response?.data?.message || 
-                error?.message || 
-                '';
               
-              // Check for maximum concurrent borrow limit error (case-insensitive)
-              const lowerErrorMessage = errorMessage.toLowerCase();
-              if (lowerErrorMessage.includes('maximum concurrent') || 
-                  lowerErrorMessage.includes('concurrent borrow limit') ||
-                  lowerErrorMessage.includes('limit reached')) {
+              // Xử lý lỗi cụ thể (giống customer dashboard)
+              const errorMessage = error?.response?.data?.message || error?.message || '';
+              
+              console.log('❌ Borrow Error:', errorMessage);
+              
+              // Check for insufficient balance
+              const isInsufficientBalance = errorMessage.toLowerCase().includes('insufficient') || 
+                                           errorMessage.toLowerCase().includes('không đủ') ||
+                                           errorMessage.toLowerCase().includes('số dư');
+              
+              // Check for maximum concurrent borrow limit
+              const isLimitReached = errorMessage.toLowerCase().includes('maximum concurrent') || 
+                                     errorMessage.toLowerCase().includes('limit reached') ||
+                                     errorMessage.toLowerCase().includes('giới hạn');
+              
+              // Check for invalid deposit value
+              const isInvalidDeposit = errorMessage.toLowerCase().includes('invalid deposit') || 
+                                      errorMessage.toLowerCase().includes('deposit value');
+              
+              if (isInvalidDeposit) {
                 Alert.alert(
-                  'Đã đạt giới hạn mượn',
-                  'Bạn đã đạt giới hạn số lượng sản phẩm có thể mượn đồng thời (tối đa 3 sản phẩm).\n\nVui lòng trả một số sản phẩm đang mượn trước khi mượn thêm.',
+                  'Invalid Deposit Value',
+                  'The deposit value for this product is invalid. Please contact support or try another product.'
+                );
+              } else if (isLimitReached) {
+                Alert.alert(
+                  'Borrow Limit Reached',
+                  'You have reached the maximum number of products you can borrow at the same time (maximum 3 products).\n\nPlease return some products before borrowing more.',
                   [
                     {
-                      text: 'Xem lịch sử mượn',
+                      text: 'View Borrow History',
                       onPress: () => {
                         router.push('/(protected)/customer/transaction-history');
                       },
                     },
                     {
-                      text: 'Đóng',
+                      text: 'Close',
                       style: 'cancel',
+                    },
+                  ]
+                );
+              } else if (isInsufficientBalance) {
+                // Handle both balance and availableBalance fields
+                const currentBalance = (userData as any)?.wallet?.availableBalance ?? 
+                                     (userData as any)?.wallet?.balance ?? 
+                                     0;
+                const shortage = depositValue - currentBalance;
+                Alert.alert(
+                  'Insufficient Balance',
+                  `Your wallet balance is insufficient to borrow this product.\n\n` +
+                  `Current balance: ${currentBalance.toLocaleString('vi-VN')} VNĐ\n` +
+                  `Required deposit: ${depositValue.toLocaleString('vi-VN')} VNĐ\n` +
+                  `Shortage: ${shortage.toLocaleString('vi-VN')} VNĐ\n\n` +
+                  `Please top up your wallet to continue.`,
+                  [
+                    {
+                      text: 'Close',
+                      style: 'cancel',
+                    },
+                    {
+                      text: 'Top Up',
+                      onPress: () => {
+                        router.push('/(protected)/customer/customer-wallet');
+                      },
                     },
                   ]
                 );
               } else {
                 Alert.alert(
-                  'Lỗi',
-                  'Không thể tạo yêu cầu mượn. Vui lòng thử lại sau.'
+                  'Error',
+                  errorMessage || 'Unable to create borrow request. Please try again later.'
                 );
               }
             } finally {

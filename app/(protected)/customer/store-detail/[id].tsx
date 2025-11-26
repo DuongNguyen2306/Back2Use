@@ -6,22 +6,19 @@ import {
   Alert,
   Image,
   Modal,
-  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { useAuth } from '../../../../context/AuthProvider';
 import { borrowTransactionsApi } from '../../../../src/services/api/borrowTransactionService';
 import { businessesApi } from '../../../../src/services/api/businessService';
-import { apiClient } from '../../../../src/services/api/client';
 import { productsApi } from '../../../../src/services/api/productService';
 import { getCurrentUserProfileWithAutoRefresh } from '../../../../src/services/api/userService';
-import { API_ENDPOINTS } from '../../../../src/constants/api';
 import { Business } from '../../../../src/types/business.types';
 import { Product } from '../../../../src/types/product.types';
 
@@ -184,42 +181,69 @@ export default function StoreDetailScreen() {
     }
   };
 
-  // Handle product press - show modal
+  // Handle product press - show modal (giống customer dashboard - dùng scan API)
   const handleProductPress = async (product: Product) => {
-    const productId = product._id || product.id;
-    if (!productId) {
-      console.error('Product ID not found:', product);
+    const serialNumber = product.serialNumber;
+    if (!serialNumber || serialNumber.trim() === '') {
+      Alert.alert('Error', 'Product serial number not found');
       return;
     }
     
     try {
-      // Load product detail
-      const response = await productsApi.getByIdWithAutoRefresh(productId);
-      if (response && response.data) {
-        const productData = response.data;
+      // Gọi API scan để lấy thông tin sản phẩm đầy đủ (giống quét QR)
+      console.log('🔄 Calling productsApi.scan with:', serialNumber);
+      const response = await productsApi.scan(serialNumber);
+      
+      console.log('📦 API Response:', JSON.stringify(response, null, 2));
+      
+      // API trả về: { success: true, data: { product: {...}, qrCode: "...", serialNumber: "...", ... } }
+      // Hoặc: { statusCode: 200, data: {...} }
+      const responseData: any = response;
+      let productData: any = null;
+      let qrCode: string = '';
+      let productStatus: string = '';
+      
+      if (responseData.success && responseData.data) {
+        // Trường hợp response có success: true
+        const data: any = responseData.data;
+        productData = data.product || data;
+        qrCode = data.qrCode || '';
+        productStatus = data.status || '';
+      } else if (responseData.statusCode === 200 && responseData.data) {
+        // Trường hợp response có statusCode
+        const data: any = responseData.data;
+        productData = data.product || data;
+        qrCode = data.qrCode || '';
+        productStatus = data.status || '';
+      }
+      
+      if (productData) {
+        console.log('✅ Product data found:', productData);
         
-        // Format product data similar to scanned item
+        // Xử lý productGroupId có thể là object hoặc string
         const productGroupName = productData.productGroupId && typeof productData.productGroupId === 'object' 
           ? productData.productGroupId.name 
-          : (product.productGroupId as any)?.name || "Product";
+          : "Product";
         
+        // Xử lý productSizeId
         const productSizeName = productData.productSizeId && typeof productData.productSizeId === 'object'
-          ? productData.productSizeId.name || productData.productSizeId.description
-          : (product.productSizeId as any)?.name || (product.productSizeId as any)?.description || '';
+          ? productData.productSizeId.sizeName || productData.productSizeId.name || productData.productSizeId.description
+          : "Unknown";
         
         const formattedProduct = {
           id: productData._id || productData.id,
-          name: productGroupName,
+          name: productGroupName || "Product",
           size: productSizeName,
           type: "container",
-          data: productData.serialNumber || '',
-          product: productData,
-          qrCode: productData.qrCode || '',
-          status: productData.status || 'available',
+          data: serialNumber,
+          product: productData, // Lưu thông tin sản phẩm đầy đủ từ scan API
+          qrCode: qrCode || productData.qrCode || '',
+          status: productStatus || productData.status || 'available',
         };
         
+        console.log('📱 Formatted product created:', formattedProduct);
         setSelectedProduct(formattedProduct);
-        setDurationInDays('30');
+        setDurationInDays('30'); // Reset về mặc định khi mở modal mới
         setShowProductModal(true);
         
         // Reload user data
@@ -230,11 +254,12 @@ export default function StoreDetailScreen() {
           console.error('Error reloading user data:', error);
         }
       } else {
-        Alert.alert('Lỗi', 'Không tìm thấy thông tin sản phẩm.');
+        console.error('❌ No product data in response');
+        Alert.alert('Error', responseData.message || 'Product not found');
       }
     } catch (error: any) {
       console.error('Error loading product:', error);
-      Alert.alert('Lỗi', error.message || 'Không thể tải thông tin sản phẩm.');
+      Alert.alert('Error', error.message || 'Failed to load product information. Please try again.');
     }
   };
 
@@ -267,7 +292,53 @@ export default function StoreDetailScreen() {
     }
 
     const product = selectedProduct.product;
-    const depositValue = (product.productSizeId as any)?.depositValue || 0;
+    
+    // Get deposit value safely - check multiple possible locations
+    let depositValue = 0;
+    
+    console.log('🔍 Full Product Object for depositValue:', JSON.stringify(product, null, 2));
+    console.log('🔍 productSizeId:', product.productSizeId);
+    
+    // Check if productSizeId is an object with depositValue
+    if (product.productSizeId && typeof product.productSizeId === 'object') {
+      const productSize = product.productSizeId as any;
+      console.log('🔍 productSizeId object keys:', Object.keys(productSize));
+      console.log('🔍 productSizeId full:', JSON.stringify(productSize, null, 2));
+      
+      // Try multiple possible field names
+      depositValue = productSize.depositValue || 
+                     productSize.basePrice || 
+                     productSize.price || 
+                     0;
+      
+      console.log('💰 Found depositValue from productSizeId:', depositValue);
+    }
+    
+    // If still 0, check productGroupId.productSizeId
+    if (depositValue === 0 && product.productGroupId) {
+      const productGroup = product.productGroupId as any;
+      if (productGroup.productSizeId && typeof productGroup.productSizeId === 'object') {
+        const pgSize = productGroup.productSizeId;
+        depositValue = pgSize.depositValue || pgSize.basePrice || pgSize.price || 0;
+        console.log('💰 Found depositValue from productGroupId.productSizeId:', depositValue);
+      }
+    }
+    
+    console.log('💰 Final Deposit Value Check:', {
+      hasProductSizeId: !!product.productSizeId,
+      productSizeIdType: typeof product.productSizeId,
+      depositValue,
+    });
+    
+    // If depositValue is still 0, show error - backend requires valid depositValue
+    if (depositValue === 0 || !depositValue || isNaN(depositValue)) {
+      console.error('❌ Cannot find depositValue');
+      Alert.alert(
+        'Error',
+        'Unable to find deposit information for this product. The product may not be properly configured. Please contact support or try another product.'
+      );
+      return;
+    }
     
     // Kiểm tra số dư ví trước khi cho phép mượn
     // Handle both balance and availableBalance fields
@@ -390,10 +461,20 @@ export default function StoreDetailScreen() {
                 throw new Error('Không tìm thấy ID sản phẩm. Vui lòng thử lại.');
               }
 
+              // Validate depositValue before sending
+              if (!depositValue || depositValue <= 0 || isNaN(depositValue)) {
+                Alert.alert(
+                  'Error',
+                  'Invalid deposit value. Please contact support or try another product.'
+                );
+                setBorrowing(false);
+                return;
+              }
+
               const borrowDto = {
                 productId,
                 businessId,
-                depositValue,
+                depositValue: depositValue, // Must be valid > 0
                 durationInDays: days,
                 type: "online" as const, // ← CỨ ĐỂ CỨNG THẾ NÀY LÀ CHẮC ĂN NHẤT
               };
@@ -432,6 +513,8 @@ export default function StoreDetailScreen() {
               // Xử lý lỗi cụ thể
               const errorMessage = error?.response?.data?.message || error?.message || '';
               
+              console.log('❌ Borrow Error:', errorMessage);
+              
               // Check for insufficient balance
               const isInsufficientBalance = errorMessage.toLowerCase().includes('insufficient') || 
                                            errorMessage.toLowerCase().includes('không đủ') ||
@@ -442,7 +525,16 @@ export default function StoreDetailScreen() {
                                      errorMessage.toLowerCase().includes('limit reached') ||
                                      errorMessage.toLowerCase().includes('giới hạn');
               
-              if (isLimitReached) {
+              // Check for invalid deposit value
+              const isInvalidDeposit = errorMessage.toLowerCase().includes('invalid deposit') || 
+                                      errorMessage.toLowerCase().includes('deposit value');
+              
+              if (isInvalidDeposit) {
+                Alert.alert(
+                  'Invalid Deposit Value',
+                  'The deposit value for this product is invalid. Please contact support or try another product.'
+                );
+              } else if (isLimitReached) {
                 Alert.alert(
                   'Đã đạt giới hạn mượn',
                   'Bạn đã đạt giới hạn số lượng sản phẩm có thể mượn đồng thời (tối đa 3 sản phẩm).\n\nVui lòng trả một số sản phẩm đang mượn trước khi mượn thêm.',

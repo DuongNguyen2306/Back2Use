@@ -2,6 +2,46 @@ import { API_BASE_URL, API_ENDPOINTS, REQUEST_TIMEOUT } from '../../constants/ap
 import { UpdateProfileRequest, UploadAvatarResponse, User } from '../../types/auth.types';
 import { apiClient } from './client';
 
+// Leaderboard Types
+export interface LeaderboardEntry {
+  _id: string;
+  customerId: {
+    _id: string;
+    fullName?: string;
+    phone?: string;
+    address?: string;
+    yob?: string;
+  };
+  month: number;
+  year: number;
+  rankingPoints: number;
+  rank: number;
+  lockedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  __v?: number;
+}
+
+export interface MonthlyLeaderboardResponse {
+  statusCode: number;
+  message: string;
+  data: LeaderboardEntry[];
+  total: number;
+  currentPage: number;
+  totalPages: number;
+}
+
+export interface GetMonthlyLeaderboardParams {
+  month?: number; // 1-12
+  year?: number;
+  rankMin?: number;
+  rankMax?: number;
+  minPoints?: number;
+  maxPoints?: number;
+  page?: number;
+  limit?: number;
+}
+
 // ============================================================================
 // USER API
 // ============================================================================
@@ -390,5 +430,109 @@ export const useProfileAPI = () => {
   };
   
   return { testAPI };
+};
+
+// ============================================================================
+// LEADERBOARD API
+// ============================================================================
+
+// Get monthly leaderboard - GET /monthly-leaderboards
+export const getMonthlyLeaderboard = async (
+  params?: GetMonthlyLeaderboardParams,
+  token?: string
+): Promise<MonthlyLeaderboardResponse> => {
+  try {
+    // Get token if not provided
+    let accessToken = token;
+    if (!accessToken && getCurrentAccessToken) {
+      try {
+        accessToken = await getCurrentAccessToken() || undefined;
+      } catch (error) {
+        console.warn('Error getting token from provider:', error);
+      }
+    }
+
+    // Fallback: Get token from AsyncStorage
+    if (!accessToken) {
+      try {
+        const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+        accessToken = await AsyncStorage.getItem('ACCESS_TOKEN') || undefined;
+      } catch (error) {
+        console.warn('Error getting token from AsyncStorage:', error);
+      }
+    }
+
+    const headers: Record<string, string> = {};
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`;
+    }
+
+    // Build query parameters
+    const queryParams: Record<string, any> = {};
+    if (params?.month !== undefined) queryParams.month = params.month;
+    if (params?.year !== undefined) queryParams.year = params.year;
+    if (params?.rankMin !== undefined) queryParams.rankMin = params.rankMin;
+    if (params?.rankMax !== undefined) queryParams.rankMax = params.rankMax;
+    if (params?.minPoints !== undefined) queryParams.minPoints = params.minPoints;
+    if (params?.maxPoints !== undefined) queryParams.maxPoints = params.maxPoints;
+    if (params?.page !== undefined) queryParams.page = params.page;
+    if (params?.limit !== undefined) queryParams.limit = params.limit;
+
+    const response = await apiClient.get(API_ENDPOINTS.LEADERBOARD.MONTHLY, {
+      headers,
+      params: queryParams,
+      timeout: REQUEST_TIMEOUT,
+    });
+
+    const result = response.data;
+    console.log('📡 Monthly Leaderboard API Response:', JSON.stringify(result, null, 2));
+
+    if (result.statusCode === 200 && Array.isArray(result.data)) {
+      return {
+        statusCode: result.statusCode,
+        message: result.message || 'Get monthly leaderboard successfully',
+        data: result.data,
+        total: result.total || result.data.length,
+        currentPage: result.currentPage || 1,
+        totalPages: result.totalPages || 1,
+      };
+    } else {
+      throw new Error(result.message || 'Failed to get monthly leaderboard');
+    }
+  } catch (error: any) {
+    console.error('Error fetching monthly leaderboard:', error);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      response: error.response?.data,
+      status: error.response?.status,
+      url: error.config?.url
+    });
+
+    if (error.code === 'ECONNABORTED') {
+      throw new Error('Request timeout. Please check your connection and try again.');
+    }
+
+    if (error.message === 'Network Error') {
+      throw new Error('Network error. Please check your internet connection and server status.');
+    }
+
+    throw new Error(
+      `Failed to fetch monthly leaderboard: ${error.response?.data?.message || error.message || 'Unknown error'}`
+    );
+  }
+};
+
+// Get monthly leaderboard with auto refresh token
+export const getMonthlyLeaderboardWithAutoRefresh = async (
+  params?: GetMonthlyLeaderboardParams
+): Promise<MonthlyLeaderboardResponse> => {
+  return getMonthlyLeaderboard(params);
+};
+
+// Leaderboard API object for easy access
+export const leaderboardApi = {
+  getMonthly: getMonthlyLeaderboardWithAutoRefresh,
+  getMonthlyWithParams: getMonthlyLeaderboard,
 };
 
