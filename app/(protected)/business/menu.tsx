@@ -14,15 +14,17 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../../context/AuthProvider';
 import { useToast } from '../../../hooks/use-toast';
-import { authApi, subscriptionsApi, SubscriptionPackage } from '../../../lib/api';
+import { authApi, SubscriptionPackage, subscriptionsApi } from '../../../lib/api';
 import { businessesApi } from '../../../src/services/api/businessService';
 import { BusinessProfile } from '../../../src/types/business.types';
 
 const { width } = Dimensions.get('window');
 
 export default function BusinessMenu() {
+  const { bottom } = useSafeAreaInsets();
   const auth = useAuth();
   const { toast } = useToast();
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
@@ -270,14 +272,11 @@ export default function BusinessMenu() {
       onPress: handleSubscriptionPress,
     },
     {
-      id: 'qr',
-      icon: 'qr-code-outline',
-      label: 'Generate QR Code',
-      color: '#EF4444',
-      onPress: () => {
-        // Navigate to QR code generator
-        Alert.alert('Generate QR Code', 'Feature under development');
-      },
+      id: 'staff',
+      icon: 'people-outline',
+      label: 'Staff Management',
+      color: '#00704A',
+      onPress: () => router.push('/(protected)/business/staff-management'),
     },
     {
       id: 'notifications',
@@ -320,7 +319,11 @@ export default function BusinessMenu() {
         </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={{ paddingBottom: bottom + 100 }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* User Profile Card */}
         <TouchableOpacity 
           style={styles.profileCard}
@@ -434,8 +437,6 @@ export default function BusinessMenu() {
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
 
-        {/* Bottom spacing */}
-        <View style={styles.bottomSpacing} />
       </ScrollView>
 
       {/* Subscription Modal */}

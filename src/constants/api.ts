@@ -32,9 +32,6 @@ export const API_ENDPOINTS = {
     REWARDS: '/customer/rewards',
     STORES: '/customer/stores',
   },
-  LEADERBOARD: {
-    MONTHLY: '/monthly-leaderboards', // GET /monthly-leaderboards?month=&year=&rankMin=&rankMax=&minPoints=&maxPoints=&page=&limit=
-  },
   BUSINESSES: {
     NEARBY: '/businesses/nearby',
     HISTORY: '/businesses/history-business-form',
@@ -92,6 +89,13 @@ export const API_ENDPOINTS = {
     CONFIRM: '/borrow-transactions/confirm', // PATCH /borrow-transactions/confirm/{id}
     CUSTOMER_CANCEL: '/borrow-transactions/customer/cancel', // PATCH /borrow-transactions/customer/cancel/{id}
     RETURN_CHECK: '/borrow-transactions', // POST /borrow-transactions/{serialNumber}/return-check
+  },
+  STAFF: {
+    GET_ALL: '/staffs', // GET /staffs?search=&status=&limit=&page=
+    GET_BY_ID: '/staffs', // GET /staffs/{id}
+    CREATE: '/staffs', // POST /staffs
+    UPDATE: '/staffs', // PATCH /staffs/{id}
+    DELETE: '/staffs', // DELETE /staffs/{id}
   },
 } as const;
 

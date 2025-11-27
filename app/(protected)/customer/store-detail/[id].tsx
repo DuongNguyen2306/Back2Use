@@ -621,38 +621,6 @@ export default function StoreDetailScreen() {
                 throw new Error('Không tìm thấy thông tin cửa hàng. Vui lòng thử lại hoặc liên hệ hỗ trợ.');
               }
 
-              // Kiểm tra xem user có phải owner của business này không
-              let userBusinessId: string | null = null;
-              
-              // Kiểm tra từ userBusinessProfile
-              if (userBusinessProfile) {
-                userBusinessId = userBusinessProfile._id || userBusinessProfile.id;
-              }
-              
-              // Hoặc kiểm tra từ user data nếu có businessId
-              if (!userBusinessId && currentUserData) {
-                const user = currentUserData as any;
-                if (user.businessId) {
-                  userBusinessId = typeof user.businessId === 'string' 
-                    ? user.businessId 
-                    : (user.businessId._id || user.businessId.id);
-                }
-              }
-              
-              // So sánh businessId của product với businessId của user
-              if (userBusinessId && businessId === userBusinessId) {
-                console.log('⚠️ User is trying to borrow from their own business:', {
-                  productBusinessId: businessId,
-                  userBusinessId: userBusinessId
-                });
-                Alert.alert(
-                  'Cannot Borrow',
-                  'This product belongs to your business. You cannot borrow products from your own business.'
-                );
-                setBorrowing(false);
-                return;
-              }
-
               // Lấy productId
               const productId = product._id || product.id;
               if (!productId) {
@@ -737,19 +705,7 @@ export default function StoreDetailScreen() {
               const isInvalidDeposit = errorMessage.toLowerCase().includes('invalid deposit') || 
                                       errorMessage.toLowerCase().includes('deposit value');
               
-              // Check for own business borrow attempt
-              const isOwnBusiness = errorMessage.toLowerCase().includes('cannot borrow from your own business') ||
-                                   errorMessage.toLowerCase().includes('own business') ||
-                                   (error?.response?.data?.statusCode === 400 && 
-                                    (errorMessage.toLowerCase().includes('business') || 
-                                     errorMessage.toLowerCase().includes('cannot borrow')));
-              
-              if (isOwnBusiness) {
-                Alert.alert(
-                  'Cannot Borrow',
-                  'This product belongs to your business. You cannot borrow products from your own business.'
-                );
-              } else if (isInvalidDeposit) {
+              if (isInvalidDeposit) {
                 Alert.alert(
                   'Invalid Deposit Value',
                   'The deposit value for this product is invalid. Please contact support or try another product.'
@@ -1088,8 +1044,6 @@ export default function StoreDetailScreen() {
           const groupName = (product.productGroupId as any)?.name || 'Product';
           const depositValue = (product.productSizeId as any)?.depositValue || 0;
           const imageUrl = (product.productGroupId as any)?.imageUrl || product.images?.[0];
-          const isAvailable = product.status === 'available';
-          const statusText = isAvailable ? 'Available' : 'Borrowed';
 
           return (
             <TouchableOpacity
@@ -1099,23 +1053,6 @@ export default function StoreDetailScreen() {
             >
               {/* Product Image - Top 60-65% of card */}
               <View style={styles.productImageContainer}>
-                {/* Status Badge - Top right corner */}
-                <View style={[
-                  styles.statusBadge,
-                  isAvailable ? styles.statusBadgeAvailable : styles.statusBadgeBorrowed
-                ]}>
-                  <View style={[
-                    styles.statusDot,
-                    isAvailable ? styles.statusDotAvailable : styles.statusDotBorrowed
-                  ]} />
-                  <Text style={[
-                    styles.statusBadgeText,
-                    isAvailable ? styles.statusBadgeTextAvailable : styles.statusBadgeTextBorrowed
-                  ]}>
-                    {statusText}
-                  </Text>
-                </View>
-
                 {imageUrl && imageUrl.trim() !== '' ? (
                   <Image 
                     source={{ uri: imageUrl }} 
@@ -1132,45 +1069,26 @@ export default function StoreDetailScreen() {
                 )}
               </View>
               
-              {/* Product Info - Bottom on card background */}
+              {/* Product Info - Bottom on white background */}
               <View style={styles.productInfo}>
                 <Text style={styles.productName} numberOfLines={2}>
                   {groupName}
                 </Text>
-                <Text style={styles.productDeposit}>
-                  {depositValue > 0 ? (
-                    <>
-                      <Text style={styles.depositLabel}>Deposit: </Text>
-                      <Text style={styles.depositValue}>
-                        {depositValue.toLocaleString('vi-VN')} VNĐ
-                      </Text>
-                    </>
-                  ) : (
-                    <Text style={styles.depositFree}>Free</Text>
-                  )}
+                <Text style={styles.productPrice}>
+                  {depositValue > 0 ? `${depositValue.toLocaleString('vi-VN')} VNĐ` : 'Free'}
                 </Text>
               </View>
 
-              {/* Action Button - Bottom right corner */}
+              {/* Add Button (+) - Bottom right corner */}
               <TouchableOpacity
-                style={[
-                  styles.addButton,
-                  !isAvailable && styles.addButtonDisabled
-                ]}
+                style={styles.addButton}
                 onPress={(e) => {
                   e.stopPropagation();
-                  if (isAvailable) {
-                    handleProductPress(product);
-                  }
+                  handleProductPress(product);
                 }}
                 activeOpacity={0.8}
-                disabled={!isAvailable}
               >
-                <Ionicons 
-                  name={isAvailable ? "bag-outline" : "bag-outline"} 
-                  size={18} 
-                  color={isAvailable ? "#FFFFFF" : "#9CA3AF"} 
-                />
+                <Ionicons name="add" size={20} color="#FFFFFF" />
               </TouchableOpacity>
             </TouchableOpacity>
           );
@@ -1232,8 +1150,8 @@ export default function StoreDetailScreen() {
                     <View style={styles.depositInfo}>
                       <Ionicons name="cash-outline" size={20} color="#059669" />
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.depositModalLabel}>Tiền cọc:</Text>
-                        <Text style={styles.depositModalValue}>
+                        <Text style={styles.depositLabel}>Tiền cọc:</Text>
+                        <Text style={styles.depositValue}>
                           {depositValue.toLocaleString('vi-VN')} VNĐ
                         </Text>
                         <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
@@ -1291,11 +1209,11 @@ export default function StoreDetailScreen() {
                 {selectedProduct.status && (
                   <View style={styles.statusInfo}>
                     <View style={[
-                      styles.statusModalBadge,
+                      styles.statusBadge,
                       selectedProduct.status === 'available' ? styles.statusAvailable : styles.statusUnavailable
                     ]}>
                       <Text style={[
-                        styles.statusModalText,
+                        styles.statusText,
                         selectedProduct.status !== 'available' && { color: '#DC2626' }
                       ]}>
                         {selectedProduct.status === 'available' ? 'Có sẵn' : 'Không có sẵn'}
@@ -1395,7 +1313,7 @@ export default function StoreDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F9FAFB',
   },
   header: {
     backgroundColor: '#0F4D3A',
@@ -1630,65 +1548,56 @@ const styles = StyleSheet.create({
   },
   productsListContent: {
     paddingBottom: 20,
-    paddingHorizontal: 10,
   },
   productRow: {
     justifyContent: 'space-between',
+    paddingHorizontal: 20,
     marginBottom: 15,
-    paddingHorizontal: 5,
   },
   productsSectionHeader: {
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 12,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F9FAFB',
   },
   productCard: {
     width: '48%',
-    backgroundColor: '#F9F7F2', // Creamy Beige / Bone White
-    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#E6E0D6', // Soft Beige-Gray
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: 8,
     elevation: 3,
     position: 'relative',
     // Card height approximately 200-220px, image takes 60-65%
     minHeight: 200,
-    padding: 8, // Inner padding so content doesn't touch edges
   },
   productImageContainer: {
     width: '100%',
     height: 130, // ~65% of card (200px card)
-    backgroundColor: '#F9F9F9',
+    backgroundColor: '#F9FAFB',
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 8,
-    borderRadius: 12, // Slightly smaller radius for inner container
-    position: 'relative', // For status badge positioning
   },
   productImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 12,
   },
   productImagePlaceholder: {
     width: '100%',
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F9F9F9',
-    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
   },
   productInfo: {
-    padding: 8,
-    paddingTop: 12,
+    padding: 12,
     paddingBottom: 40, // Space for add button
-    backgroundColor: 'transparent', // Transparent to show card background
+    backgroundColor: '#FFFFFF',
     minHeight: 70, // ~35% of card for text area
   },
   productName: {
@@ -1698,75 +1607,18 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     lineHeight: 20,
   },
-  productDeposit: {
+  productPrice: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  depositLabel: {
-    color: '#6B7280',
     fontWeight: '500',
-  },
-  depositValue: {
-    color: '#F97316', // Orange color for deposit
-    fontWeight: '700',
-  },
-  depositFree: {
-    color: '#3B82F6', // Blue color for free
-    fontWeight: '700',
-  },
-  statusBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    zIndex: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 3,
-  },
-  statusBadgeAvailable: {
-    backgroundColor: '#F0FDF4', // Light green background
-  },
-  statusBadgeBorrowed: {
-    backgroundColor: '#FEF2F2', // Light red background
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 4,
-  },
-  statusDotAvailable: {
-    backgroundColor: '#10B981', // Green dot
-  },
-  statusDotBorrowed: {
-    backgroundColor: '#EF4444', // Red dot
-  },
-  statusBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  statusBadgeTextAvailable: {
-    color: '#059669', // Green text
-  },
-  statusBadgeTextBorrowed: {
-    color: '#DC2626', // Red text
+    color: '#6B7280',
   },
   addButton: {
     position: 'absolute',
     bottom: 12,
     right: 12,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#006241',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1775,11 +1627,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 4,
-  },
-  addButtonDisabled: {
-    backgroundColor: '#E5E7EB',
-    shadowColor: '#9CA3AF',
-    shadowOpacity: 0.1,
   },
   loadingMoreContainer: {
     paddingVertical: 20,
@@ -1903,12 +1750,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 16,
   },
-  depositModalLabel: {
+  depositLabel: {
     fontSize: 16,
     color: '#374151',
     fontWeight: '600',
   },
-  depositModalValue: {
+  depositValue: {
     fontSize: 18,
     color: '#059669',
     fontWeight: '700',
@@ -1917,7 +1764,7 @@ const styles = StyleSheet.create({
   statusInfo: {
     marginBottom: 16,
   },
-  statusModalBadge: {
+  statusBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -1929,7 +1776,7 @@ const styles = StyleSheet.create({
   statusUnavailable: {
     backgroundColor: '#FEF2F2',
   },
-  statusModalText: {
+  statusText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#059669',
