@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { authApi } from "../../../services/api/authService";
-import { Role } from "../../../types/auth.types";
+import { Role, User } from "../../../types/auth.types";
 
 type AuthState = {
   isAuthenticated: boolean;
@@ -10,6 +10,7 @@ type AuthState = {
   accessToken: string | null;
   refreshToken: string | null;
   tokenExpiry: number | null;
+  user: User | null;
 };
 
 const STORAGE_KEYS = {
@@ -104,6 +105,7 @@ const checkAndRefreshToken = async (state: AuthState) => {
         accessToken: refreshResult.accessToken,
         refreshToken: refreshResult.refreshToken,
         tokenExpiry: refreshResult.expiry,
+        user: refreshResult.user || state.user,
       };
     } else {
       console.log("❌ Token refresh failed, logging out");
@@ -115,6 +117,7 @@ const checkAndRefreshToken = async (state: AuthState) => {
         accessToken: null,
         refreshToken: null,
         tokenExpiry: null,
+        user: null,
       };
     }
   }
@@ -130,6 +133,7 @@ export function useAuthCore() {
     accessToken: null,
     refreshToken: null,
     tokenExpiry: null,
+    user: null,
   });
 
   // Hydrate auth state from storage on mount
@@ -177,6 +181,7 @@ export function useAuthCore() {
             accessToken,
             refreshToken,
             tokenExpiry,
+            user: null,
           });
 
           // Refresh user role from backend to ensure we have latest role
@@ -201,6 +206,7 @@ export function useAuthCore() {
                     accessToken: null,
                     refreshToken: null,
                     tokenExpiry: null,
+                    user: null,
                   });
                   return; // Exit early, don't set authenticated state
                 }
@@ -214,6 +220,7 @@ export function useAuthCore() {
                 // Always update role in storage and state to ensure consistency
                 await AsyncStorage.setItem(STORAGE_KEYS.ROLE, backendRole);
                 updatedState.role = backendRole;
+                updatedState.user = userProfile as User;
               }
             } catch (error) {
               console.error("❌ Error refreshing role on hydration:", error);
@@ -229,6 +236,7 @@ export function useAuthCore() {
                   accessToken: null,
                   refreshToken: null,
                   tokenExpiry: null,
+                  user: null,
                 });
                 return;
               }
@@ -245,6 +253,7 @@ export function useAuthCore() {
                 accessToken: null,
                 refreshToken: null,
                 tokenExpiry: null,
+                user: null,
               });
               return;
             }
@@ -260,6 +269,7 @@ export function useAuthCore() {
             accessToken: null,
             refreshToken: null,
             tokenExpiry: null,
+            user: null,
           });
         }
       } catch (error) {
@@ -271,6 +281,7 @@ export function useAuthCore() {
           accessToken: null,
           refreshToken: null,
           tokenExpiry: null,
+          user: null,
         });
       }
     };
@@ -373,6 +384,7 @@ export function useAuthCore() {
         accessToken,
         refreshToken,
         tokenExpiry,
+        user: user as User | null,
       });
 
       return { success: true, user, role };
@@ -411,6 +423,7 @@ export function useAuthCore() {
         accessToken: null,
         refreshToken: null,
         tokenExpiry: null,
+        user: null,
       });
       
       console.log("✅ Logout successful");

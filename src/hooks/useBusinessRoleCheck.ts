@@ -31,7 +31,7 @@ export function useBusinessRoleCheck() {
    */
   const checkBusinessStatus = async (showWelcome = true) => {
     // Only check if user is currently a customer and authenticated
-    if (authState.role !== 'customer' || !authState.isAuthenticated) {
+    if (authState.role !== 'customer' || !authState.isAuthenticated || !authState.accessToken) {
       return false;
     }
 
@@ -46,6 +46,11 @@ export function useBusinessRoleCheck() {
 
       // Method 1: Check user profile directly (most reliable)
       try {
+        // Double check authentication before API call
+        if (!authState.isAuthenticated || !authState.accessToken) {
+          return false;
+        }
+        
         const updatedUser = await getCurrentUserProfileWithAutoRefresh();
         
         if (updatedUser.role === 'business') {
@@ -67,12 +72,22 @@ export function useBusinessRoleCheck() {
           
           return true;
         }
-      } catch (error) {
+      } catch (error: any) {
+        // Ignore Unauthorized errors (user may have logged out)
+        if (error?.response?.status === 401 || error?.message?.includes('Unauthorized')) {
+          console.log('ℹ️ User not authenticated, skipping business check');
+          return false;
+        }
         console.error('❌ Error fetching user profile:', error);
       }
 
       // Method 2: Check business registration history as fallback
       try {
+        // Double check authentication before API call
+        if (!authState.isAuthenticated || !authState.accessToken) {
+          return false;
+        }
+        
         const historyResponse = await businessApi.getHistory({ status: 'approved', page: 1, limit: 1 });
         
         if (historyResponse.data && historyResponse.data.length > 0) {
@@ -109,7 +124,12 @@ export function useBusinessRoleCheck() {
             }
           }
         }
-      } catch (error) {
+      } catch (error: any) {
+        // Ignore Unauthorized errors (user may have logged out)
+        if (error?.response?.status === 401 || error?.message?.includes('Unauthorized')) {
+          console.log('ℹ️ User not authenticated, skipping business history check');
+          return false;
+        }
         console.error('❌ Error checking business history:', error);
       }
 
@@ -160,7 +180,13 @@ export function useBusinessRoleCheck() {
   // Auto-check role when on customer screens
   useEffect(() => {
     // Only check if user is customer and on customer screens
-    if (authState.role !== 'customer' || !authState.isAuthenticated) {
+    // Also check accessToken to ensure user is still authenticated
+    if (authState.role !== 'customer' || !authState.isAuthenticated || !authState.accessToken) {
+      // Clear interval if user is not authenticated
+      if (checkIntervalRef.current) {
+        clearInterval(checkIntervalRef.current);
+        checkIntervalRef.current = null;
+      }
       return;
     }
 

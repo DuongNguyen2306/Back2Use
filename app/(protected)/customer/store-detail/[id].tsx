@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Image,
   Modal,
   ScrollView,
@@ -42,9 +43,9 @@ export default function StoreDetailScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [priceFilter, setPriceFilter] = useState<'all' | 'low' | 'medium' | 'high'>('all');
   const [productCount, setProductCount] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [hasMoreProducts, setHasMoreProducts] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreProducts, setHasMoreProducts] = useState(true);
+  const [displayedProductsCount, setDisplayedProductsCount] = useState(6); // Số sản phẩm hiển thị ban đầu
   
   // Modal states
   const [showProductModal, setShowProductModal] = useState(false);
@@ -52,6 +53,9 @@ export default function StoreDetailScreen() {
   const [borrowing, setBorrowing] = useState(false);
   const [durationInDays, setDurationInDays] = useState<string>('30');
   const [userData, setUserData] = useState<any>(null);
+  const [userBusinessProfile, setUserBusinessProfile] = useState<any>(null);
+  const [isStoreOwner, setIsStoreOwner] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   // Fetch store details and products
   useEffect(() => {
@@ -78,12 +82,58 @@ export default function StoreDetailScreen() {
         setStore(storeData);
 
         // Load products from product groups
-        const groups = storeDetailResponse.data.productGroups || [];
-        console.log('📦 Found product groups in response:', groups.length);
-        console.log('📦 Product groups data:', JSON.stringify(groups, null, 2));
-        setProductGroups(groups);
+        const allGroups = storeDetailResponse.data.productGroups || [];
+        console.log('📦 Found product groups in response:', allGroups.length);
+        console.log('📦 Product groups data:', JSON.stringify(allGroups, null, 2));
         
-        await loadStoreProducts(storeData._id, groups, 1, false);
+        // Filter product groups by businessId to ensure they belong to this store
+        const storeBusinessId = storeData._id;
+        console.log('🔍 Store businessId:', storeBusinessId);
+        
+        const filteredGroups = allGroups.filter((group: any) => {
+          // Lấy businessId từ group theo nhiều cách
+          let groupBusinessId: string | undefined;
+          
+          if (typeof group.businessId === 'string') {
+            groupBusinessId = group.businessId;
+          } else if (group.businessId && typeof group.businessId === 'object') {
+            groupBusinessId = group.businessId._id || group.businessId.id;
+          }
+          
+          if (!groupBusinessId && group.business) {
+            if (typeof group.business === 'string') {
+              groupBusinessId = group.business;
+            } else if (typeof group.business === 'object') {
+              groupBusinessId = group.business._id || group.business.id;
+            }
+          }
+          
+          const matches = groupBusinessId === storeBusinessId;
+          
+          if (!matches) {
+            console.log(`⚠️ Product group "${group.name}" does not belong to this store:`, {
+              groupBusinessId,
+              storeBusinessId,
+              groupId: group._id
+            });
+          } else {
+            console.log(`✅ Product group "${group.name}" belongs to store`);
+          }
+          
+          return matches;
+        });
+        
+        console.log(`✅ Filtered ${filteredGroups.length} product groups from ${allGroups.length} total for store ${storeBusinessId}`);
+        
+        // Nếu không có groups sau khi filter, thử dùng tất cả groups (có thể businessId không match đúng format)
+        const groupsToUse = filteredGroups.length > 0 ? filteredGroups : allGroups;
+        
+        if (filteredGroups.length === 0 && allGroups.length > 0) {
+          console.warn('⚠️ No groups matched businessId filter, using all groups as fallback');
+        }
+        
+        setProductGroups(groupsToUse);
+        await loadStoreProducts(storeBusinessId, groupsToUse, true);
       } catch (error: any) {
         console.error('❌ Error loading store:', error);
         Alert.alert('Lỗi', error.message || 'Không thể tải thông tin cửa hàng.');
@@ -95,86 +145,197 @@ export default function StoreDetailScreen() {
     loadStoreData();
   }, [id]);
 
-  // Load user data
+  // Load user data and business profile
   useEffect(() => {
     const loadUserData = async () => {
       try {
         const user = await getCurrentUserProfileWithAutoRefresh();
         setUserData(user);
+        
+        // Nếu user có role business, load business profile để kiểm tra ownership
+        if (user.role === 'business' || state.role === 'business') {
+          try {
+            const businessProfileResponse = await businessesApi.getProfileWithAutoRefresh();
+            if (businessProfileResponse.data?.business) {
+              setUserBusinessProfile(businessProfileResponse.data.business);
+            }
+          } catch (error) {
+            console.log('ℹ️ User is not a business owner or error loading business profile:', error);
+          }
+        }
       } catch (error) {
         console.error('Error loading user data:', error);
       }
     };
     loadUserData();
-  }, []);
-
-  const loadStoreProducts = async (businessId: string, productGroups: any[], page: number = 1, append: boolean = false) => {
-    try {
-      setProductsLoading(true);
-      console.log('🔄 Loading products for business:', businessId, 'page:', page);
-      console.log('📦 Product groups to process:', productGroups.length);
-
-      if (productGroups.length === 0) {
-        console.log('ℹ️ No product groups found for this store');
-        setProducts([]);
-        setProductCount(0);
-        setTotalPages(1);
-        setHasMoreProducts(false);
-        return;
+  }, [state.role]);
+  
+  // Kiểm tra xem user có phải owner của store không
+  useEffect(() => {
+    if (store && (userBusinessProfile || state.user)) {
+      const storeBusinessId = store._id;
+      
+      // Kiểm tra từ business profile
+      let userBusinessId: string | null = null;
+      if (userBusinessProfile) {
+        userBusinessId = userBusinessProfile._id || userBusinessProfile.id;
       }
-
-      const limit = 20; // Products per page
-      const allProducts: Product[] = append ? [...products] : [];
-      let totalProducts = 0;
-      let maxTotalPages = 1;
-
-      // Get products from all groups using customer API with pagination
-      for (const group of productGroups) {
-        try {
-          console.log(`🔄 Loading products for group: ${group.name} (${group._id}), page: ${page}`);
-          
-          // Use customer-specific API endpoint with pagination
-          const productsResponse = await productsApi.getCustomerProducts(group._id, {
-            page: page,
-            limit: limit,
-          });
-          
-          if (productsResponse.data?.products && productsResponse.data.products.length > 0) {
-            // Filter products by businessId to ensure they belong to this store
-            const businessProducts = productsResponse.data.products.filter((p: any) => {
-              const pBusinessId = typeof p.businessId === 'string' 
-                ? p.businessId 
-                : (p.businessId?._id || p.businessId?.id);
-              return pBusinessId === businessId;
-            });
-            
-            allProducts.push(...businessProducts);
-            totalProducts += productsResponse.data.total || 0;
-            
-            // Track max total pages across all groups
-            if (productsResponse.data.totalPages > maxTotalPages) {
-              maxTotalPages = productsResponse.data.totalPages;
-            }
-            
-            console.log(`✅ Loaded ${businessProducts.length} products from group "${group.name}" (page ${page})`);
-          } else {
-            console.log(`ℹ️ No products found in group "${group.name}" (page ${page})`);
-          }
-        } catch (error: any) {
-          console.warn(`⚠️ Error loading products for group ${group._id} (${group.name}):`, error.message);
-          // Continue with other groups
+      
+      // Hoặc kiểm tra từ user data nếu có businessId
+      if (!userBusinessId && state.user) {
+        const user = state.user as any;
+        if (user.businessId) {
+          userBusinessId = typeof user.businessId === 'string' 
+            ? user.businessId 
+            : (user.businessId._id || user.businessId.id);
         }
       }
+      
+      const isOwner = userBusinessId === storeBusinessId;
+      setIsStoreOwner(isOwner);
+      
+      console.log('🔍 Store ownership check:', {
+        storeBusinessId,
+        userBusinessId,
+        isOwner,
+        userRole: state.user?.role || state.role
+      });
+    } else {
+      setIsStoreOwner(false);
+    }
+  }, [store, userBusinessProfile, state.user, state.role]);
+
+  const loadStoreProducts = async (businessId: string, productGroups: any[], reset: boolean = true) => {
+    if (productGroups.length === 0) {
+      console.log('⚠️ No product groups found for this store, trying to load products directly...');
+      
+      // Fallback: Thử load products trực tiếp từ store nếu không có product groups
+      try {
+        setProductsLoading(true);
+        // Có thể thêm logic load products trực tiếp từ store API ở đây nếu có
+        // Hiện tại chỉ log warning
+        console.warn('⚠️ Cannot load products: No product groups available');
+        if (reset) {
+        setProducts([]);
+        setProductCount(0);
+          setDisplayedProductsCount(6);
+          setHasMoreProducts(true);
+        }
+      } catch (error) {
+        console.error('❌ Error in fallback product loading:', error);
+      } finally {
+        setProductsLoading(false);
+      }
+      return;
+    }
+
+    try {
+      setProductsLoading(true);
+      console.log('🔄 Loading ALL products for business:', businessId);
+      console.log('📦 Product groups to process:', productGroups.length);
+
+      let allProducts: Product[] = reset ? [] : [...products];
+
+      // Load TẤT CẢ sản phẩm từ tất cả group (không phân trang server)
+      for (const group of productGroups) {
+        try {
+          console.log(`🔄 Loading products from group: "${group.name}" (${group._id})`);
+          
+          // Load nhiều nhất có thể (limit cao)
+          const res = await productsApi.getCustomerProducts(group._id, {
+            limit: 100, // Load tối đa 100 sản phẩm mỗi group
+            page: 1,
+          });
+
+          console.log(`📡 API Response for group "${group.name}":`, {
+            totalProducts: res.data?.total,
+            returnedProducts: res.data?.products?.length
+          });
+
+          if (res.data?.products && res.data.products.length > 0) {
+            const validProducts = res.data.products.filter((p: any) => {
+              // Lấy businessId từ product theo nhiều cách (linh hoạt hơn)
+              let pBusinessId: string | undefined;
+              
+              // Ưu tiên 1: businessId trực tiếp trên product
+              if (typeof p.businessId === 'string') {
+                pBusinessId = p.businessId;
+              } else if (p.businessId && typeof p.businessId === 'object') {
+                pBusinessId = p.businessId._id || p.businessId.id;
+              }
+              
+              // Ưu tiên 2: businessId từ productGroupId
+              if (!pBusinessId && p.productGroupId) {
+                const pg = typeof p.productGroupId === 'object' ? p.productGroupId : null;
+                if (pg) {
+                  if (pg.businessId) {
+                    pBusinessId = typeof pg.businessId === 'string' 
+                      ? pg.businessId 
+                      : (pg.businessId._id || pg.businessId.id);
+                  }
+                  if (!pBusinessId && pg.business) {
+                    pBusinessId = typeof pg.business === 'string' 
+                      ? pg.business 
+                      : (pg.business._id || pg.business.id);
+                  }
+                }
+              }
+              
+              // Ưu tiên 3: businessId từ group hiện tại (nếu product không có businessId)
+              if (!pBusinessId && group.businessId) {
+                pBusinessId = typeof group.businessId === 'string'
+                  ? group.businessId
+                  : (group.businessId._id || group.businessId.id);
+              }
+              if (!pBusinessId && group.business) {
+                pBusinessId = typeof group.business === 'string'
+                  ? group.business
+                  : (group.business._id || group.business.id);
+              }
+
+              const matches = pBusinessId === businessId;
+              
+              if (!matches) {
+                console.log(`⚠️ Product ${p._id} businessId mismatch:`, {
+                  productBusinessId: pBusinessId,
+                  storeBusinessId: businessId,
+                  productName: (p.productGroupId as any)?.name || 'Unknown'
+                });
+              }
+              
+              return matches;
+            });
+
+            console.log(`✅ Filtered ${validProducts.length} valid products from ${res.data.products.length} total in group "${group.name}"`);
+            allProducts.push(...validProducts);
+          } else {
+            console.log(`ℹ️ No products found in group "${group.name}"`);
+          }
+        } catch (err: any) {
+          console.error(`❌ Error loading group "${group.name}":`, err.message);
+          console.error('Error details:', err);
+        }
+      }
+
+      // Sắp xếp theo thời gian tạo (mới nhất trước)
+      allProducts.sort((a, b) => {
+        const aDate = (a as any).createdAt || '';
+        const bDate = (b as any).createdAt || '';
+        return bDate.localeCompare(aDate);
+      });
 
       console.log('✅ Total products loaded:', allProducts.length);
       setProducts(allProducts);
       setProductCount(allProducts.length);
-      setTotalPages(maxTotalPages);
-      setHasMoreProducts(page < maxTotalPages);
+      if (reset) {
+          setDisplayedProductsCount(6);
+          setHasMoreProducts(true); // Reset về trang đầu tiên
+      }
     } catch (error: any) {
-      console.error('❌ Error loading products:', error);
-      if (!append) {
+      console.error('❌ Load products failed:', error);
+      if (reset) {
         setProducts([]);
+        setProductCount(0);
       }
     } finally {
       setProductsLoading(false);
@@ -275,6 +436,15 @@ export default function StoreDetailScreen() {
       return;
     }
 
+    // Kiểm tra xem user có phải owner của store không
+    if (isStoreOwner) {
+      Alert.alert(
+        'Thông báo',
+        'Bạn không thể mượn sản phẩm của chính cửa hàng mình.'
+      );
+      return;
+    }
+
     // Reload user data để lấy số dư mới nhất trước khi kiểm tra
     let currentUserData = userData;
     try {
@@ -293,46 +463,35 @@ export default function StoreDetailScreen() {
 
     const product = selectedProduct.product;
     
-    // Get deposit value safely - check multiple possible locations
-    let depositValue = 0;
-    
-    console.log('🔍 Full Product Object for depositValue:', JSON.stringify(product, null, 2));
-    console.log('🔍 productSizeId:', product.productSizeId);
-    
-    // Check if productSizeId is an object with depositValue
-    if (product.productSizeId && typeof product.productSizeId === 'object') {
-      const productSize = product.productSizeId as any;
-      console.log('🔍 productSizeId object keys:', Object.keys(productSize));
-      console.log('🔍 productSizeId full:', JSON.stringify(productSize, null, 2));
-      
-      // Try multiple possible field names
-      depositValue = productSize.depositValue || 
-                     productSize.basePrice || 
-                     productSize.price || 
-                     0;
-      
-      console.log('💰 Found depositValue from productSizeId:', depositValue);
+    // Kiểm tra số ngày mượn trước
+    const days = parseInt(durationInDays, 10);
+    if (isNaN(days) || days <= 0) {
+      Alert.alert('Lỗi', 'Vui lòng nhập số ngày mượn hợp lệ (lớn hơn 0)');
+      return;
     }
     
-    // If still 0, check productGroupId.productSizeId
-    if (depositValue === 0 && product.productGroupId) {
-      const productGroup = product.productGroupId as any;
-      if (productGroup.productSizeId && typeof productGroup.productSizeId === 'object') {
-        const pgSize = productGroup.productSizeId;
-        depositValue = pgSize.depositValue || pgSize.basePrice || pgSize.price || 0;
-        console.log('💰 Found depositValue from productGroupId.productSizeId:', depositValue);
-      }
-    }
+    // LẤY GIÁ CỌC 1 NGÀY - Ưu tiên rentalPrice vì đó là giá 1 ngày
+    const pricePerDay = 
+      (product.productSizeId as any)?.rentalPrice ??
+      (product.productSizeId as any)?.rentalPricePerDay ??
+      (product.productGroupId as any)?.rentalPrice ??
+      (product.productGroupId as any)?.rentalPricePerDay ??
+      (product.productSizeId as any)?.depositValue ??
+      (product.productGroupId as any)?.depositValue ??
+      3200; // fallback an toàn
     
-    console.log('💰 Final Deposit Value Check:', {
-      hasProductSizeId: !!product.productSizeId,
-      productSizeIdType: typeof product.productSizeId,
+    // TIỀN CỌC = GIÁ 1 NGÀY × SỐ NGÀY
+    const depositValue = pricePerDay * days;
+    
+    console.log('💰 Deposit Calculation:', {
+      pricePerDay,
+      days,
       depositValue,
     });
     
-    // If depositValue is still 0, show error - backend requires valid depositValue
-    if (depositValue === 0 || !depositValue || isNaN(depositValue)) {
-      console.error('❌ Cannot find depositValue');
+    // If pricePerDay is still 0 or invalid, show error
+    if (!pricePerDay || pricePerDay <= 0 || isNaN(pricePerDay)) {
+      console.error('❌ Cannot find pricePerDay');
       Alert.alert(
         'Error',
         'Unable to find deposit information for this product. The product may not be properly configured. Please contact support or try another product.'
@@ -379,23 +538,31 @@ export default function StoreDetailScreen() {
       return;
     }
     
-    // Kiểm tra số ngày mượn
-    const days = parseInt(durationInDays, 10);
-    if (isNaN(days) || days <= 0) {
-      Alert.alert('Lỗi', 'Vui lòng nhập số ngày mượn hợp lệ (lớn hơn 0)');
-      return;
-    }
-
     console.log('✅ Balance sufficient, proceeding to confirm...');
+
+    // TÍNH LẠI TIỀN CỌC REALTIME CHO ALERT (vì người dùng có thể gõ lại số ngày)
+    // Ưu tiên rentalPrice vì đó là giá 1 ngày
+    const realtimePricePerDay = 
+      (product.productSizeId as any)?.rentalPrice ??
+      (product.productSizeId as any)?.rentalPricePerDay ??
+      (product.productGroupId as any)?.rentalPrice ??
+      (product.productGroupId as any)?.rentalPricePerDay ??
+      (product.productSizeId as any)?.depositValue ??
+      (product.productGroupId as any)?.depositValue ??
+      3200;
+
+    const realtimeDays = parseInt(durationInDays, 10) || 30;
+    const realtimeDeposit = realtimePricePerDay * realtimeDays;
 
     // Confirm borrow
     Alert.alert(
       'Xác nhận đặt mượn',
       `Bạn có chắc chắn muốn đặt mượn sản phẩm này?\n\n` +
-      `Tiền cọc: ${depositValue.toLocaleString('vi-VN')} VNĐ\n` +
+      `Tiền cọc: ${realtimeDeposit.toLocaleString('vi-VN')} VNĐ\n` +
+      `(= ${realtimePricePerDay.toLocaleString('vi-VN')} VNĐ/ngày × ${realtimeDays} ngày)\n\n` +
       `Số dư hiện tại: ${walletBalance.toLocaleString('vi-VN')} VNĐ\n` +
-      `Số dư sau khi trừ: ${(walletBalance - depositValue).toLocaleString('vi-VN')} VNĐ\n` +
-      `Thời gian mượn: ${days} ngày`,
+      `Số dư sau khi trừ: ${(walletBalance - realtimeDeposit).toLocaleString('vi-VN')} VNĐ\n` +
+      `Thời gian mượn: ${realtimeDays} ngày`,
       [
         {
           text: 'Hủy',
@@ -454,6 +621,38 @@ export default function StoreDetailScreen() {
                 throw new Error('Không tìm thấy thông tin cửa hàng. Vui lòng thử lại hoặc liên hệ hỗ trợ.');
               }
 
+              // Kiểm tra xem user có phải owner của business này không
+              let userBusinessId: string | null = null;
+              
+              // Kiểm tra từ userBusinessProfile
+              if (userBusinessProfile) {
+                userBusinessId = userBusinessProfile._id || userBusinessProfile.id;
+              }
+              
+              // Hoặc kiểm tra từ user data nếu có businessId
+              if (!userBusinessId && currentUserData) {
+                const user = currentUserData as any;
+                if (user.businessId) {
+                  userBusinessId = typeof user.businessId === 'string' 
+                    ? user.businessId 
+                    : (user.businessId._id || user.businessId.id);
+                }
+              }
+              
+              // So sánh businessId của product với businessId của user
+              if (userBusinessId && businessId === userBusinessId) {
+                console.log('⚠️ User is trying to borrow from their own business:', {
+                  productBusinessId: businessId,
+                  userBusinessId: userBusinessId
+                });
+                Alert.alert(
+                  'Cannot Borrow',
+                  'This product belongs to your business. You cannot borrow products from your own business.'
+                );
+                setBorrowing(false);
+                return;
+              }
+
               // Lấy productId
               const productId = product._id || product.id;
               if (!productId) {
@@ -461,8 +660,14 @@ export default function StoreDetailScreen() {
                 throw new Error('Không tìm thấy ID sản phẩm. Vui lòng thử lại.');
               }
 
-              // Validate depositValue before sending
-              if (!depositValue || depositValue <= 0 || isNaN(depositValue)) {
+              // LẤY depositValue CỐ ĐỊNH TỪ BACKEND (không phải tính toán)
+              // Logic tính toán chỉ dùng cho UI, API cần giá trị cố định từ backend
+              const backendDepositValue = 
+                (product.productSizeId as any)?.depositValue ??
+                (product.productGroupId as any)?.depositValue ??
+                0;
+              
+              if (!backendDepositValue || backendDepositValue <= 0 || isNaN(backendDepositValue)) {
                 Alert.alert(
                   'Error',
                   'Invalid deposit value. Please contact support or try another product.'
@@ -474,17 +679,21 @@ export default function StoreDetailScreen() {
               const borrowDto = {
                 productId,
                 businessId,
-                depositValue: depositValue, // Must be valid > 0
-                durationInDays: days,
+                depositValue: backendDepositValue, // Dùng giá trị cố định từ backend
+                durationInDays: realtimeDays,
                 type: "online" as const, // ← CỨ ĐỂ CỨNG THẾ NÀY LÀ CHẮC ĂN NHẤT
               };
 
               console.log('📦 FINAL borrowDto gửi đi:', {
                 productId,
                 businessId,
-                depositValue,
-                durationInDays: days,
-                type: 'online'
+                depositValue: backendDepositValue, // Giá trị cố định từ backend
+                depositValueType: typeof backendDepositValue,
+                durationInDays: realtimeDays,
+                type: 'online',
+                uiCalculated: realtimeDeposit, // Giá trị tính toán chỉ để hiển thị UI
+                pricePerDay: realtimePricePerDay,
+                days: realtimeDays
               });
               console.log('📦 Borrow DTO (full):', JSON.stringify(borrowDto, null, 2));
 
@@ -501,10 +710,8 @@ export default function StoreDetailScreen() {
                     onPress: () => {
                       setShowProductModal(false);
                       setSelectedProduct(null);
-                      // Reload user data để cập nhật số dư
-                      if (state.accessToken) {
-                        getCurrentUserProfileWithAutoRefresh().then(setUserData).catch(console.error);
-                      }
+                      // Redirect tới lịch sử đơn hàng
+                      router.replace('/(protected)/customer/transaction-history');
                     },
                   },
                 ]
@@ -513,7 +720,8 @@ export default function StoreDetailScreen() {
               // Xử lý lỗi cụ thể
               const errorMessage = error?.response?.data?.message || error?.message || '';
               
-              console.log('❌ Borrow Error:', errorMessage);
+              // Comment log để tránh hiển thị error notification trên UI
+              // console.log('❌ Borrow Error:', errorMessage);
               
               // Check for insufficient balance
               const isInsufficientBalance = errorMessage.toLowerCase().includes('insufficient') || 
@@ -529,7 +737,19 @@ export default function StoreDetailScreen() {
               const isInvalidDeposit = errorMessage.toLowerCase().includes('invalid deposit') || 
                                       errorMessage.toLowerCase().includes('deposit value');
               
-              if (isInvalidDeposit) {
+              // Check for own business borrow attempt
+              const isOwnBusiness = errorMessage.toLowerCase().includes('cannot borrow from your own business') ||
+                                   errorMessage.toLowerCase().includes('own business') ||
+                                   (error?.response?.data?.statusCode === 400 && 
+                                    (errorMessage.toLowerCase().includes('business') || 
+                                     errorMessage.toLowerCase().includes('cannot borrow')));
+              
+              if (isOwnBusiness) {
+                Alert.alert(
+                  'Cannot Borrow',
+                  'This product belongs to your business. You cannot borrow products from your own business.'
+                );
+              } else if (isInvalidDeposit) {
                 Alert.alert(
                   'Invalid Deposit Value',
                   'The deposit value for this product is invalid. Please contact support or try another product.'
@@ -594,35 +814,74 @@ export default function StoreDetailScreen() {
     );
   };
 
+  // Helper function to get icon for product group
+  const getCategoryIcon = (categoryName: string): any => {
+    const name = categoryName.toLowerCase();
+    if (name.includes('coffee') || name.includes('cà phê') || name.includes('hot drink')) return 'cafe';
+    if (name.includes('cold') || name.includes('lạnh') || name.includes('drink')) return 'water';
+    if (name.includes('food') || name.includes('đồ ăn') || name.includes('meal')) return 'restaurant';
+    if (name.includes('cup') || name.includes('ly') || name.includes('cốc')) return 'wine';
+    if (name.includes('bottle') || name.includes('chai')) return 'flask';
+    if (name.includes('bag') || name.includes('túi')) return 'bag';
+    return 'cube-outline'; // Default icon
+  };
+
   // Filter products
+  // Logic: Lọc sản phẩm dựa trên category đã chọn (selectedCategory = _id của product group)
+  // Mỗi product có productGroupId, so sánh với selectedCategory để filter
   const filteredProducts = React.useMemo(() => {
     let filtered = products;
 
-    // Search filter
-    if (searchQuery.trim()) {
+    // Category filter - Lọc sản phẩm theo productGroupId đã chọn
+    // selectedCategory là _id của product group từ category bar
+    if (selectedCategory) {
       filtered = filtered.filter(product => {
-        const groupName = (product.productGroupId as any)?.name || '';
-        const sizeName = (product.productSizeId as any)?.name || (product.productSizeId as any)?.description || '';
-        const searchLower = searchQuery.toLowerCase();
-        return groupName.toLowerCase().includes(searchLower) ||
-               sizeName.toLowerCase().includes(searchLower) ||
-               product.serialNumber.toLowerCase().includes(searchLower);
-      });
-    }
-
-    // Price filter
-    if (priceFilter !== 'all') {
-      filtered = filtered.filter(product => {
-        const depositValue = (product.productSizeId as any)?.depositValue || 0;
-        if (priceFilter === 'low') return depositValue < 50000;
-        if (priceFilter === 'medium') return depositValue >= 50000 && depositValue < 150000;
-        if (priceFilter === 'high') return depositValue >= 150000;
-        return true;
+        // Lấy productGroupId từ product (có thể là object hoặc string)
+        let productGroupId: string | undefined;
+        
+        if (product.productGroupId) {
+          if (typeof product.productGroupId === 'object') {
+            productGroupId = product.productGroupId._id || (product.productGroupId as any).id || product.productGroupId.toString();
+          } else {
+            productGroupId = product.productGroupId;
+          }
+        }
+        
+        // So sánh với selectedCategory (là _id của product group từ category bar)
+        return productGroupId === selectedCategory;
       });
     }
 
     return filtered;
-  }, [products, searchQuery, priceFilter]);
+  }, [products, selectedCategory]);
+
+  // Infinite Scroll: Chỉ hiển thị số sản phẩm đã load
+  const displayedProducts = React.useMemo(() => {
+    return filteredProducts.slice(0, displayedProductsCount);
+  }, [filteredProducts, displayedProductsCount]);
+
+  // Load more products when scrolling to end
+  const loadMoreProducts = React.useCallback(() => {
+    if (loadingMore || !hasMoreProducts || displayedProductsCount >= filteredProducts.length) {
+      return;
+    }
+
+    setLoadingMore(true);
+    
+    // Simulate loading delay (remove in production if not needed)
+    setTimeout(() => {
+      const nextCount = Math.min(displayedProductsCount + 6, filteredProducts.length);
+      setDisplayedProductsCount(nextCount);
+      setHasMoreProducts(nextCount < filteredProducts.length);
+      setLoadingMore(false);
+    }, 300);
+  }, [loadingMore, hasMoreProducts, displayedProductsCount, filteredProducts.length]);
+
+  // Reset displayed count when category changes
+  useEffect(() => {
+    setDisplayedProductsCount(6); // Reset về 6 sản phẩm đầu tiên
+    setHasMoreProducts(true);
+  }, [selectedCategory]);
 
   if (loading) {
     return (
@@ -675,7 +934,18 @@ export default function StoreDetailScreen() {
         <View style={styles.placeholder} />
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      {/* Main FlatList with ListHeaderComponent for infinite scroll */}
+      <FlatList
+        data={displayedProducts}
+        numColumns={2}
+        keyExtractor={(item) => item._id}
+        columnWrapperStyle={styles.productRow}
+        contentContainerStyle={styles.productsListContent}
+        showsVerticalScrollIndicator={false}
+        onEndReached={loadMoreProducts}
+        onEndReachedThreshold={0.5}
+        ListHeaderComponent={
+          <View>
         {/* Store Info Section */}
         <View style={styles.storeInfoSection}>
           {/* Store Logo & Name */}
@@ -722,7 +992,7 @@ export default function StoreDetailScreen() {
               <Ionicons name="time" size={20} color="#6B7280" />
               <Text style={styles.detailText}>
                 {store.openTime} - {store.closeTime}
-                <Text style={[styles.statusText, { color: isOpen ? '#10B981' : '#EF4444' }]}>
+                    <Text style={[styles.storeStatusText, { color: isOpen ? '#10B981' : '#EF4444' }]}>
                   {' '}({isOpen ? 'Open' : 'Closed'})
                 </Text>
               </Text>
@@ -730,214 +1000,182 @@ export default function StoreDetailScreen() {
           </View>
         </View>
 
-        {/* Product Groups Section */}
+        {/* Product Groups Section - Horizontal Category Bar */}
+        {/* Hiển thị danh sách categories từ productGroups và filter sản phẩm theo productGroupId */}
         {productGroups.length > 0 && (
           <View style={styles.productGroupsSection}>
-            <Text style={styles.sectionTitle}>Product Groups ({productGroups.length})</Text>
-            <ScrollView 
-              horizontal 
+            <Text style={styles.sectionTitle}>Categories</Text>
+            <FlatList
+              data={[{ _id: 'all', name: 'All' }, ...productGroups]}
+              horizontal
               showsHorizontalScrollIndicator={false}
-              style={styles.productGroupsScroll}
-              contentContainerStyle={styles.productGroupsContent}
-            >
-              {productGroups.map((group) => (
-                <TouchableOpacity
-                  key={group._id}
-                  style={styles.productGroupCard}
-                  onPress={() => {
-                    router.push(`/(protected)/customer/product-group/${group._id}`);
-                  }}
-                >
-                  {group.imageUrl ? (
-                    <Image 
-                      source={{ uri: group.imageUrl }} 
-                      style={styles.productGroupImage}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View style={styles.productGroupImagePlaceholder}>
-                      <Ionicons name="cube-outline" size={48} color="#9CA3AF" />
-                      <Text style={styles.productGroupPlaceholderText}>No Image</Text>
+              contentContainerStyle={styles.categoryListContent}
+              keyExtractor={(item) => item._id}
+              renderItem={({ item }) => {
+                const isSelected = selectedCategory === item._id || (item._id === 'all' && selectedCategory === null);
+                const iconName = item._id === 'all' ? 'grid' : getCategoryIcon(item.name);
+                
+                return (
+                  <TouchableOpacity
+                    style={[
+                      styles.categoryItem,
+                      isSelected && styles.categoryItemActive
+                    ]}
+                    onPress={() => {
+                      if (item._id === 'all') {
+                        // Hiển thị tất cả sản phẩm
+                        setSelectedCategory(null);
+                      } else {
+                        // Lưu _id của product group để filter sản phẩm
+                        setSelectedCategory(item._id);
+                      }
+                    }}
+                  >
+                    <View style={[
+                      styles.categoryIconBox,
+                      isSelected && styles.categoryIconBoxActive
+                    ]}>
+                      <Ionicons 
+                        name={iconName} 
+                        size={24} 
+                        color={isSelected ? '#006241' : '#B0B0B0'} 
+                      />
                     </View>
-                  )}
-                  <View style={styles.productGroupInfo}>
-                    <Text style={styles.productGroupName} numberOfLines={2}>
-                      {group.name}
+                    <Text style={[
+                      styles.categoryName,
+                      isSelected && styles.categoryNameActive
+                    ]} numberOfLines={1}>
+                      {item.name}
                     </Text>
-                    {group.description && (
-                      <Text style={styles.productGroupDescription} numberOfLines={2}>
-                        {group.description}
-                      </Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                  </TouchableOpacity>
+                );
+              }}
+            />
           </View>
         )}
 
-        {/* Products Section */}
-        <View style={styles.productsSection}>
-          <Text style={styles.sectionTitle}>Products ({filteredProducts.length})</Text>
+            {/* Products Section Header */}
+            <View style={styles.productsSectionHeader}>
+              <Text style={styles.sectionTitle}>Products ({filteredProducts.length})</Text>
+            </View>
 
-          {/* Search Bar */}
-          <View style={styles.searchContainer}>
-            <Ionicons name="search" size={20} color="#6B7280" style={styles.searchIcon} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search products..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholderTextColor="#9CA3AF"
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Ionicons name="close-circle" size={20} color="#6B7280" />
-              </TouchableOpacity>
+            {/* Loading State */}
+            {productsLoading && filteredProducts.length === 0 && (
+              <View style={styles.loadingProductsContainer}>
+                <ActivityIndicator size="large" color="#006241" />
+                <Text style={styles.loadingProductsText}>Loading products...</Text>
+              </View>
+            )}
+
+            {/* Empty State */}
+            {!productsLoading && filteredProducts.length === 0 && (
+              <View style={styles.emptyState}>
+                <Ionicons name="cube-outline" size={64} color="#D1D5DB" />
+                <Text style={styles.emptyStateText}>No products found</Text>
+              </View>
             )}
           </View>
+        }
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.loadingMoreContainer}>
+              <ActivityIndicator size="small" color="#006241" />
+              <Text style={styles.loadingMoreText}>Loading more...</Text>
+            </View>
+          ) : null
+        }
+        renderItem={({ item: product }) => {
+          const groupName = (product.productGroupId as any)?.name || 'Product';
+          const depositValue = (product.productSizeId as any)?.depositValue || 0;
+          const imageUrl = (product.productGroupId as any)?.imageUrl || product.images?.[0];
+          const isAvailable = product.status === 'available';
+          const statusText = isAvailable ? 'Available' : 'Borrowed';
 
-          {/* Price Filter */}
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            style={styles.filterContainer}
-            contentContainerStyle={styles.filterContent}
-          >
-            {(['all', 'low', 'medium', 'high'] as const).map((filter) => (
-              <TouchableOpacity
-                key={filter}
-                style={[styles.filterChip, priceFilter === filter && styles.filterChipActive]}
-                onPress={() => setPriceFilter(filter)}
-              >
-                <Text style={[styles.filterChipText, priceFilter === filter && styles.filterChipTextActive]}>
-                  {filter === 'all' ? 'All Prices' :
-                   filter === 'low' ? '< 50K' :
-                   filter === 'medium' ? '50K - 150K' : '> 150K'}
+          return (
+            <TouchableOpacity
+              style={styles.productCard}
+              onPress={() => handleProductPress(product)}
+              activeOpacity={0.7}
+            >
+              {/* Product Image - Top 60-65% of card */}
+              <View style={styles.productImageContainer}>
+                {/* Status Badge - Top right corner */}
+                <View style={[
+                  styles.statusBadge,
+                  isAvailable ? styles.statusBadgeAvailable : styles.statusBadgeBorrowed
+                ]}>
+                  <View style={[
+                    styles.statusDot,
+                    isAvailable ? styles.statusDotAvailable : styles.statusDotBorrowed
+                  ]} />
+                  <Text style={[
+                    styles.statusBadgeText,
+                    isAvailable ? styles.statusBadgeTextAvailable : styles.statusBadgeTextBorrowed
+                  ]}>
+                    {statusText}
+                  </Text>
+                </View>
+
+                {imageUrl && imageUrl.trim() !== '' ? (
+                  <Image 
+                    source={{ uri: imageUrl }} 
+                    style={styles.productImage}
+                    resizeMode="contain"
+                    onError={() => {
+                      // Image load error - will show placeholder
+                    }}
+                  />
+                ) : (
+                  <View style={styles.productImagePlaceholder}>
+                    <Ionicons name="cube-outline" size={32} color="#9CA3AF" />
+                  </View>
+                )}
+              </View>
+              
+              {/* Product Info - Bottom on card background */}
+              <View style={styles.productInfo}>
+                <Text style={styles.productName} numberOfLines={2}>
+                  {groupName}
                 </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          {/* Products List */}
-          {productsLoading ? (
-            <View style={styles.loadingProductsContainer}>
-              <ActivityIndicator size="large" color="#0F4D3A" />
-              <Text style={styles.loadingProductsText}>Loading products...</Text>
-            </View>
-          ) : filteredProducts.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="cube-outline" size={64} color="#D1D5DB" />
-              <Text style={styles.emptyStateText}>No products found</Text>
-              {searchQuery && (
-                <Text style={styles.emptyStateSubtext}>Try adjusting your search</Text>
-              )}
-            </View>
-          ) : (
-            <View style={styles.productsGrid}>
-              {filteredProducts.map((product) => {
-                const groupName = (product.productGroupId as any)?.name || 'Product';
-                const sizeName = (product.productSizeId as any)?.name || (product.productSizeId as any)?.description || '';
-                const depositValue = (product.productSizeId as any)?.depositValue || 0;
-                const imageUrl = (product.productGroupId as any)?.imageUrl || product.images?.[0];
-
-                return (
-                  <TouchableOpacity
-                    key={product._id}
-                    style={styles.productCard}
-                    onPress={() => handleProductPress(product)}
-                  >
-                    {imageUrl ? (
-                      <Image 
-                        source={{ uri: imageUrl }} 
-                        style={styles.productImage}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <View style={styles.productImagePlaceholder}>
-                        <Ionicons name="cube-outline" size={48} color="#9CA3AF" />
-                        <Text style={styles.placeholderText}>No Image</Text>
-                      </View>
-                    )}
-                    
-                    <View style={styles.productInfo}>
-                      <Text style={styles.productName} numberOfLines={2}>
-                        {groupName}
+                <Text style={styles.productDeposit}>
+                  {depositValue > 0 ? (
+                    <>
+                      <Text style={styles.depositLabel}>Deposit: </Text>
+                      <Text style={styles.depositValue}>
+                        {depositValue.toLocaleString('vi-VN')} VNĐ
                       </Text>
-                      {sizeName && (
-                        <Text style={styles.productSize} numberOfLines={1}>
-                          {sizeName}
-                        </Text>
-                      )}
-                      <Text style={styles.productPrice}>
-                        {depositValue > 0 ? `${depositValue.toLocaleString('vi-VN')} VNĐ` : 'Free'}
-                      </Text>
-                      <View style={styles.productStatusRow}>
-                        <View style={[
-                          styles.statusBadge,
-                          { backgroundColor: product.status === 'available' ? '#10B98120' : '#EF444420' }
-                        ]}>
-                          <Text style={[
-                            styles.statusBadgeText,
-                            { color: product.status === 'available' ? '#10B981' : '#EF4444' }
-                          ]}>
-                            {product.status === 'available' ? 'Available' : product.status}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-
-          {/* Pagination */}
-          {filteredProducts.length > 0 && totalPages > 1 && (
-            <View style={styles.paginationContainer}>
-              <TouchableOpacity
-                style={[styles.paginationButton, currentPage === 1 && styles.paginationButtonDisabled]}
-                onPress={() => {
-                  if (currentPage > 1 && store) {
-                    const newPage = currentPage - 1;
-                    setCurrentPage(newPage);
-                    loadStoreProducts(store._id, productGroups, newPage, false);
-                  }
-                }}
-                disabled={currentPage === 1 || productsLoading}
-              >
-                <Ionicons name="chevron-back" size={20} color={currentPage === 1 ? "#9CA3AF" : "#0F4D3A"} />
-                <Text style={[styles.paginationButtonText, currentPage === 1 && styles.paginationButtonTextDisabled]}>
-                  Previous
-                </Text>
-              </TouchableOpacity>
-
-              <View style={styles.paginationInfo}>
-                <Text style={styles.paginationText}>
-                  Page {currentPage} of {totalPages}
+                    </>
+                  ) : (
+                    <Text style={styles.depositFree}>Free</Text>
+                  )}
                 </Text>
               </View>
 
+              {/* Action Button - Bottom right corner */}
               <TouchableOpacity
-                style={[styles.paginationButton, (!hasMoreProducts || currentPage >= totalPages) && styles.paginationButtonDisabled]}
-                onPress={() => {
-                  if (hasMoreProducts && currentPage < totalPages && store) {
-                    const newPage = currentPage + 1;
-                    setCurrentPage(newPage);
-                    loadStoreProducts(store._id, productGroups, newPage, false);
+                style={[
+                  styles.addButton,
+                  !isAvailable && styles.addButtonDisabled
+                ]}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  if (isAvailable) {
+                    handleProductPress(product);
                   }
                 }}
-                disabled={!hasMoreProducts || currentPage >= totalPages || productsLoading}
+                activeOpacity={0.8}
+                disabled={!isAvailable}
               >
-                <Text style={[styles.paginationButtonText, (!hasMoreProducts || currentPage >= totalPages) && styles.paginationButtonTextDisabled]}>
-                  Next
-                </Text>
-                <Ionicons name="chevron-forward" size={20} color={(!hasMoreProducts || currentPage >= totalPages) ? "#9CA3AF" : "#0F4D3A"} />
+                <Ionicons 
+                  name={isAvailable ? "bag-outline" : "bag-outline"} 
+                  size={18} 
+                  color={isAvailable ? "#FFFFFF" : "#9CA3AF"} 
+                />
               </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      </ScrollView>
+            </TouchableOpacity>
+          );
+        }}
+      />
 
       {/* Product Modal - Copy từ customer-dashboard.tsx */}
       {showProductModal && selectedProduct && (
@@ -962,29 +1200,49 @@ export default function StoreDetailScreen() {
               {selectedProduct.product?.productGroupId?.imageUrl && (
                 <Image
                   source={{ uri: selectedProduct.product.productGroupId.imageUrl }}
-                  style={styles.productImage}
+                  style={styles.productModalImage}
                   resizeMode="cover"
                 />
               )}
 
               {/* Product Info */}
               <View style={styles.productInfoCard}>
-                <Text style={styles.productName}>{selectedProduct.name}</Text>
+                <Text style={styles.productModalName}>{selectedProduct.name}</Text>
                 {selectedProduct.size && (
-                  <Text style={styles.productSize}>Kích thước: {selectedProduct.size}</Text>
+                  <Text style={styles.productModalSize}>Kích thước: {selectedProduct.size}</Text>
                 )}
                 
-                {selectedProduct.product?.productSizeId?.depositValue && (
-                  <View style={styles.depositInfo}>
-                    <Ionicons name="cash-outline" size={20} color="#059669" />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.depositLabel}>Tiền cọc:</Text>
-                      <Text style={styles.depositValue}>
-                        {selectedProduct.product.productSizeId.depositValue.toLocaleString('vi-VN')} VNĐ
-                      </Text>
+                {(() => {
+                  // Tính toán realtime tiền cọc - Ưu tiên rentalPrice vì đó là giá 1 ngày
+                  const pricePerDay = 
+                    (selectedProduct.product?.productSizeId as any)?.rentalPrice ??
+                    (selectedProduct.product?.productSizeId as any)?.rentalPricePerDay ??
+                    (selectedProduct.product?.productGroupId as any)?.rentalPrice ??
+                    (selectedProduct.product?.productGroupId as any)?.rentalPricePerDay ??
+                    (selectedProduct.product?.productSizeId as any)?.depositValue ??
+                    (selectedProduct.product?.productGroupId as any)?.depositValue ??
+                    3200;
+                  
+                  const days = Math.max(1, Math.min(30, parseInt(durationInDays) || 1));
+                  const depositValue = pricePerDay * days;
+                  
+                  if (!pricePerDay || pricePerDay <= 0) return null;
+                  
+                  return (
+                    <View style={styles.depositInfo}>
+                      <Ionicons name="cash-outline" size={20} color="#059669" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.depositModalLabel}>Tiền cọc:</Text>
+                        <Text style={styles.depositModalValue}>
+                          {depositValue.toLocaleString('vi-VN')} VNĐ
+                        </Text>
+                        <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+                          ({pricePerDay.toLocaleString('vi-VN')} VNĐ/ngày × {days} ngày)
+                        </Text>
+                      </View>
                     </View>
-                  </View>
-                )}
+                  );
+                })()}
 
                 {/* Wallet Balance Info */}
                 <View style={styles.balanceInfo}>
@@ -996,7 +1254,19 @@ export default function StoreDetailScreen() {
                       const walletBalance = (userData as any)?.wallet?.availableBalance ?? 
                                           (userData as any)?.wallet?.balance ?? 
                                           0;
-                      const depositValue = selectedProduct.product?.productSizeId?.depositValue || 0;
+                      
+                      // Tính toán realtime tiền cọc - Ưu tiên rentalPrice vì đó là giá 1 ngày
+                      const pricePerDay = 
+                        (selectedProduct.product?.productSizeId as any)?.rentalPrice ??
+                        (selectedProduct.product?.productSizeId as any)?.rentalPricePerDay ??
+                        (selectedProduct.product?.productGroupId as any)?.rentalPrice ??
+                        (selectedProduct.product?.productGroupId as any)?.rentalPricePerDay ??
+                        (selectedProduct.product?.productSizeId as any)?.depositValue ??
+                        (selectedProduct.product?.productGroupId as any)?.depositValue ??
+                        3200;
+                      
+                      const days = Math.max(1, Math.min(30, parseInt(durationInDays) || 1));
+                      const depositValue = pricePerDay * days;
                       const isInsufficient = walletBalance < depositValue;
                       
                       return (
@@ -1021,11 +1291,11 @@ export default function StoreDetailScreen() {
                 {selectedProduct.status && (
                   <View style={styles.statusInfo}>
                     <View style={[
-                      styles.statusBadge,
+                      styles.statusModalBadge,
                       selectedProduct.status === 'available' ? styles.statusAvailable : styles.statusUnavailable
                     ]}>
                       <Text style={[
-                        styles.statusText,
+                        styles.statusModalText,
                         selectedProduct.status !== 'available' && { color: '#DC2626' }
                       ]}>
                         {selectedProduct.status === 'available' ? 'Có sẵn' : 'Không có sẵn'}
@@ -1053,7 +1323,24 @@ export default function StoreDetailScreen() {
                   <TextInput
                     style={styles.durationInput}
                     value={durationInDays}
-                    onChangeText={setDurationInDays}
+                    onChangeText={(text) => {
+                      const num = text.replace(/[^0-9]/g, '');
+                      // Cho phép xóa hết (rỗng) trong quá trình nhập
+                      if (num === '') {
+                        setDurationInDays('');
+                      } else if (parseInt(num) > 30) {
+                        setDurationInDays('30');
+                      } else {
+                        setDurationInDays(num);
+                      }
+                    }}
+                    onBlur={() => {
+                      // Validate khi blur: nếu rỗng hoặc <= 0 thì set về '1'
+                      const num = parseInt(durationInDays, 10);
+                      if (isNaN(num) || num <= 0) {
+                        setDurationInDays('1');
+                      }
+                    }}
                     placeholder="Nhập số ngày mượn"
                     keyboardType="numeric"
                     placeholderTextColor="#9CA3AF"
@@ -1062,7 +1349,7 @@ export default function StoreDetailScreen() {
               </View>
 
               {/* Borrow Button */}
-              {selectedProduct.status === 'available' && (
+              {selectedProduct.status === 'available' && !isStoreOwner && (
                 <TouchableOpacity
                   style={[styles.borrowButton, borrowing && styles.borrowButtonDisabled]}
                   onPress={handleBorrow}
@@ -1077,6 +1364,16 @@ export default function StoreDetailScreen() {
                     </>
                   )}
                 </TouchableOpacity>
+              )}
+
+              {/* Thông báo nếu user là owner của store */}
+              {selectedProduct.status === 'available' && isStoreOwner && (
+                <View style={styles.ownerMessage}>
+                  <Ionicons name="information-circle-outline" size={24} color="#3B82F6" />
+                  <Text style={styles.ownerText}>
+                    Bạn không thể mượn sản phẩm của chính cửa hàng mình
+                  </Text>
+                </View>
               )}
 
               {selectedProduct.status !== 'available' && (
@@ -1098,7 +1395,7 @@ export default function StoreDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F5F5F5',
   },
   header: {
     backgroundColor: '#0F4D3A',
@@ -1245,115 +1542,72 @@ const styles = StyleSheet.create({
     color: '#374151',
     lineHeight: 22,
   },
-  statusText: {
+  storeStatusText: {
     fontWeight: '600',
   },
   productGroupsSection: {
-    padding: 20,
-    paddingBottom: 0,
-  },
-  productGroupsScroll: {
-    marginBottom: 20,
-  },
-  productGroupsContent: {
-    paddingRight: 20,
-  },
-  productGroupCard: {
-    width: 160,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  categoryListContent: {
+    paddingRight: 20,
+    gap: 12,
+  },
+  categoryItem: {
+    alignItems: 'center',
     marginRight: 12,
-    borderWidth: 1,
+    minWidth: 70,
+  },
+  categoryItemActive: {
+    // Active state handled by child components
+  },
+  categoryIconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
     borderColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  categoryIconBoxActive: {
+    borderColor: '#006241',
+    backgroundColor: '#F0FDF4',
+    shadowColor: '#006241',
+    shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
   },
-  productGroupImage: {
-    width: '100%',
-    height: 120,
-    backgroundColor: '#F3F4F6',
-  },
-  productGroupImagePlaceholder: {
-    width: '100%',
-    height: 120,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  productGroupPlaceholderText: {
-    marginTop: 8,
+  categoryName: {
     fontSize: 12,
-    color: '#9CA3AF',
+    fontWeight: '600',
+    color: '#B0B0B0',
+    textAlign: 'center',
+    maxWidth: 70,
   },
-  productGroupInfo: {
-    padding: 12,
-  },
-  productGroupName: {
-    fontSize: 16,
+  categoryNameActive: {
+    color: '#006241',
     fontWeight: '700',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  productGroupDescription: {
-    fontSize: 13,
-    color: '#6B7280',
-    lineHeight: 18,
   },
   productsSection: {
     padding: 20,
+    backgroundColor: '#F9FAFB',
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: '800',
     color: '#111827',
     marginBottom: 16,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  searchIcon: {
-    marginRight: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: '#111827',
-  },
-  filterContainer: {
-    marginBottom: 20,
-  },
-  filterContent: {
-    paddingRight: 20,
-  },
-  filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    marginRight: 8,
-  },
-  filterChipActive: {
-    backgroundColor: '#0F4D3A',
-  },
-  filterChipText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  filterChipTextActive: {
-    color: '#FFFFFF',
   },
   loadingProductsContainer: {
     paddingVertical: 40,
@@ -1374,110 +1628,219 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#6B7280',
   },
-  emptyStateSubtext: {
-    marginTop: 8,
-    fontSize: 14,
-    color: '#9CA3AF',
+  productsListContent: {
+    paddingBottom: 20,
+    paddingHorizontal: 10,
   },
-  productsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+  productRow: {
+    justifyContent: 'space-between',
+    marginBottom: 15,
+    paddingHorizontal: 5,
+  },
+  productsSectionHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
+    backgroundColor: '#F5F5F5',
   },
   productCard: {
     width: '48%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    backgroundColor: '#F9F7F2', // Creamy Beige / Bone White
+    borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E6E0D6', // Soft Beige-Gray
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 2,
+    elevation: 3,
+    position: 'relative',
+    // Card height approximately 200-220px, image takes 60-65%
+    minHeight: 200,
+    padding: 8, // Inner padding so content doesn't touch edges
+  },
+  productImageContainer: {
+    width: '100%',
+    height: 130, // ~65% of card (200px card)
+    backgroundColor: '#F9F9F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 12, // Slightly smaller radius for inner container
+    position: 'relative', // For status badge positioning
   },
   productImage: {
     width: '100%',
-    height: 150,
-    backgroundColor: '#F3F4F6',
+    height: '100%',
+    borderRadius: 12,
   },
   productImagePlaceholder: {
     width: '100%',
-    height: 150,
-    backgroundColor: '#F3F4F6',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#F9F9F9',
+    borderRadius: 12,
   },
   productInfo: {
-    padding: 12,
+    padding: 8,
+    paddingTop: 12,
+    paddingBottom: 40, // Space for add button
+    backgroundColor: 'transparent', // Transparent to show card background
+    minHeight: 70, // ~35% of card for text area
   },
   productName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#111827',
-    marginBottom: 4,
+    marginBottom: 6,
+    lineHeight: 20,
   },
-  productSize: {
-    fontSize: 13,
+  productDeposit: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  depositLabel: {
     color: '#6B7280',
-    marginBottom: 8,
+    fontWeight: '500',
   },
-  productPrice: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F4D3A',
-    marginBottom: 8,
+  depositValue: {
+    color: '#F97316', // Orange color for deposit
+    fontWeight: '700',
   },
-  productStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  depositFree: {
+    color: '#3B82F6', // Blue color for free
+    fontWeight: '700',
   },
   statusBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 6,
+    borderRadius: 12,
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  statusBadgeAvailable: {
+    backgroundColor: '#F0FDF4', // Light green background
+  },
+  statusBadgeBorrowed: {
+    backgroundColor: '#FEF2F2', // Light red background
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 4,
+  },
+  statusDotAvailable: {
+    backgroundColor: '#10B981', // Green dot
+  },
+  statusDotBorrowed: {
+    backgroundColor: '#EF4444', // Red dot
   },
   statusBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  statusBadgeTextAvailable: {
+    color: '#059669', // Green text
+  },
+  statusBadgeTextBorrowed: {
+    color: '#DC2626', // Red text
+  },
+  addButton: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#006241',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#006241',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  addButtonDisabled: {
+    backgroundColor: '#E5E7EB',
+    shadowColor: '#9CA3AF',
+    shadowOpacity: 0.1,
+  },
+  loadingMoreContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingMoreText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#6B7280',
   },
   paginationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     marginTop: 24,
     paddingTop: 20,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
+    gap: 4,
   },
   paginationButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    justifyContent: 'center',
+    width: 40,
+    height: 40,
     borderRadius: 8,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   paginationButtonDisabled: {
-    opacity: 0.5,
+    opacity: 0.4,
+    backgroundColor: '#F3F4F6',
   },
-  paginationButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0F4D3A',
-  },
-  paginationButtonTextDisabled: {
-    color: '#9CA3AF',
-  },
-  paginationInfo: {
+  paginationPageButton: {
+    minWidth: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 12,
   },
-  paginationText: {
+  paginationPageButtonActive: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#006241',
+  },
+  paginationPageText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#6B7280',
+    color: '#111827',
+  },
+  paginationPageTextActive: {
+    color: '#006241',
+    fontWeight: '700',
   },
   // Modal styles
   productModalContainer: {
@@ -1502,7 +1865,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
   },
-  productImage: {
+  productModalImage: {
     width: '100%',
     height: 250,
     borderRadius: 16,
@@ -1520,13 +1883,13 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  productName: {
+  productModalName: {
     fontSize: 24,
     fontWeight: '700',
     color: '#111827',
     marginBottom: 8,
   },
-  productSize: {
+  productModalSize: {
     fontSize: 16,
     color: '#6B7280',
     marginBottom: 16,
@@ -1540,12 +1903,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 16,
   },
-  depositLabel: {
+  depositModalLabel: {
     fontSize: 16,
     color: '#374151',
     fontWeight: '600',
   },
-  depositValue: {
+  depositModalValue: {
     fontSize: 18,
     color: '#059669',
     fontWeight: '700',
@@ -1554,7 +1917,7 @@ const styles = StyleSheet.create({
   statusInfo: {
     marginBottom: 16,
   },
-  statusBadge: {
+  statusModalBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -1566,7 +1929,7 @@ const styles = StyleSheet.create({
   statusUnavailable: {
     backgroundColor: '#FEF2F2',
   },
-  statusText: {
+  statusModalText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#059669',
@@ -1652,6 +2015,22 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#92400E',
+    fontWeight: '600',
+  },
+  ownerMessage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#EFF6FF',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 20,
+    marginBottom: 30,
+  },
+  ownerText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1E40AF',
     fontWeight: '600',
   },
   balanceInfo: {

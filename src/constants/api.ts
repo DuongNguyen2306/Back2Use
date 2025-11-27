@@ -1,5 +1,5 @@
 // API Configuration Constants
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://10.1.192.148:8000';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.1.3:8000';
 
 // API Endpoints
 export const API_ENDPOINTS = {

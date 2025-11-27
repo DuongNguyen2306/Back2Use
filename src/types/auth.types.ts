@@ -19,6 +19,7 @@ export interface User {
   wallet?: {
     _id: string;
     balance: number;
+    availableBalance?: number;
   };
 }
 

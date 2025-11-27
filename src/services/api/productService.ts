@@ -91,6 +91,109 @@ export const productsApi = {
     return productsApi.getById(productId);
   },
 
+  // Get product detail for borrow - với populate đầy đủ
+  // Backend cần populate: productGroupId, productSizeId.depositValue, businessId
+  // TODO: Backend nên tạo endpoint riêng /products/{id}/borrow-detail với populate đầy đủ
+  getDetailForBorrow: async (productId: string): Promise<ProductResponse> => {
+    // Hiện tại gọi cùng endpoint, nhưng backend cần populate đầy đủ
+    // Nếu backend chưa populate, sẽ fallback về getById
+    return productsApi.getById(productId);
+  },
+
+  // Scan product by serial number - GET /products/scan/{serialNumber}
+  scan: async (serialNumber: string): Promise<any> => {
+    try {
+      console.log('🔍 Scanning product with serialNumber:', serialNumber);
+      
+      if (!serialNumber) {
+        throw new Error('Serial number is required');
+      }
+
+      // Extract ID from deep link if present
+      // Format: com.back2use://item/{id} or back2use://item/{id}
+      let actualSerialNumber = serialNumber;
+      if (serialNumber.includes('://')) {
+        // Extract ID from deep link
+        const match = serialNumber.match(/(?:com\.)?back2use:\/\/item\/([^\/]+)/);
+        if (match && match[1]) {
+          actualSerialNumber = match[1];
+          console.log('🔗 Extracted ID from deep link:', actualSerialNumber);
+        } else {
+          // Try to extract last part after last slash
+          const parts = serialNumber.split('/');
+          actualSerialNumber = parts[parts.length - 1];
+          console.log('🔗 Extracted ID from path:', actualSerialNumber);
+        }
+      }
+
+      // Get token if not provided
+      let accessToken: string | undefined;
+      if (getCurrentAccessToken) {
+        try {
+          accessToken = await getCurrentAccessToken() || undefined;
+        } catch (error) {
+          console.warn('Error getting token from provider:', error);
+        }
+      }
+
+      // Fallback: Get token from AsyncStorage
+      if (!accessToken) {
+        try {
+          const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+          accessToken = await AsyncStorage.getItem('ACCESS_TOKEN') || undefined;
+        } catch (error) {
+          console.warn('Error getting token from AsyncStorage:', error);
+        }
+      }
+
+      const headers: Record<string, string> = {};
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+      }
+
+      // URL encode the serial number to handle special characters
+      const encodedSerialNumber = encodeURIComponent(actualSerialNumber);
+      const response = await apiClient.get(`${API_ENDPOINTS.PRODUCTS.SCAN}/${encodedSerialNumber}`, {
+        headers,
+        timeout: REQUEST_TIMEOUT,
+      });
+
+      const result = response.data;
+      console.log('📡 Scan Product API Response:', JSON.stringify(result, null, 2));
+      
+      // Handle both response formats: { success: true, data: {...} } or { statusCode: 200, data: {...} }
+      if ((result.success === true || result.statusCode === 200) && result.data) {
+        return {
+          statusCode: result.statusCode || 200,
+          message: result.message || 'Product scanned successfully',
+          data: result.data,
+          success: result.success !== undefined ? result.success : true,
+        };
+      } else {
+        throw new Error(result.message || 'Failed to scan product');
+      }
+    } catch (error: any) {
+      console.error('Error scanning product:', error);
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url
+      });
+      
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('Request timeout. Please check your connection and try again.');
+      }
+      
+      if (error.message === 'Network Error') {
+        throw new Error('Network error. Please check your internet connection and server status.');
+      }
+      
+      throw new Error(`Failed to scan product: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+    }
+  },
+
   // Get products for customer by product group ID - GET /products/customer/{productGroupId}
   getCustomerProducts: async (
     productGroupId: string,

@@ -307,46 +307,35 @@ export default function CustomerDashboard() {
 
     const product = scannedItem.product;
     
-    // Get deposit value safely - check multiple possible locations
-    let depositValue = 0;
-    
-    console.log('🔍 Full Product Object for depositValue:', JSON.stringify(product, null, 2));
-    console.log('🔍 productSizeId:', product.productSizeId);
-    
-    // Check if productSizeId is an object with depositValue
-    if (product.productSizeId && typeof product.productSizeId === 'object') {
-      const productSize = product.productSizeId as any;
-      console.log('🔍 productSizeId object keys:', Object.keys(productSize));
-      console.log('🔍 productSizeId full:', JSON.stringify(productSize, null, 2));
-      
-      // Try multiple possible field names
-      depositValue = productSize.depositValue || 
-                     productSize.basePrice || 
-                     productSize.price || 
-                     0;
-      
-      console.log('💰 Found depositValue from productSizeId:', depositValue);
+    // Kiểm tra số ngày mượn trước
+    const days = parseInt(durationInDays, 10);
+    if (isNaN(days) || days <= 0) {
+      Alert.alert('Lỗi', 'Vui lòng nhập số ngày mượn hợp lệ (lớn hơn 0)');
+      return;
     }
     
-    // If still 0, check productGroupId.productSizeId
-    if (depositValue === 0 && product.productGroupId) {
-      const productGroup = product.productGroupId as any;
-      if (productGroup.productSizeId && typeof productGroup.productSizeId === 'object') {
-        const pgSize = productGroup.productSizeId;
-        depositValue = pgSize.depositValue || pgSize.basePrice || pgSize.price || 0;
-        console.log('💰 Found depositValue from productGroupId.productSizeId:', depositValue);
-      }
-    }
+    // LẤY GIÁ CỌC 1 NGÀY - Ưu tiên rentalPrice vì đó là giá 1 ngày
+    const pricePerDay = 
+      (product.productSizeId as any)?.rentalPrice ??
+      (product.productSizeId as any)?.rentalPricePerDay ??
+      (product.productGroupId as any)?.rentalPrice ??
+      (product.productGroupId as any)?.rentalPricePerDay ??
+      (product.productSizeId as any)?.depositValue ??
+      (product.productGroupId as any)?.depositValue ??
+      3200; // fallback an toàn
     
-    console.log('💰 Final Deposit Value Check:', {
-      hasProductSizeId: !!product.productSizeId,
-      productSizeIdType: typeof product.productSizeId,
+    // TIỀN CỌC = GIÁ 1 NGÀY × SỐ NGÀY
+    const depositValue = pricePerDay * days;
+    
+    console.log('💰 Deposit Calculation:', {
+      pricePerDay,
+      days,
       depositValue,
     });
     
-    // If depositValue is still 0, show error - backend requires valid depositValue
-    if (depositValue === 0 || !depositValue || isNaN(depositValue)) {
-      console.error('❌ Cannot find depositValue');
+    // If pricePerDay is still 0 or invalid, show error
+    if (!pricePerDay || pricePerDay <= 0 || isNaN(pricePerDay)) {
+      console.error('❌ Cannot find pricePerDay');
       Alert.alert(
         'Error',
         'Unable to find deposit information for this product. The product may not be properly configured. Please contact support or try another product.'
@@ -393,23 +382,31 @@ export default function CustomerDashboard() {
       return;
     }
     
-    // Kiểm tra số ngày mượn
-    const days = parseInt(durationInDays, 10);
-    if (isNaN(days) || days <= 0) {
-      Alert.alert('Lỗi', 'Vui lòng nhập số ngày mượn hợp lệ (lớn hơn 0)');
-      return;
-    }
-
     console.log('✅ Balance sufficient, proceeding to confirm...');
+
+    // TÍNH LẠI TIỀN CỌC REALTIME CHO ALERT (vì người dùng có thể gõ lại số ngày)
+    // Ưu tiên rentalPrice vì đó là giá 1 ngày
+    const realtimePricePerDay = 
+      (product.productSizeId as any)?.rentalPrice ??
+      (product.productSizeId as any)?.rentalPricePerDay ??
+      (product.productGroupId as any)?.rentalPrice ??
+      (product.productGroupId as any)?.rentalPricePerDay ??
+      (product.productSizeId as any)?.depositValue ??
+      (product.productGroupId as any)?.depositValue ??
+      3200;
+
+    const realtimeDays = parseInt(durationInDays, 10) || 30;
+    const realtimeDeposit = realtimePricePerDay * realtimeDays;
 
     // Confirm borrow
     Alert.alert(
       'Xác nhận đặt mượn',
       `Bạn có chắc chắn muốn đặt mượn sản phẩm này?\n\n` +
-      `Tiền cọc: ${depositValue.toLocaleString('vi-VN')} VNĐ\n` +
+      `Tiền cọc: ${realtimeDeposit.toLocaleString('vi-VN')} VNĐ\n` +
+      `(= ${realtimePricePerDay.toLocaleString('vi-VN')} VNĐ/ngày × ${realtimeDays} ngày)\n\n` +
       `Số dư hiện tại: ${walletBalance.toLocaleString('vi-VN')} VNĐ\n` +
-      `Số dư sau khi trừ: ${(walletBalance - depositValue).toLocaleString('vi-VN')} VNĐ\n` +
-      `Thời gian mượn: ${days} ngày`,
+      `Số dư sau khi trừ: ${(walletBalance - realtimeDeposit).toLocaleString('vi-VN')} VNĐ\n` +
+      `Thời gian mượn: ${realtimeDays} ngày`,
       [
         {
           text: 'Hủy',
@@ -475,8 +472,14 @@ export default function CustomerDashboard() {
                 throw new Error('Không tìm thấy ID sản phẩm. Vui lòng thử lại.');
               }
 
-              // Validate depositValue before sending
-              if (!depositValue || depositValue <= 0 || isNaN(depositValue)) {
+              // LẤY depositValue CỐ ĐỊNH TỪ BACKEND (không phải tính toán)
+              // Logic tính toán chỉ dùng cho UI, API cần giá trị cố định từ backend
+              const backendDepositValue = 
+                (product.productSizeId as any)?.depositValue ??
+                (product.productGroupId as any)?.depositValue ??
+                0;
+              
+              if (!backendDepositValue || backendDepositValue <= 0 || isNaN(backendDepositValue)) {
                 Alert.alert(
                   'Error',
                   'Invalid deposit value. Please contact support or try another product.'
@@ -488,17 +491,21 @@ export default function CustomerDashboard() {
               const borrowDto = {
                 productId,
                 businessId,
-                depositValue: depositValue, // Must be valid > 0
-                durationInDays: days,
+                depositValue: backendDepositValue, // Dùng giá trị cố định từ backend
+                durationInDays: realtimeDays,
                 type: "online" as const, // ← CỨ ĐỂ CỨNG THẾ NÀY LÀ CHẮC ĂN NHẤT
               };
 
               console.log('📦 FINAL borrowDto gửi đi:', {
                 productId,
                 businessId,
-                depositValue,
-                durationInDays: days,
-                type: 'online'
+                depositValue: backendDepositValue, // Giá trị cố định từ backend
+                depositValueType: typeof backendDepositValue,
+                durationInDays: realtimeDays,
+                type: 'online',
+                uiCalculated: realtimeDeposit, // Giá trị tính toán chỉ để hiển thị UI
+                pricePerDay: realtimePricePerDay,
+                days: realtimeDays
               });
               console.log('📦 Borrow DTO (full):', JSON.stringify(borrowDto, null, 2));
 
@@ -515,10 +522,8 @@ export default function CustomerDashboard() {
                     onPress: () => {
                       setShowProductModal(false);
                       setScannedItem(null);
-                      // Reload user data để cập nhật số dư
-                      if (state.accessToken) {
-                        getCurrentUserProfileWithAutoRefresh().then(setUserData).catch(console.error);
-                      }
+                      // Redirect tới lịch sử đơn hàng
+                      router.replace('/(protected)/customer/transaction-history');
                     },
                   },
                 ]
@@ -528,7 +533,8 @@ export default function CustomerDashboard() {
               // Xử lý lỗi cụ thể
               const errorMessage = error?.response?.data?.message || error?.message || '';
               
-              console.log('❌ Borrow Error:', errorMessage);
+              // Comment log để tránh hiển thị error notification trên UI
+              // console.log('❌ Borrow Error:', errorMessage);
               
               // Check for insufficient balance
               const isInsufficientBalance = errorMessage.toLowerCase().includes('insufficient') || 
@@ -903,17 +909,37 @@ export default function CustomerDashboard() {
                    <Text style={styles.productSize}>Kích thước: {scannedItem.size}</Text>
                  )}
                  
-                 {scannedItem.product?.productSizeId?.depositValue && (
-                   <View style={styles.depositInfo}>
-                     <Ionicons name="cash-outline" size={20} color="#059669" />
-                     <View style={{ flex: 1 }}>
-                       <Text style={styles.depositLabel}>Tiền cọc:</Text>
-                       <Text style={styles.depositValue}>
-                         {scannedItem.product.productSizeId.depositValue.toLocaleString('vi-VN')} VNĐ
-                       </Text>
+                 {(() => {
+                   // Tính toán realtime tiền cọc - Ưu tiên rentalPrice vì đó là giá 1 ngày
+                   const pricePerDay = 
+                     (scannedItem.product?.productSizeId as any)?.rentalPrice ??
+                     (scannedItem.product?.productSizeId as any)?.rentalPricePerDay ??
+                     (scannedItem.product?.productGroupId as any)?.rentalPrice ??
+                     (scannedItem.product?.productGroupId as any)?.rentalPricePerDay ??
+                     (scannedItem.product?.productSizeId as any)?.depositValue ??
+                     (scannedItem.product?.productGroupId as any)?.depositValue ??
+                     3200;
+                   
+                   const days = Math.max(1, Math.min(30, parseInt(durationInDays) || 1));
+                   const depositValue = pricePerDay * days;
+                   
+                   if (!pricePerDay || pricePerDay <= 0) return null;
+                   
+                   return (
+                     <View style={styles.depositInfo}>
+                       <Ionicons name="cash-outline" size={20} color="#059669" />
+                       <View style={{ flex: 1 }}>
+                         <Text style={styles.depositLabel}>Tiền cọc:</Text>
+                         <Text style={styles.depositValue}>
+                           {depositValue.toLocaleString('vi-VN')} VNĐ
+                         </Text>
+                         <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+                           ({pricePerDay.toLocaleString('vi-VN')} VNĐ/ngày × {days} ngày)
+                         </Text>
+                       </View>
                      </View>
-                   </View>
-                 )}
+                   );
+                 })()}
 
                  {/* Wallet Balance Info */}
                  <View style={styles.balanceInfo}>
@@ -925,7 +951,20 @@ export default function CustomerDashboard() {
                        const walletBalance = (userData as any)?.wallet?.availableBalance ?? 
                                            (userData as any)?.wallet?.balance ?? 
                                            0;
-                       const depositValue = scannedItem.product?.productSizeId?.depositValue || 0;
+                       
+                       // Tính toán realtime tiền cọc
+                       // Ưu tiên rentalPrice vì đó là giá 1 ngày
+                       const pricePerDay = 
+                         (scannedItem.product?.productSizeId as any)?.rentalPrice ??
+                         (scannedItem.product?.productSizeId as any)?.rentalPricePerDay ??
+                         (scannedItem.product?.productGroupId as any)?.rentalPrice ??
+                         (scannedItem.product?.productGroupId as any)?.rentalPricePerDay ??
+                         (scannedItem.product?.productSizeId as any)?.depositValue ??
+                         (scannedItem.product?.productGroupId as any)?.depositValue ??
+                         3200;
+                       
+                       const days = Math.max(1, Math.min(30, parseInt(durationInDays) || 1));
+                       const depositValue = pricePerDay * days;
                        const isInsufficient = walletBalance < depositValue;
                        
                        return (
@@ -982,7 +1021,24 @@ export default function CustomerDashboard() {
                    <TextInput
                      style={styles.durationInput}
                      value={durationInDays}
-                     onChangeText={setDurationInDays}
+                     onChangeText={(text) => {
+                       const num = text.replace(/[^0-9]/g, '');
+                       // Cho phép xóa hết (rỗng) trong quá trình nhập
+                       if (num === '') {
+                         setDurationInDays('');
+                       } else if (parseInt(num) > 30) {
+                         setDurationInDays('30');
+                       } else {
+                         setDurationInDays(num);
+                       }
+                     }}
+                     onBlur={() => {
+                       // Validate khi blur: nếu rỗng hoặc <= 0 thì set về '1'
+                       const num = parseInt(durationInDays, 10);
+                       if (isNaN(num) || num <= 0) {
+                         setDurationInDays('1');
+                       }
+                     }}
                      placeholder="Nhập số ngày mượn"
                      keyboardType="numeric"
                      placeholderTextColor="#9CA3AF"

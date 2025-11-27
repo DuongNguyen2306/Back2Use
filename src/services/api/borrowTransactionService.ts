@@ -71,14 +71,15 @@ export const borrowTransactionsApi = {
         throw new Error(result.message || 'Failed to create borrow transaction');
       }
     } catch (error: any) {
-      console.error('Error creating borrow transaction:', error);
-      console.error('Error details:', {
-        message: error.message,
-        code: error.code,
-        response: error.response?.data,
-        status: error.response?.status,
-        url: error.config?.url
-      });
+      // Comment tất cả log để tránh hiển thị error notification trên UI
+      // console.error('Error creating borrow transaction:', error.message || error);
+      // console.error('Error details:', {
+      //   message: error.message,
+      //   code: error.code,
+      //   response: error.response?.data,
+      //   status: error.response?.status,
+      //   url: error.config?.url
+      // });
       
       if (error.code === 'ECONNABORTED') {
         throw new Error('Request timeout. Please check your connection and try again.');

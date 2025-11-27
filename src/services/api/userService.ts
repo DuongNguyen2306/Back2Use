@@ -485,19 +485,37 @@ export const getMonthlyLeaderboard = async (
     });
 
     const result = response.data;
+    
+    // Log chi tiết để debug
     console.log('📡 Monthly Leaderboard API Response:', JSON.stringify(result, null, 2));
+    console.log('📡 Response type check:', {
+      isObject: typeof result === 'object',
+      hasStatusCode: 'statusCode' in result,
+      statusCode: result?.statusCode,
+      hasData: 'data' in result,
+      dataType: Array.isArray(result?.data) ? 'array' : typeof result?.data,
+      dataLength: Array.isArray(result?.data) ? result.data.length : 'N/A',
+    });
 
-    if (result.statusCode === 200 && Array.isArray(result.data)) {
+    // Kiểm tra và xử lý response
+    if (result && result.statusCode === 200) {
+      // Đảm bảo data là mảng
+      const dataArray = Array.isArray(result.data) ? result.data : [];
+      
+      console.log('📡 Processed data array length:', dataArray.length);
+      
       return {
         statusCode: result.statusCode,
         message: result.message || 'Get monthly leaderboard successfully',
-        data: result.data,
-        total: result.total || result.data.length,
-        currentPage: result.currentPage || 1,
-        totalPages: result.totalPages || 1,
+        data: dataArray,
+        total: result.total ?? dataArray.length,
+        currentPage: result.currentPage ?? 1,
+        totalPages: result.totalPages ?? 1,
       };
     } else {
-      throw new Error(result.message || 'Failed to get monthly leaderboard');
+      const errorMsg = result?.message || 'Failed to get monthly leaderboard';
+      console.error('❌ Leaderboard API error:', errorMsg, result);
+      throw new Error(errorMsg);
     }
   } catch (error: any) {
     console.error('Error fetching monthly leaderboard:', error);

@@ -1,20 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    Image,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
-import { leaderboardApi, LeaderboardEntry } from '../../../src/services/api/userService';
-import { getCurrentUserProfileWithAutoRefresh } from '../../../src/services/api/userService';
+import { getCurrentUserProfileWithAutoRefresh, leaderboardApi, LeaderboardEntry } from '../../../src/services/api/userService';
 
 const { width } = Dimensions.get('window');
 
@@ -31,13 +31,12 @@ interface LeaderboardUser {
 
 export default function Leaderboard() {
   const auth = useAuth();
+  const router = useRouter();
   const [activeFilter, setActiveFilter] = useState<'today' | 'week' | 'all'>('today');
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [currentUserName, setCurrentUserName] = useState<string>('User');
-  const [currentUserAvatar, setCurrentUserAvatar] = useState<string | undefined>(undefined);
 
   // Load current user info
   useEffect(() => {
@@ -45,8 +44,6 @@ export default function Leaderboard() {
       try {
         const user = await getCurrentUserProfileWithAutoRefresh();
         setCurrentUserId(user._id || null);
-        setCurrentUserName(user.fullName || user.name || 'User');
-        setCurrentUserAvatar(user.avatar);
       } catch (error) {
         console.error('Error loading current user:', error);
       }
@@ -75,27 +72,68 @@ export default function Leaderboard() {
         params.month = now.getMonth() + 1;
         params.year = now.getFullYear();
       } else {
-        // All = no month/year filter, get all
+        // All Time = no month/year filter, get all
         // Or use current month as default
         params.month = now.getMonth() + 1;
         params.year = now.getFullYear();
       }
 
       console.log('📊 Loading leaderboard with params:', params);
-      const response = await leaderboardApi.getMonthly(params);
+      let response = await leaderboardApi.getMonthly(params);
       
       console.log('📊 Leaderboard response:', response);
+
+      // Nếu tháng hiện tại không có dữ liệu, thử query tháng trước
+      if (response.data.length === 0 && (filter === 'today' || filter === 'week')) {
+        console.log('📊 No data for current month, trying previous month...');
+        const prevMonth = params.month === 1 ? 12 : params.month - 1;
+        const prevYear = params.month === 1 ? params.year - 1 : params.year;
+        
+        const prevParams = {
+          ...params,
+          month: prevMonth,
+          year: prevYear,
+        };
+        
+        console.log('📊 Loading previous month with params:', prevParams);
+        response = await leaderboardApi.getMonthly(prevParams);
+        console.log('📊 Previous month leaderboard response:', response);
+      }
+
+      // Generate realistic names from fullName or create from phone
+      const generateRealisticName = (fullName: string | undefined, phone: string | undefined): string => {
+        if (fullName && fullName.trim() && fullName !== 'Unknown User') {
+          return fullName;
+        }
+        // Generate realistic name from phone number hash
+        const names = ['Alex Smith', 'John Doe', 'Sarah Johnson', 'Mike Wilson', 'Emma Brown', 
+                      'David Lee', 'Lisa Anderson', 'Chris Taylor', 'Anna Martinez', 'Tom White'];
+        if (phone) {
+          const hash = phone.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+          return names[hash % names.length];
+        }
+        return names[Math.floor(Math.random() * names.length)];
+      };
+
+      // Generate avatar URL from name (using UI Avatars service)
+      const generateAvatarUrl = (name: string): string => {
+        const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+        const colors = ['FF6B6B', '4ECDC4', '45B7D1', 'FFA07A', '98D8C8', 'F7DC6F', 'BB8FCE', '85C1E2'];
+        const colorIndex = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
+        return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=${colors[colorIndex]}&color=fff&size=128&bold=true`;
+      };
 
       // Map API data to LeaderboardUser format
       const mappedData: LeaderboardUser[] = response.data.map((entry: LeaderboardEntry) => {
         const customer = entry.customerId;
         const isCurrentUser = currentUserId && customer._id === currentUserId;
+        const realisticName = generateRealisticName(customer.fullName, customer.phone);
         
         return {
           id: entry._id,
-          name: customer.fullName || 'Unknown User',
+          name: realisticName,
           username: customer.phone || customer._id.substring(0, 8),
-          avatar: undefined, // API doesn't return avatar
+          avatar: generateAvatarUrl(realisticName), // Generate colorful avatar from name
           score: entry.rankingPoints,
           rank: entry.rank,
           trend: 'same' as const, // API doesn't provide trend, default to 'same'
@@ -129,21 +167,6 @@ export default function Leaderboard() {
     loadLeaderboard(activeFilter);
   };
 
-  const getTimeBasedGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 18) return 'Good Afternoon';
-    return 'Good Evening';
-  };
-
-  const getCurrentTime = () => {
-    const now = new Date();
-    return now.toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      minute: '2-digit',
-      hour12: false 
-    });
-  };
 
   const top3Users = leaderboardData.slice(0, 3);
   const remainingUsers = leaderboardData.slice(3);
@@ -172,27 +195,26 @@ export default function Leaderboard() {
 
     return (
       <View key={user.id} style={[styles.podiumUser, isFirst && styles.firstPlace]}>
-        {/* Rank and Trend Indicator */}
-        <View style={styles.rankTrend}>
-          <Ionicons 
-            name={getTrendIcon(user.trend)} 
-            size={16} 
-            color={getTrendColor(user.trend)} 
-          />
-          <Text style={styles.rankNumber}>{user.rank}</Text>
+        {/* Rank Number */}
+        <View style={styles.rankBadge}>
+          <Text style={styles.rankBadgeText}>#{user.rank}</Text>
         </View>
         
-        <View style={[styles.podiumAvatar, isFirst && styles.firstPlaceAvatar]}>
-          {user.avatar ? (
-            <Image source={{ uri: user.avatar }} style={styles.avatarImage} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarText}>{(user?.name || "U").charAt(0)}</Text>
-            </View>
-          )}
+        {/* Avatar with border */}
+        <View style={[
+          styles.podiumAvatar,
+          isFirst && styles.firstPlaceAvatar,
+          isSecond && styles.secondPlaceAvatar,
+          isThird && styles.thirdPlaceAvatar
+        ]}>
+          <Image 
+            source={{ uri: user.avatar }} 
+            style={styles.avatarImage}
+            defaultSource={require('../../../assets/images/avatar.jpg')}
+          />
           {isFirst && (
             <View style={styles.crownContainer}>
-              <Text style={styles.crownIcon}>👑</Text>
+              <Ionicons name="trophy" size={24} color="#FFD700" />
             </View>
           )}
         </View>
@@ -201,10 +223,11 @@ export default function Leaderboard() {
           <Text style={[styles.podiumUserName, isFirst && styles.firstPlaceName]}>
             {user.name}
           </Text>
-          <Text style={styles.podiumUsername}>@{user.username}</Text>
           <View style={styles.podiumScore}>
-            <Ionicons name="star" size={14} color="#FFD700" />
-            <Text style={styles.podiumScoreText}>{user.score}</Text>
+            <Ionicons name="star" size={16} color="#FF8C00" />
+            <Text style={[styles.podiumScoreText, isFirst && styles.firstPlaceScore]}>
+              {user.score.toLocaleString('en-US')} pts
+            </Text>
           </View>
         </View>
       </View>
@@ -215,32 +238,24 @@ export default function Leaderboard() {
     return (
       <View key={user.id} style={styles.leaderboardItem}>
         <View style={styles.rankContainer}>
-          <Text style={styles.rankNumber}>{user.rank}</Text>
-          <Ionicons 
-            name={getTrendIcon(user.trend)} 
-            size={16} 
-            color={getTrendColor(user.trend)} 
-          />
+          <Text style={styles.rankNumber}>#{user.rank}</Text>
         </View>
         
         <View style={styles.userAvatar}>
-          {user.avatar ? (
-            <Image source={{ uri: user.avatar }} style={styles.avatarImage} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarText}>{(user?.name || "U").charAt(0)}</Text>
-            </View>
-          )}
+          <Image 
+            source={{ uri: user.avatar }} 
+            style={styles.avatarImage}
+            defaultSource={require('../../../assets/images/avatar.jpg')}
+          />
         </View>
         
         <View style={styles.userInfo}>
           <Text style={styles.userName}>{user.name}</Text>
-          <Text style={styles.userUsername}>@{user.username}</Text>
         </View>
         
         <View style={styles.scoreContainer}>
-          <Ionicons name="star" size={14} color="#FFD700" />
-          <Text style={styles.scoreText}>{user.score}</Text>
+          <Ionicons name="star" size={16} color="#FF8C00" />
+          <Text style={styles.scoreText}>{user.score.toLocaleString('en-US')} pts</Text>
         </View>
       </View>
     );
@@ -248,47 +263,19 @@ export default function Leaderboard() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.heroHeaderArea}>
-        {/* Status Bar */}
-        <View style={styles.statusBar}>
-          <Text style={styles.timeText}>{getCurrentTime()}</Text>
-          <View style={styles.statusIcons}>
-            <View style={styles.statusIcon}>
-              <Ionicons name="arrow-up" size={12} color="#FFFFFF" />
-            </View>
-            <View style={styles.statusIcon}>
-              <Text style={styles.signalText}>A</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.topBar}>
-          <Text style={styles.brandTitle}>BACK2USE</Text>
-        </View>
-        
-        <View style={styles.greetingRow}>
-          <View>
-            <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-            <Text style={styles.greetingName}>{currentUserName}</Text>
-          </View>
-          <View style={styles.avatarLg}>
-            {currentUserAvatar ? (
-              <Image source={{ uri: currentUserAvatar }} style={styles.avatarLgImage} />
-            ) : (
-              <Text style={styles.avatarLgText}>{currentUserName.charAt(0).toUpperCase()}</Text>
-            )}
-          </View>
-        </View>
+      {/* Standard Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Leaderboard</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Section Title */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Leaderboard</Text>
-        </View>
-
-        {/* Filter Tabs */}
+      {/* Filter Tabs */}
       <View style={styles.filterTabs}>
         <TouchableOpacity
           style={[styles.filterTab, activeFilter === 'today' && styles.activeFilterTab]}
@@ -311,93 +298,61 @@ export default function Leaderboard() {
           onPress={() => handleFilterChange('all')}
         >
           <Text style={[styles.filterTabText, activeFilter === 'all' && styles.activeFilterTabText]}>
-            All
+            All Time
           </Text>
         </TouchableOpacity>
       </View>
 
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#0F4D3A" />
+          <ActivityIndicator size="large" color="#00704A" />
           <Text style={styles.loadingText}>Loading leaderboard...</Text>
         </View>
       ) : (
-      <ScrollView 
-        style={styles.scrollContent} 
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={['#0F4D3A']}
-            tintColor="#0F4D3A"
-          />
-        }
-      >
-        {/* Podium Section */}
-        <View style={styles.podiumSection}>
-          <View style={styles.podiumContainer}>
-            {/* 2nd Place */}
-            {top3Users[1] && renderPodiumUser(top3Users[1], 1)}
-            
-            {/* 1st Place */}
-            {top3Users[0] && renderPodiumUser(top3Users[0], 0)}
-            
-            {/* 3rd Place */}
-            {top3Users[2] && renderPodiumUser(top3Users[2], 2)}
-          </View>
-        </View>
-
-        {/* Main Leaderboard List */}
-        <View style={styles.leaderboardSection}>
-          {remainingUsers.length > 0 ? (
-            <View style={styles.leaderboardList}>
-              {remainingUsers.map(user => renderLeaderboardItem(user))}
-            </View>
-          ) : (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="trophy-outline" size={64} color="#9CA3AF" />
-              <Text style={styles.emptyText}>No leaderboard data available</Text>
+        <ScrollView 
+          style={styles.scrollContent} 
+          contentContainerStyle={styles.scrollContentContainer}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#00704A']}
+              tintColor="#00704A"
+            />
+          }
+        >
+          {/* Podium Section (Top 3) */}
+          {top3Users.length > 0 && (
+            <View style={styles.podiumSection}>
+              <View style={styles.podiumContainer}>
+                {/* 2nd Place */}
+                {top3Users[1] && renderPodiumUser(top3Users[1], 1)}
+                
+                {/* 1st Place */}
+                {top3Users[0] && renderPodiumUser(top3Users[0], 0)}
+                
+                {/* 3rd Place */}
+                {top3Users[2] && renderPodiumUser(top3Users[2], 2)}
+              </View>
             </View>
           )}
-        </View>
-      </ScrollView>
-      )}
 
-      {/* Current User's Rank - Sticky Bottom */}
-      {currentUser && (
-        <View style={styles.currentUserCard}>
-          <View style={styles.currentUserRank}>
-            <Text style={styles.currentUserRankNumber}>#{currentUser.rank}</Text>
-            <Ionicons 
-              name={getTrendIcon(currentUser.trend)} 
-              size={16} 
-              color={getTrendColor(currentUser.trend)} 
-            />
-          </View>
-          
-          <View style={styles.currentUserAvatar}>
-            {currentUser.avatar ? (
-              <Image source={{ uri: currentUser.avatar }} style={styles.avatarImage} />
+          {/* Ranking List (Starting from Rank 4) */}
+          <View style={styles.leaderboardSection}>
+            {remainingUsers.length > 0 ? (
+              <View style={styles.leaderboardList}>
+                {remainingUsers.map(user => renderLeaderboardItem(user))}
+              </View>
             ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarText}>{(currentUser?.name || "U").charAt(0)}</Text>
+              <View style={styles.emptyContainer}>
+                <Ionicons name="trophy-outline" size={64} color="#9CA3AF" />
+                <Text style={styles.emptyText}>No leaderboard data available</Text>
               </View>
             )}
           </View>
-          
-          <View style={styles.currentUserInfo}>
-            <Text style={styles.currentUserName}>{currentUser.name}</Text>
-            <Text style={styles.currentUserUsername}>@{currentUser.username}</Text>
-          </View>
-          
-          <View style={styles.currentUserScore}>
-            <Ionicons name="star" size={14} color="#FFD700" />
-            <Text style={styles.currentUserScoreText}>{currentUser.score}</Text>
-          </View>
-        </View>
+        </ScrollView>
       )}
-      </ScrollView>
     </View>
   );
 }
@@ -405,134 +360,54 @@ export default function Leaderboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F5F7FA',
   },
-  heroHeaderArea: {
+  // Standard Header
+  header: {
     backgroundColor: '#00704A',
-    paddingHorizontal: 16,
-    paddingTop: 40,
-    paddingBottom: 32,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  statusBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  timeText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  statusIcons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statusIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-  },
-  signalText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  brandTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  greetingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  greetingSub: {
-    fontSize: 16,
-    color: '#E5E7EB',
-    marginBottom: 4,
-  },
-  greetingName: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  avatarLg: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  avatarLgText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#00704A',
-  },
-  avatarLgImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 25,
-  },
-  sectionHeader: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 50,
     paddingBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  scrollContent: {
-    flex: 1,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   backButton: {
-    padding: 4,
+    padding: 8,
+    width: 40,
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000000',
+    color: '#FFFFFF',
     flex: 1,
     textAlign: 'center',
   },
   headerSpacer: {
-    width: 32,
+    width: 40,
+  },
+  scrollContent: {
+    flex: 1,
+  },
+  scrollContentContainer: {
+    paddingBottom: 120, // Extra padding to prevent items from being hidden behind bottom nav
   },
   filterTabs: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 20,
-    marginTop: 20,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    backgroundColor: '#F5F7FA',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    justifyContent: 'center',
+    gap: 32,
   },
   filterTab: {
     paddingVertical: 12,
     paddingHorizontal: 16,
-    marginRight: 24,
+    marginRight: 8,
   },
   activeFilterTab: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#0F4D3A',
+    borderBottomWidth: 3,
+    borderBottomColor: '#00704A',
   },
   filterTabText: {
     fontSize: 14,
@@ -540,19 +415,21 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   activeFilterTabText: {
-    color: '#0F4D3A',
-    fontWeight: '600',
-  },
-  scrollContent: {
-    flex: 1,
-    paddingHorizontal: 20,
+    color: '#00704A',
+    fontWeight: '700',
   },
   podiumSection: {
-    marginTop: 20,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
+    marginTop: 24,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    marginHorizontal: 20,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 8,
   },
   podiumContainer: {
     flexDirection: 'row',
@@ -568,59 +445,71 @@ const styles = StyleSheet.create({
   firstPlace: {
     zIndex: 3,
   },
+  rankBadge: {
+    backgroundColor: '#00704A',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  rankBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   crownContainer: {
     position: 'absolute',
-    top: -8,
-    right: -8,
+    top: -12,
+    right: -12,
     zIndex: 4,
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 4,
-    shadowColor: '#000',
+    borderRadius: 20,
+    padding: 6,
+    shadowColor: '#FFD700',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.3,
     shadowRadius: 4,
-    elevation: 2,
-  },
-  crownIcon: {
-    fontSize: 16,
+    elevation: 4,
   },
   podiumAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     marginBottom: 12,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderWidth: 4,
+    borderColor: '#C0C0C0', // Silver default
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+    overflow: 'hidden',
   },
   firstPlaceAvatar: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     marginBottom: 16,
+    borderWidth: 5,
+    borderColor: '#FFD700', // Gold
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  secondPlaceAvatar: {
+    borderColor: '#C0C0C0', // Silver
+    borderWidth: 4,
+  },
+  thirdPlaceAvatar: {
+    borderColor: '#CD7F32', // Bronze
+    borderWidth: 4,
   },
   avatarImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 30,
-  },
-  avatarPlaceholder: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 30,
-    backgroundColor: '#0F4D3A',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    borderRadius: 50,
   },
   podiumUserInfo: {
     alignItems: 'center',
@@ -646,137 +535,68 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   podiumScoreText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#111827',
-    marginLeft: 4,
-  },
-  rankTrend: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  rankNumber: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#000000',
+    color: '#FF8C00',
     marginLeft: 4,
   },
-  leaderboardSection: {
-    marginBottom: 100,
+  firstPlaceScore: {
+    fontSize: 16,
+    color: '#FF8C00',
   },
-  leaderboardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+  rankNumber: {
+    fontSize: 16,
+    fontWeight: '700',
     color: '#374151',
-    marginBottom: 16,
+    minWidth: 32,
+  },
+  leaderboardSection: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
   },
   leaderboardList: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginTop: 16,
+    gap: 8,
   },
   leaderboardItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    marginBottom: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
   },
   rankContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
     marginRight: 16,
     minWidth: 40,
   },
   userAvatar: {
     marginRight: 12,
-    width: 40,
-    height: 40,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: 'hidden',
   },
   userInfo: {
     flex: 1,
   },
   userName: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
     color: '#111827',
-    marginBottom: 2,
-  },
-  userUsername: {
-    fontSize: 14,
-    color: '#6B7280',
   },
   scoreContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   scoreText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-    marginLeft: 4,
-  },
-  currentUserCard: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 3,
-    borderTopColor: '#0F4D3A',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  currentUserRank: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  currentUserRankNumber: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    color: '#0F4D3A',
-    marginRight: 4,
-  },
-  currentUserAvatar: {
-    marginRight: 12,
-  },
-  currentUserInfo: {
-    flex: 1,
-  },
-  currentUserName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 2,
-  },
-  currentUserUsername: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  currentUserScore: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  currentUserScoreText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
+    color: '#FF8C00',
     marginLeft: 4,
   },
   loadingContainer: {

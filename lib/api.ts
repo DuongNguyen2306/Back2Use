@@ -100,9 +100,10 @@ apiClient.interceptors.response.use(
     const isNetworkError = !error.response && error.request;
     if (__DEV__ || !isNetworkError) {
       console.log('❌ API Error:', error.response?.status || 'Network Error', error.config?.url);
-      if (error.response?.data) {
-        console.log('Error details:', error.response.data);
-      }
+      // Comment để tránh hiển thị error details trên UI
+      // if (error.response?.data) {
+      //   console.log('Error details:', error.response.data);
+      // }
     }
     
     // Do NOT auto-clear tokens here. Let the auth flow decide how to handle 401.
