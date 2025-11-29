@@ -2,10 +2,8 @@ import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService
 import { walletApi, walletTransactionsApi, type WalletDetails, type WalletTransaction } from '@/services/api/walletService';
 import { User } from '@/types/auth.types';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -78,6 +76,9 @@ export default function CustomerWallet() {
   // Processing state
   const [isProcessing, setIsProcessing] = useState(false);
   
+  // Payment method state
+  const [paymentMethod, setPaymentMethod] = useState<'vnpay' | 'momo'>('vnpay');
+  
   // VNPay WebView states
   const [showPaymentWebView, setShowPaymentWebView] = useState(false);
   const [paymentUrl, setPaymentUrl] = useState('');
@@ -89,6 +90,13 @@ export default function CustomerWallet() {
   const [savedPaymentAmount, setSavedPaymentAmount] = useState(0);
   const [isPaymentProcessing, setIsPaymentProcessing] = useState(false);
   const [paymentResultShown, setPaymentResultShown] = useState(false);
+  
+  // Payment status state
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success' | 'failed'>('idle');
+  
+  // Ref to track polling state and cleanup
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const isPollingRef = useRef(false);
 
   // Debug: Log state changes
   useEffect(() => {
@@ -153,40 +161,28 @@ export default function CustomerWallet() {
   }, [loadUserData]);
 
   // Reload user data when screen is focused (e.g., after returning from profile edit)
-  useFocusEffect(
-    useCallback(() => {
-      const checkAndReload = async () => {
-        try {
-          const lastUpdateTimestamp = await AsyncStorage.getItem('PROFILE_UPDATED_TIMESTAMP');
-          if (lastUpdateTimestamp) {
-            const lastUpdate = parseInt(lastUpdateTimestamp, 10);
-            const now = Date.now();
-            // Reload if profile was updated within the last 5 minutes
-            if (now - lastUpdate < 5 * 60 * 1000) {
-              console.log('🔄 Profile was recently updated, reloading user data...');
-              await loadUserData();
-              // Reload transactions after user data is loaded
-              if (wallet?._id) {
-                loadTransactions();
-              }
-            }
-          } else {
-            // Always reload when screen is focused to ensure fresh data
-            await loadUserData();
-            // Reload transactions after user data is loaded
-            if (wallet?._id) {
-              loadTransactions();
-            }
-          }
-        } catch (error) {
-          console.error('Error checking profile update:', error);
-          // Still try to load user data
-          await loadUserData();
-        }
-      };
-      checkAndReload();
-    }, [loadUserData, wallet?._id])
-  );
+  // Disabled to prevent infinite loop - transactions are loaded on mount and when needed
+  // useFocusEffect(
+  //   useCallback(() => {
+  //     const checkAndReload = async () => {
+  //       try {
+  //         const lastUpdateTimestamp = await AsyncStorage.getItem('PROFILE_UPDATED_TIMESTAMP');
+  //         if (lastUpdateTimestamp) {
+  //           const lastUpdate = parseInt(lastUpdateTimestamp, 10);
+  //           const now = Date.now();
+  //           // Reload if profile was updated within the last 5 minutes
+  //           if (now - lastUpdate < 5 * 60 * 1000) {
+  //             console.log('🔄 Profile was recently updated, reloading user data...');
+  //             await loadUserData();
+  //           }
+  //         }
+  //       } catch (error) {
+  //         console.error('Error checking profile update:', error);
+  //       }
+  //     };
+  //     checkAndReload();
+  //   }, [loadUserData])
+  // );
 
   // Listen for app state changes to refresh wallet after payment
   useEffect(() => {
@@ -203,17 +199,11 @@ export default function CustomerWallet() {
     return () => subscription?.remove();
   }, [wallet?._id, isPaymentProcessing, showPaymentWebView]);
 
-  // Load transactions when component mounts and when filter changes
-  useEffect(() => {
-    if (wallet?._id) {
-      loadTransactions();
-    }
-  }, [wallet?._id]);
-
   const handleAddFunds = async () => {
     console.log('🚀 Starting add funds process...');
     console.log('💰 Amount:', amount);
     console.log('💳 Wallet ID:', wallet?._id);
+    console.log('💳 Payment Method:', paymentMethod);
     
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
       console.log('❌ Invalid amount');
@@ -227,25 +217,55 @@ export default function CustomerWallet() {
       return;
     }
 
+    // Validate payment method
+    const validPaymentMethod = paymentMethod && (paymentMethod === 'vnpay' || paymentMethod === 'momo') 
+      ? paymentMethod 
+      : 'vnpay';
+    
+    if (!validPaymentMethod || (validPaymentMethod !== 'vnpay' && validPaymentMethod !== 'momo')) {
+      console.log('❌ Invalid payment method:', paymentMethod);
+      Alert.alert('Error', 'Please select a valid payment method');
+      return;
+    }
+
     try {
       setIsProcessing(true);
       console.log('📡 Calling deposit API...');
       console.log('📡 API URL:', `/wallets/${wallet._id}/deposit`);
       console.log('📡 Amount:', Number(amount));
+      console.log('📡 Payment Method:', validPaymentMethod);
       
-      const response = await walletApi.deposit(wallet._id, Number(amount));
-      console.log('✅ Deposit API response:', response);
+      const response = await walletApi.deposit(wallet._id, Number(amount), validPaymentMethod);
+      console.log('✅ Deposit API response:', JSON.stringify(response, null, 2));
       
-      if (response.url || response.payUrl) {
-        const paymentUrl = response.url || response.payUrl;
-        console.log('🔗 Payment URL received:', paymentUrl);
+      // Handle different response structures
+      // Response can be: { url: "...", payUrl: "..." } or { paymentResponse: { payUrl: "..." } }
+      let paymentUrl = response.url || response.payUrl;
+      if (!paymentUrl && response.paymentResponse) {
+        paymentUrl = response.paymentResponse.payUrl || response.paymentResponse.url;
+      }
+      
+      console.log('🔗 Payment URL extracted:', paymentUrl);
+      console.log('🔗 Response structure:', {
+        hasUrl: !!response.url,
+        hasPayUrl: !!response.payUrl,
+        hasPaymentResponse: !!response.paymentResponse,
+        transactionId: response.transactionId
+      });
+      
+      if (paymentUrl) {
+        // Save transaction ID for retry if needed
+        if (response.transactionId) {
+          console.log('💾 Saving transaction ID:', response.transactionId);
+          // Could save to state if needed for retry
+        }
         
         // Save payment amount for result display
         setSavedPaymentAmount(Number(amount));
         setPaymentAmount(Number(amount));
         
-        // Show VNPay WebView
-        setPaymentUrl(paymentUrl || '');
+        // Show Payment WebView
+        setPaymentUrl(paymentUrl);
         setShowPaymentWebView(true);
         setShowAddFunds(false);
       } else {
@@ -262,6 +282,32 @@ export default function CustomerWallet() {
       console.error('❌ Error message:', error.message);
       console.error('❌ Error response:', error.response?.data);
       Alert.alert('Error', `Failed to process deposit: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleRetryPayment = async (transactionId: string) => {
+    try {
+      setIsProcessing(true);
+      console.log('🔄 Retrying payment for transaction:', transactionId);
+      
+      const response = await walletApi.retryPayment(transactionId);
+      console.log('✅ Retry payment response:', response);
+      
+      if (response.url || response.payUrl) {
+        const paymentUrl = response.url || response.payUrl;
+        console.log('🔗 Payment URL received:', paymentUrl);
+        
+        // Show Payment WebView
+        setPaymentUrl(paymentUrl || '');
+        setShowPaymentWebView(true);
+      } else {
+        Alert.alert('Error', 'Failed to get payment URL');
+      }
+    } catch (error: any) {
+      console.error('❌ Retry payment error:', error);
+      Alert.alert('Error', `Failed to retry payment: ${error.message}`);
     } finally {
       setIsProcessing(false);
     }
@@ -303,6 +349,93 @@ export default function CustomerWallet() {
     }
   };
 
+  const startPollingForRealSuccess = async () => {
+    // Prevent multiple polling instances
+    if (isPollingRef.current) {
+      console.log('⚠️ Polling already running, skipping...');
+      return;
+    }
+
+    // Cleanup any existing polling
+    if (pollingRef.current) {
+      clearTimeout(pollingRef.current);
+      pollingRef.current = null;
+    }
+
+    isPollingRef.current = true;
+    let attempts = 0;
+    const maxAttempts = 20; // ~20 giây
+
+    const poll = async () => {
+      // Check if polling was stopped
+      if (!isPollingRef.current) {
+        console.log('🛑 Polling stopped');
+        return;
+      }
+
+      if (attempts >= maxAttempts) {
+        console.log('⏱️ Max polling attempts reached');
+        setPaymentStatus('failed');
+        isPollingRef.current = false;
+        pollingRef.current = null;
+        return;
+      }
+
+      try {
+        // Tải lại ví + danh sách giao dịch mới nhất
+        await loadUserData();
+        await loadTransactions(1, false);
+
+        // Tìm giao dịch vừa nạp (dựa trên amount + thời gian gần nhất + type deposit)
+        const recentTopUp = realTransactions
+          .filter(t => 
+            t.transactionType === 'deposit' &&
+            t.direction === 'in' &&
+            t.amount === savedPaymentAmount &&
+            new Date(t.createdAt) > new Date(Date.now() - 5 * 60 * 1000) // trong 5 phút gần nhất
+          )
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+        if (recentTopUp?.status === 'completed') {
+          console.log('✅ Transaction completed, stopping polling');
+          setPaymentStatus('success');
+          isPollingRef.current = false;
+          pollingRef.current = null;
+          return;
+        }
+      } catch (err) {
+        console.log('Polling error, continue...', err);
+      }
+
+      attempts++;
+      pollingRef.current = setTimeout(poll, 1500); // kiểm tra mỗi 1.5s
+    };
+
+    poll();
+  };
+
+  // Cleanup polling on unmount or when payment status changes
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) {
+        clearTimeout(pollingRef.current);
+        pollingRef.current = null;
+      }
+      isPollingRef.current = false;
+    };
+  }, []);
+
+  // Stop polling when payment status changes to success or failed
+  useEffect(() => {
+    if (paymentStatus === 'success' || paymentStatus === 'failed') {
+      if (pollingRef.current) {
+        clearTimeout(pollingRef.current);
+        pollingRef.current = null;
+      }
+      isPollingRef.current = false;
+    }
+  }, [paymentStatus]);
+
   const handlePaymentSuccess = async () => {
     console.log('✅ Payment successful, closing WebView and showing result');
     setShowPaymentWebView(false);
@@ -310,16 +443,53 @@ export default function CustomerWallet() {
     setShowPaymentResult(true);
     setPaymentResultShown(true);
     
+    // Reset transaction page to 1 to get latest transactions
+    setTransactionPage(1);
+    
     // Immediate refresh
     await loadUserData();
-    await loadTransactions();
+    await loadTransactions(1, false); // Force reload from page 1
     
-    // Additional refresh after delay to ensure data is updated
-    setTimeout(async () => {
-      console.log('🔄 Refreshing data after payment success...');
+    // Poll for transaction status update (backend may need time to process)
+    let retryCount = 0;
+    const maxRetries = 6; // Poll up to 6 times (12 seconds total)
+    const pollInterval = 2000; // 2 seconds
+    
+    const pollForTransactionUpdate = async () => {
+      if (retryCount >= maxRetries) {
+        console.log('⏱️ Max retries reached, stopping polling');
+        // Final refresh
+        await loadUserData();
+        await loadTransactions(1, false);
+        return;
+      }
+      
+      retryCount++;
+      console.log(`🔄 Polling for transaction update (attempt ${retryCount}/${maxRetries})...`);
+      
       await loadUserData();
-      await loadTransactions();
-    }, 3000); // 3 seconds delay
+      await loadTransactions(1, false); // Force reload from page 1
+      
+      // Continue polling to ensure backend has processed
+      if (retryCount < maxRetries) {
+        setTimeout(pollForTransactionUpdate, pollInterval);
+      } else {
+        // Final refresh after all retries
+        console.log('🔄 Final refresh after all polling attempts...');
+        await loadUserData();
+        await loadTransactions(1, false);
+      }
+    };
+    
+    // Start polling after initial delay
+    setTimeout(pollForTransactionUpdate, pollInterval);
+    
+    // Additional refresh after longer delay to ensure data is updated
+    setTimeout(async () => {
+      console.log('🔄 Final refresh after payment success (10s delay)...');
+      await loadUserData();
+      await loadTransactions(1, false);
+    }, 10000); // 10 seconds delay
   };
 
   const handlePaymentFailure = () => {
@@ -521,10 +691,20 @@ export default function CustomerWallet() {
   const quickAmounts = [10000, 50000, 100000, 200000];
 
   // Load real transactions from API
-  const loadTransactions = async (page: number = 1, append: boolean = false) => {
+  // Ref to prevent multiple simultaneous loads
+  const isLoadingTransactionsRef = useRef(false);
+
+  const loadTransactions = useCallback(async (page: number = 1, append: boolean = false) => {
     if (!wallet?._id) return;
     
+    // Prevent multiple simultaneous loads
+    if (isLoadingTransactionsRef.current && !append) {
+      console.log('⚠️ Transactions already loading, skipping...');
+      return;
+    }
+    
     try {
+      isLoadingTransactionsRef.current = true;
       setTransactionsLoading(true);
       console.log('🔄 Loading customer transactions...', { page, append });
       
@@ -610,8 +790,19 @@ export default function CustomerWallet() {
       console.error('❌ Error loading transactions:', error);
     } finally {
       setTransactionsLoading(false);
+      isLoadingTransactionsRef.current = false;
     }
-  };
+  }, [wallet?._id, realTransactions]);
+
+  // Load transactions when component mounts and when filter changes
+  // Only load once when wallet is available, not on every wallet change
+  const hasLoadedTransactionsRef = useRef(false);
+  useEffect(() => {
+    if (wallet?._id && !hasLoadedTransactionsRef.current) {
+      hasLoadedTransactionsRef.current = true;
+      loadTransactions();
+    }
+  }, [wallet?._id, loadTransactions]);
 
   const forceRefresh = async () => {
     console.log('🔄 Force refreshing all data...');
@@ -867,6 +1058,16 @@ export default function CustomerWallet() {
                             {getStatusText(transaction.status)}
                           </Text>
                         </View>
+                        {transaction.status === 'processing' && transaction.transactionType === 'deposit' && (
+                          <TouchableOpacity
+                            style={styles.retryButton}
+                            onPress={() => handleRetryPayment(transaction._id)}
+                            disabled={isProcessing}
+                          >
+                            <Ionicons name="refresh" size={14} color="#0F4D3A" />
+                            <Text style={styles.retryButtonText}>Retry</Text>
+                          </TouchableOpacity>
+                        )}
                       </View>
                     </View>
                   ))}
@@ -948,6 +1149,51 @@ export default function CustomerWallet() {
             keyboardShouldPersistTaps="handled"
           >
             <Text style={styles.modalSubtitle}>Enter amount to add to your wallet</Text>
+            
+            {/* Payment Method Selection */}
+            <View style={styles.paymentMethodContainer}>
+              <Text style={styles.paymentMethodLabel}>Payment Method</Text>
+              <View style={styles.paymentMethodButtons}>
+                <TouchableOpacity
+                  style={[
+                    styles.paymentMethodButton,
+                    paymentMethod === 'vnpay' && styles.paymentMethodButtonActive
+                  ]}
+                  onPress={() => setPaymentMethod('vnpay')}
+                >
+                  <Ionicons 
+                    name="card" 
+                    size={20} 
+                    color={paymentMethod === 'vnpay' ? '#FFFFFF' : '#0F4D3A'} 
+                  />
+                  <Text style={[
+                    styles.paymentMethodText,
+                    paymentMethod === 'vnpay' && styles.paymentMethodTextActive
+                  ]}>
+                    VNPay
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.paymentMethodButton,
+                    paymentMethod === 'momo' && styles.paymentMethodButtonActive
+                  ]}
+                  onPress={() => setPaymentMethod('momo')}
+                >
+                  <Ionicons 
+                    name="phone-portrait" 
+                    size={20} 
+                    color={paymentMethod === 'momo' ? '#FFFFFF' : '#A50064'} 
+                  />
+                  <Text style={[
+                    styles.paymentMethodText,
+                    paymentMethod === 'momo' && styles.paymentMethodTextActive
+                  ]}>
+                    MoMo
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
             
             <View style={styles.amountInputContainer}>
               <Text style={styles.currencySymbol}>VNĐ</Text>
@@ -1053,7 +1299,9 @@ export default function CustomerWallet() {
             <TouchableOpacity onPress={() => setShowPaymentWebView(false)}>
               <Text style={styles.cancelButton}>Cancel</Text>
               </TouchableOpacity>
-            <Text style={styles.webViewTitle}>VNPay Payment</Text>
+            <Text style={styles.webViewTitle}>
+              {paymentMethod === 'momo' ? 'MoMo Payment' : 'VNPay Payment'}
+            </Text>
             <View style={{ width: 60 }} />
             </View>
           
@@ -1061,23 +1309,36 @@ export default function CustomerWallet() {
             source={{ uri: paymentUrl }}
             style={styles.webView}
             onNavigationStateChange={(navState) => {
-              console.log('🔍 WebView navigation:', navState.url);
-              
-              // Check for success URL
-              if (navState.url.includes('vnp_ResponseCode=00') || navState.url.includes('success')) {
-                console.log('✅ Payment success detected');
-                handlePaymentSuccess();
-              }
-              
-              // Check for failure URL
-              if (navState.url.includes('vnp_ResponseCode=') && !navState.url.includes('vnp_ResponseCode=00')) {
-                console.log('❌ Payment failure detected');
-                handlePaymentFailure();
+              const url = navState.url;
+              console.log('WebView URL:', url);
+
+              // Chỉ cần phát hiện MoMo hoặc VNPay trả người dùng về là đóng WebView
+              // KHÔNG được hiện thành công ngay!!!
+              if (
+                url.includes('momo/redirect') ||
+                url.includes('vnp_ResponseCode=') ||
+                url.includes('payment-success') ||
+                url.includes('payment-failed') ||
+                url.includes('resultCode=')
+              ) {
+                // Đóng WebView ngay lập tức
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+
+                // HIỆN MÀN HÌNH "Đang xử lý..." thay vì thành công
+                setPaymentStatus('pending');
+                setShowPaymentResult(true);
+                setSavedPaymentAmount(Number(amount)); // để hiển thị số tiền đang chờ
+
+                // Bắt đầu polling để chờ backend cập nhật thật sự
+                startPollingForRealSuccess();
+
+                return;
               }
             }}
             onError={(error) => {
               console.error('❌ WebView error:', error);
-              handlePaymentFailure();
+              // Don't auto-fail on error, let user complete payment flow
             }}
           />
               </View>
@@ -1086,38 +1347,54 @@ export default function CustomerWallet() {
       {/* Payment Result Modal */}
       <Modal
         visible={showPaymentResult}
-        animationType="fade"
+        animationType="slide"
         transparent={true}
       >
         <View style={styles.resultModalContainer}>
           <View style={styles.resultModalContent}>
-            <View style={styles.resultIcon}>
-              <Ionicons 
-                name={paymentResult === 'success' ? 'checkmark-circle' : 'close-circle'} 
-                size={64} 
-                color={paymentResult === 'success' ? '#10B981' : '#EF4444'} 
-              />
-            </View>
-            
-            <Text style={styles.resultTitle}>
-              {paymentResult === 'success' ? 'Payment Successful!' : 'Payment Failed'}
-            </Text>
-            
-            <Text style={styles.resultMessage}>
-              {paymentResult === 'success' 
-                ? `Successfully added ${savedPaymentAmount.toLocaleString('vi-VN')} VNĐ to your wallet`
-                : 'Payment could not be processed. Please try again.'
-              }
-            </Text>
-            
-            <TouchableOpacity 
-              style={[styles.resultButton, paymentResult === 'success' ? styles.successButton : styles.failureButton]}
-              onPress={handlePaymentResultClose}
-            >
-              <Text style={styles.resultButtonText}>
-                {paymentResult === 'success' ? 'Continue' : 'Try Again'}
-              </Text>
-            </TouchableOpacity>
+            {paymentStatus === 'pending' && (
+              <>
+                <ActivityIndicator size="large" color="#0F4D3A" />
+                <Text style={styles.resultTitle}>Đang xử lý giao dịch...</Text>
+                <Text style={styles.resultMessage}>
+                  Vui lòng đợi một chút, chúng tôi đang cập nhật số dư cho bạn
+                </Text>
+              </>
+            )}
+
+            {paymentStatus === 'success' && (
+              <>
+                <Ionicons name="checkmark-circle" size={64} color="#10B981" />
+                <Text style={styles.resultTitle}>Nạp tiền thành công!</Text>
+                <Text style={styles.resultMessage}>
+                  Đã cộng {savedPaymentAmount.toLocaleString('vi-VN')} VNĐ vào ví của bạn
+                </Text>
+              </>
+            )}
+
+            {paymentStatus === 'failed' && (
+              <>
+                <Ionicons name="close-circle" size={64} color="#EF4444" />
+                <Text style={styles.resultTitle}>Nạp tiền thất bại</Text>
+                <Text style={styles.resultMessage}>
+                  Giao dịch không thành công. Vui lòng thử lại.
+                </Text>
+              </>
+            )}
+
+            {paymentStatus !== 'pending' && (
+              <TouchableOpacity
+                style={[styles.resultButton, paymentStatus === 'success' ? styles.successButton : styles.failureButton]}
+                onPress={() => {
+                  setShowPaymentResult(false);
+                  setPaymentStatus('idle');
+                  setAmount('');
+                  setSavedPaymentAmount(0);
+                }}
+              >
+                <Text style={styles.resultButtonText}>Đóng</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </Modal>
@@ -1142,71 +1419,41 @@ export default function CustomerWallet() {
             >
               <Text style={styles.webViewCloseButton}>← Back</Text>
             </TouchableOpacity>
-            <Text style={styles.webViewTitle}>VNPay Payment</Text>
+            <Text style={styles.webViewTitle}>
+              {paymentMethod === 'momo' ? 'MoMo Payment' : 'VNPay Payment'}
+            </Text>
             <View style={{ width: 60 }} />
-          </View>
-          
-          <WebView
+            </View>
+            
+            <WebView
             source={{ uri: paymentUrl }}
             style={styles.webView}
             onNavigationStateChange={(navState) => {
-              console.log('🔍 WebView Navigation:', navState.url);
-              
-              // Check if user returned from VNPay (success/failure)
-              if (navState.url.includes('vnpay') && (navState.url.includes('success') || navState.url.includes('cancel'))) {
-                console.log('🔍 Payment completed, closing WebView');
+              const url = navState.url;
+              console.log('WebView URL:', url);
+
+              // Chỉ cần phát hiện MoMo hoặc VNPay trả người dùng về là đóng WebView
+              // KHÔNG được hiện thành công ngay!!!
+              if (
+                url.includes('momo/redirect') ||
+                url.includes('vnp_ResponseCode=') ||
+                url.includes('payment-success') ||
+                url.includes('payment-failed') ||
+                url.includes('resultCode=')
+              ) {
+                // Đóng WebView ngay lập tức
                 setShowPaymentWebView(false);
                 setPaymentUrl('');
-                loadUserData();
-              }
-              
-              
-              // Handle payment success redirect
-              if (navState.url.includes('payment-success') && !isPaymentProcessing && !paymentResultShown) {
-                console.log('🔍 Payment success redirect received');
-                console.log('🔍 Current wallet balance before reload:', wallet?.balance);
-                console.log('🔍 Amount from input:', amount);
-                
-                // Set flags to prevent multiple triggers
-                setIsPaymentProcessing(true);
-                setPaymentResultShown(true);
-                
-                // Close WebView immediately
-                setShowPaymentWebView(false);
-                setPaymentUrl('');
-                
-                // Show success screen
-                setPaymentResult('success');
-                setPaymentAmount(savedPaymentAmount);
+
+                // HIỆN MÀN HÌNH "Đang xử lý..." thay vì thành công
+                setPaymentStatus('pending');
                 setShowPaymentResult(true);
-                console.log('🔍 Setting payment amount from saved:', savedPaymentAmount);
-                
-                // Wait for backend to process, then reload
-                setTimeout(async () => {
-                  console.log('🔄 Reloading wallet data after payment...');
-                  await loadUserData();
-                  await loadTransactions(); // Also reload transactions to get updated status
-                  console.log('🔍 New wallet balance after reload:', wallet?.balance);
-                }, 2000);
-              }
-              
-              // Handle payment failure redirect
-              if (navState.url.includes('payment-failed') && !isPaymentProcessing && !paymentResultShown) {
-                console.log('🔍 Payment failed redirect received');
-                
-                // Set flags to prevent multiple triggers
-                setIsPaymentProcessing(true);
-                setPaymentResultShown(true);
-                
-                // Close WebView immediately
-                setShowPaymentWebView(false);
-                setPaymentUrl('');
-                
-                // Show failure screen
-                setPaymentResult('failed');
-                setPaymentAmount(savedPaymentAmount);
-                setShowPaymentResult(true);
-                console.log('🔍 Setting failed payment amount from saved:', savedPaymentAmount);
+                setSavedPaymentAmount(Number(amount)); // để hiển thị số tiền đang chờ
+
+                // Bắt đầu polling để chờ backend cập nhật thật sự
+                startPollingForRealSuccess();
+
+                return;
               }
             }}
             onError={(error) => {
@@ -1830,6 +2077,59 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  paymentMethodContainer: {
+    marginBottom: 20,
+  },
+  paymentMethodLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 12,
+  },
+  paymentMethodButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  paymentMethodButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFFFFF',
+    gap: 8,
+  },
+  paymentMethodButtonActive: {
+    backgroundColor: '#0F4D3A',
+    borderColor: '#0F4D3A',
+  },
+  paymentMethodText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F4D3A',
+  },
+  paymentMethodTextActive: {
+    color: '#FFFFFF',
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+    gap: 4,
+  },
+  retryButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0F4D3A',
   },
   // WebView styles
   webViewContainer: {

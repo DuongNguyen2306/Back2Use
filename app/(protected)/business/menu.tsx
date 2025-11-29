@@ -3,16 +3,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  Alert,
-  Dimensions,
-  Image,
-  Modal,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    Alert,
+    Dimensions,
+    Image,
+    Modal,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../../context/AuthProvider';
@@ -290,9 +290,7 @@ export default function BusinessMenu() {
   const userName = businessProfile?.businessName || 
                    businessProfile?.userId?.username || 
                    'User Name';
-  const userAvatar = businessProfile?.businessLogoUrl || 
-                     businessProfile?.userId?.avatar || 
-                     null;
+  const userAvatar = businessProfile?.businessLogoUrl || null;
 
   return (
     <View style={styles.container}>

@@ -2,7 +2,7 @@ import { borrowTransactionsApi } from "@/services/api/borrowTransactionService";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Modal, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 interface CustomerBorrowHistoryItem {
   _id: string;
@@ -49,6 +49,10 @@ export default function CustomerTransactionHistory() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [cancelingId, setCancelingId] = useState<string | null>(null);
+  const [extendingId, setExtendingId] = useState<string | null>(null);
+  const [showExtendModal, setShowExtendModal] = useState(false);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
+  const [additionalDays, setAdditionalDays] = useState("7");
 
   const loadHistory = async () => {
     try {
@@ -177,6 +181,35 @@ export default function CustomerTransactionHistory() {
       `Status: ${getStatusLabel(transaction.status)}`,
       [{ text: "Close" }]
     );
+  };
+
+  const handleExtend = async (transactionId: string) => {
+    const days = parseInt(additionalDays);
+    if (isNaN(days) || days <= 0) {
+      Alert.alert('Error', 'Please enter a valid number of days (minimum 1)');
+      return;
+    }
+
+    try {
+      setExtendingId(transactionId);
+      await borrowTransactionsApi.extend(transactionId, days);
+      Alert.alert('Success', `Borrow duration extended by ${days} day(s)`);
+      setShowExtendModal(false);
+      setAdditionalDays("7");
+      setSelectedTransactionId(null);
+      loadHistory();
+    } catch (error: any) {
+      console.error('❌ Error extending borrow transaction:', error);
+      Alert.alert('Error', error.message || 'Failed to extend borrow duration');
+    } finally {
+      setExtendingId(null);
+    }
+  };
+
+  const openExtendModal = (transactionId: string) => {
+    setSelectedTransactionId(transactionId);
+    setShowExtendModal(true);
+    setAdditionalDays("7");
   };
 
   const handleCancel = async (transactionId: string) => {
@@ -326,9 +359,12 @@ export default function CustomerTransactionHistory() {
             const statusLabel = getStatusLabel(transaction.status);
             const isPendingPickup = transaction.status === 'pending_pickup' || transaction.status === 'pending';
             const isCancelled = transaction.status === 'cancelled' || transaction.status === 'canceled';
+            const isBorrowing = transaction.status === 'borrowing';
             
             const canCancel = isPendingPickup && !isCancelled;
+            const canExtend = isBorrowing && !isCancelled && !overdue;
             const isCanceling = cancelingId === transaction._id;
+            const isExtending = extendingId === transaction._id;
             
             return (
               <View
@@ -380,28 +416,123 @@ export default function CustomerTransactionHistory() {
                   </View>
                 </TouchableOpacity>
                 
-                {/* Cancel Button - Only show for pending transactions (not cancelled) */}
-                {canCancel && !isCancelled && (
-                  <TouchableOpacity
-                    style={[styles.cancelButton, isCanceling && styles.cancelButtonDisabled]}
-                    onPress={() => handleCancel(transaction._id)}
-                    disabled={isCanceling}
-                  >
-                    {isCanceling ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <>
-                        <Ionicons name="close-circle-outline" size={18} color="#FFFFFF" />
-                        <Text style={styles.cancelButtonText}>Cancel Order</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                )}
+                {/* Action Buttons */}
+                <View style={styles.actionButtonsContainer}>
+                  {/* Extend Button - Only show for borrowing transactions (not cancelled, not overdue) */}
+                  {canExtend && (
+                    <TouchableOpacity
+                      style={[styles.extendButton, isExtending && styles.extendButtonDisabled]}
+                      onPress={() => openExtendModal(transaction._id)}
+                      disabled={isExtending}
+                    >
+                      {isExtending ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <>
+                          <Ionicons name="time-outline" size={18} color="#FFFFFF" />
+                          <Text style={styles.extendButtonText}>Extend</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  
+                  {/* Cancel Button - Only show for pending transactions (not cancelled) */}
+                  {canCancel && !isCancelled && (
+                    <TouchableOpacity
+                      style={[styles.cancelButton, isCanceling && styles.cancelButtonDisabled]}
+                      onPress={() => handleCancel(transaction._id)}
+                      disabled={isCanceling}
+                    >
+                      {isCanceling ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <>
+                          <Ionicons name="close-circle-outline" size={18} color="#FFFFFF" />
+                          <Text style={styles.cancelButtonText}>Cancel Order</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             );
           })
         )}
       </ScrollView>
+
+      {/* Extend Duration Modal */}
+      <Modal
+        visible={showExtendModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          setShowExtendModal(false);
+          setSelectedTransactionId(null);
+          setAdditionalDays("7");
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Extend Borrow Duration</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowExtendModal(false);
+                  setSelectedTransactionId(null);
+                  setAdditionalDays("7");
+                }}
+              >
+                <Ionicons name="close" size={24} color="#374151" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <Text style={styles.modalDescription}>
+                Enter the number of additional days you want to extend the borrow period.
+              </Text>
+              <Text style={styles.modalNote}>
+                Note: Maximum 3 extensions allowed, 24h cooldown between extensions, cannot extend overdue transactions.
+              </Text>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Additional Days</Text>
+                <TextInput
+                  style={styles.input}
+                  value={additionalDays}
+                  onChangeText={setAdditionalDays}
+                  placeholder="7"
+                  keyboardType="numeric"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.modalCancelButton}
+                  onPress={() => {
+                    setShowExtendModal(false);
+                    setSelectedTransactionId(null);
+                    setAdditionalDays("7");
+                  }}
+                >
+                  <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalConfirmButton, (extendingId || !selectedTransactionId) && styles.modalConfirmButtonDisabled]}
+                  onPress={() => selectedTransactionId && handleExtend(selectedTransactionId)}
+                  disabled={!!extendingId || !selectedTransactionId}
+                >
+                  {extendingId ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.modalConfirmButtonText}>Extend</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -525,6 +656,30 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  extendButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3B82F6',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 6,
+  },
+  extendButtonDisabled: {
+    opacity: 0.6,
+  },
+  extendButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   cancelButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -618,5 +773,129 @@ const styles = StyleSheet.create({
   },
   statusBadgeTextCancelled: {
     color: "#EF4444",
+  },
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  extendButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3B82F6',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 6,
+  },
+  extendButtonDisabled: {
+    opacity: 0.6,
+  },
+  extendButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    width: '90%',
+    maxWidth: 400,
+    padding: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  modalBody: {
+    padding: 20,
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: '#374151',
+    marginBottom: 8,
+  },
+  modalNote: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 20,
+    fontStyle: 'italic',
+  },
+  inputContainer: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: '#111827',
+    backgroundColor: '#FFFFFF',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalCancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  modalConfirmButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: '#3B82F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalConfirmButtonDisabled: {
+    opacity: 0.6,
+  },
+  modalConfirmButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

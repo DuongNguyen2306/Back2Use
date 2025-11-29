@@ -11,13 +11,17 @@ export const walletApi = {
   getById: async (walletId: string): Promise<WalletDetails> => {
     return apiCall<WalletDetails>(`/wallets/${walletId}`, { method: 'GET' });
   },
-  deposit: async (walletId: string, amount: number): Promise<{ url?: string; payUrl?: string } & Record<string, any>> => {
+  deposit: async (walletId: string, amount: number, paymentMethod: 'vnpay' | 'momo' = 'vnpay'): Promise<{ url?: string; payUrl?: string } & Record<string, any>> => {
     const endpoint = API_ENDPOINTS.WALLET.DEPOSIT.replace('{walletId}', walletId);
-    return apiCall<any>(endpoint, { method: 'POST', data: { amount } });
+    return apiCall<any>(endpoint, { method: 'POST', data: { amount, paymentMethod } });
   },
   withdraw: async (walletId: string, amount: number): Promise<WalletDetails> => {
     const endpoint = API_ENDPOINTS.WALLET.WITHDRAW.replace('{walletId}', walletId);
     return apiCall<WalletDetails>(endpoint, { method: 'POST', data: { amount } });
+  },
+  retryPayment: async (transactionId: string): Promise<{ url?: string; payUrl?: string } & Record<string, any>> => {
+    const endpoint = API_ENDPOINTS.WALLET.RETRY_PAYMENT.replace('{transactionId}', transactionId);
+    return apiCall<any>(endpoint, { method: 'POST' });
   },
 };
 

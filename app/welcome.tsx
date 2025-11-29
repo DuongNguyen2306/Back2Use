@@ -80,13 +80,13 @@ export default function WelcomeScreen() {
       
       const response = await businessesApi.getAll({
         page: 1,
-        limit: 100, // Get more businesses to display on map
+        limit: 20,
       });
       
       console.log('📡 Welcome page API Response:', response);
       
       if (response.statusCode === 200 && response.data) {
-        // Filter only active businesses
+        // Filter only active businesses (same logic as customer stores)
         const activeBusinesses = response.data.filter(business => business.isActive && !business.isBlocked);
         setBusinesses(activeBusinesses);
         console.log('✅ Welcome page: Fetched businesses:', activeBusinesses.length);
@@ -94,8 +94,14 @@ export default function WelcomeScreen() {
         console.log('❌ Welcome page: Invalid response:', response);
         setBusinesses([]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Welcome page: Error fetching businesses:', error);
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
       // Fallback to empty array on error
       setBusinesses([]);
     } finally {
@@ -349,16 +355,6 @@ export default function WelcomeScreen() {
               )}
               
               {/* FPT HCM Marker */}
-              <Marker
-                coordinate={{
-                  latitude: 10.8412,
-                  longitude: 106.8099,
-                }}
-                title="FPT University HCM"
-                description="FPT University Ho Chi Minh City"
-                pinColor="#0F4D3A"
-              />
-              
               {/* Store Markers */}
               {filteredStores.map((store) => {
                 // API trả về [longitude, latitude] nên cần đảo ngược
@@ -495,12 +491,6 @@ export default function WelcomeScreen() {
                     <View style={styles.operatingHours}>
                       <Ionicons name="time" size={14} color="#6B7280" />
                       <Text style={styles.hoursText}>{store.openTime} - {store.closeTime}</Text>
-                    </View>
-                    <View style={styles.rating}>
-                      <Ionicons name="star" size={14} color="#FBBF24" />
-                      <Text style={styles.ratingText}>
-                        4.{Math.floor(Math.random() * 5 + 5)}
-                      </Text>
                     </View>
                   </View>
                 </View>

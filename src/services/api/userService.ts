@@ -478,7 +478,19 @@ export const getMonthlyLeaderboard = async (
     if (params?.page !== undefined) queryParams.page = params.page;
     if (params?.limit !== undefined) queryParams.limit = params.limit;
 
-    const response = await apiClient.get(API_ENDPOINTS.LEADERBOARD.MONTHLY, {
+    // Debug: Check if LEADERBOARD endpoint exists
+    console.log('🔍 API_ENDPOINTS check:', {
+      hasLeaderboard: !!API_ENDPOINTS.LEADERBOARD,
+      leaderboard: API_ENDPOINTS.LEADERBOARD,
+      monthly: API_ENDPOINTS.LEADERBOARD?.MONTHLY,
+      allKeys: Object.keys(API_ENDPOINTS),
+    });
+
+    // Fallback to hardcoded endpoint if LEADERBOARD is not defined (for cache issues)
+    const endpoint = API_ENDPOINTS.LEADERBOARD?.MONTHLY || '/monthly-leaderboards';
+    console.log('🔍 Using endpoint:', endpoint);
+
+    const response = await apiClient.get(endpoint, {
       headers,
       params: queryParams,
       timeout: REQUEST_TIMEOUT,

@@ -47,6 +47,7 @@ export default function InventoryManagementScreen() {
   const [showCreateProductsModal, setShowCreateProductsModal] = useState(false);
   const [showProductListModal, setShowProductListModal] = useState(false);
   const [showMaterialPicker, setShowMaterialPicker] = useState(false);
+  const [showCreateMaterialRequestModal, setShowCreateMaterialRequestModal] = useState(false);
   
   // Selected group for detail view
   const [selectedGroup, setSelectedGroup] = useState<ProductGroup | null>(null);
@@ -74,6 +75,12 @@ export default function InventoryManagementScreen() {
     amount: '',
   });
   const [selectedSize, setSelectedSize] = useState<ProductSize | null>(null);
+  
+  // Material request form
+  const [materialRequestForm, setMaterialRequestForm] = useState({
+    materialName: '',
+    description: '',
+  });
   
   const [submitting, setSubmitting] = useState(false);
 
@@ -367,6 +374,34 @@ export default function InventoryManagementScreen() {
     }
   };
 
+  const handleCreateMaterialRequest = async () => {
+    if (!materialRequestForm.materialName.trim()) {
+      Alert.alert('Error', 'Please enter material name');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const response = await materialsApi.createRequest({
+        materialName: materialRequestForm.materialName.trim(),
+        description: materialRequestForm.description.trim() || undefined,
+      });
+      
+      Alert.alert('Success', 'Material request created successfully!');
+      setShowCreateMaterialRequestModal(false);
+      setMaterialRequestForm({ materialName: '', description: '' });
+      
+      // Reload materials to show new approved materials if any
+      await loadMaterials();
+    } catch (error: any) {
+      console.error('❌ Error creating material request:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to create material request';
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -407,13 +442,29 @@ export default function InventoryManagementScreen() {
       <StatusBar barStyle="light-content" backgroundColor="#00704A" />
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Inventory Management</Text>
-        <TouchableOpacity 
-          style={styles.addButton}
-          onPress={() => setShowCreateGroupModal(true)}
-        >
-          <Ionicons name="add" size={24} color="white" />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">Inventory Management</Text>
+        <View style={styles.headerButtonsContainer}>
+          <TouchableOpacity 
+            style={styles.headerButton}
+            onPress={() => router.push('/(protected)/business/my-materials')}
+          >
+            <Ionicons name="list-outline" size={16} color="white" />
+            <Text style={styles.headerButtonText}>My Requests</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.headerButton}
+            onPress={() => setShowCreateMaterialRequestModal(true)}
+          >
+            <Ionicons name="add-circle-outline" size={16} color="white" />
+            <Text style={styles.headerButtonText}>Request</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.addButton}
+            onPress={() => setShowCreateGroupModal(true)}
+          >
+            <Ionicons name="add" size={20} color="white" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Search Bar */}
@@ -974,6 +1025,62 @@ export default function InventoryManagementScreen() {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* Create Material Request Modal */}
+      <Modal
+        visible={showCreateMaterialRequestModal}
+        animationType="slide"
+        presentationStyle="overFullScreen"
+      >
+        <View style={styles.modalContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#059669" />
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => {
+              setShowCreateMaterialRequestModal(false);
+              setMaterialRequestForm({ materialName: '', description: '' });
+            }}>
+              <Text style={styles.cancelButton}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Request Material</Text>
+            <TouchableOpacity 
+              onPress={handleCreateMaterialRequest}
+              disabled={submitting || !materialRequestForm.materialName.trim()}
+              style={{ opacity: (submitting || !materialRequestForm.materialName.trim()) ? 0.6 : 1 }}
+            >
+              <Text style={styles.saveButton}>
+                {submitting ? 'Submitting...' : 'Submit'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.formContainer}>
+            <View style={styles.formSection}>
+              <Text style={styles.label}>Material Name *</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g., Glass Bottle"
+                value={materialRequestForm.materialName}
+                onChangeText={(text) => setMaterialRequestForm(prev => ({ ...prev, materialName: text }))}
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+
+            <View style={styles.formSection}>
+              <Text style={styles.label}>Description</Text>
+              <TextInput
+                style={[styles.textInput, styles.textArea]}
+                placeholder="e.g., Tái sử dụng được nhiều lần, thân thiện với môi trường"
+                value={materialRequestForm.description}
+                onChangeText={(text) => setMaterialRequestForm(prev => ({ ...prev, description: text }))}
+                placeholderTextColor="#9CA3AF"
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -998,20 +1105,47 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 50,
     paddingBottom: 16,
     backgroundColor: '#00704A',
+    minHeight: 70,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
     color: 'white',
+    flex: 1,
+    marginRight: 8,
+  },
+  headerButtonsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  headerButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  headerButtonText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '600',
   },
   addButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 8,
     padding: 8,
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   searchContainer: {
     paddingHorizontal: 20,

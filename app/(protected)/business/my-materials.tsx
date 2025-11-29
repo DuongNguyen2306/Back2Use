@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { materialsApi, type MaterialItem } from "../../../lib/api";
+import { materialsApi } from "../../../src/services/api/businessService";
+import type { MaterialItem } from "../../../src/services/api/businessService";
 
-type Filter = 'all' | 'pending' | 'rejected';
+type Filter = 'all' | 'pending' | 'approved' | 'rejected';
 
 export default function MyMaterialsPage() {
   const [items, setItems] = useState<MaterialItem[]>([]);
@@ -18,23 +19,42 @@ export default function MyMaterialsPage() {
     try {
       const nextPage = reset ? 1 : page;
       const statusParam = filter === 'all' ? undefined : filter;
-      const res = await materialsApi.listMy({ status: statusParam, page: nextPage, limit: 10 });
-      console.log('📦 /materials/my response:', JSON.stringify(res)?.slice(0, 500));
+      
+      // Use new API endpoint /materials/my-request
+      const res = await materialsApi.getMyRequests({ 
+        status: statusParam as 'pending' | 'approved' | 'rejected' | undefined, 
+        page: nextPage, 
+        limit: 10 
+      });
+      
+      console.log('📦 /materials/my-request response:', JSON.stringify(res)?.slice(0, 500));
+      
+      // Handle response structure
       const root: any = res || {};
       const container = root.data ?? {};
       const list = Array.isArray(container)
         ? container
         : (container.docs || container.items || container.list || container.data || []);
-      setItems(reset ? list : [...items, ...list]);
-      const total = (root.total ?? container.totalDocs ?? container.total ?? container.pagination?.total) ?? list.length;
+      
+      // Map response to MaterialItem format
+      const mappedList = list.map((item: any) => ({
+        _id: item._id,
+        materialName: item.materialName || item.material?.materialName || 'Unknown',
+        description: item.description || item.material?.description || '',
+        status: item.status?.toLowerCase() || 'pending',
+        createdAt: item.createdAt || item.created_at || new Date().toISOString(),
+      }));
+      
+      setItems(reset ? mappedList : [...items, ...mappedList]);
+      const total = (root.total ?? container.totalDocs ?? container.total ?? container.pagination?.total) ?? mappedList.length;
       const currentPage = (root.currentPage ?? container.page ?? container.pagination?.page ?? nextPage);
       const limit = (root.limit ?? container.limit ?? container.pagination?.limit ?? 10);
       const current = currentPage * limit;
       setHasMore(current < total);
       setPage(nextPage + 1);
     } catch (e: any) {
-      console.log('❌ Failed to load my materials:', e?.message || e);
-      Alert.alert('Lỗi', e?.message || 'Không tải được danh sách vật liệu của bạn');
+      console.log('❌ Failed to load my material requests:', e?.message || e);
+      Alert.alert('Lỗi', e?.message || 'Không tải được danh sách yêu cầu vật liệu của bạn');
     } finally {
       setLoading(false);
     }
@@ -81,6 +101,7 @@ export default function MyMaterialsPage() {
       <View style={styles.filterRow}>
         <FilterButton value="all" label="Tất cả" />
         <FilterButton value="pending" label="Chờ duyệt" />
+        <FilterButton value="approved" label="Đã duyệt" />
         <FilterButton value="rejected" label="Bị từ chối" />
       </View>
 

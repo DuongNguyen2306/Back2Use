@@ -60,6 +60,11 @@ export const businessApi = {
 };
 
 // Materials
+export interface MaterialRequestCreateRequest {
+  materialName: string;
+  description?: string;
+}
+
 export const materialsApi = {
   create: async (payload: MaterialCreateRequest) => {
     return apiCall<any>(API_ENDPOINTS.MATERIALS.CREATE, {
@@ -76,6 +81,39 @@ export const materialsApi = {
   listMy: async (params: { status?: 'pending' | 'rejected'; page?: number; limit?: number } = {}): Promise<PaginatedResponse<MaterialItem>> => {
     const { status, page = 1, limit = 10 } = params;
     return apiCall<PaginatedResponse<MaterialItem>>(API_ENDPOINTS.MATERIALS.LIST_MY, {
+      method: 'GET',
+      params: { status, page, limit },
+    });
+  },
+  createRequest: async (payload: MaterialRequestCreateRequest) => {
+    // Fallback to hardcoded endpoint if CREATE_REQUEST is not defined (for cache issues)
+    let endpoint = API_ENDPOINTS.MATERIALS?.CREATE_REQUEST;
+    
+    // Debug logging
+    console.log('🔍 Material Request Debug:', {
+      hasMaterials: !!API_ENDPOINTS.MATERIALS,
+      materialsKeys: API_ENDPOINTS.MATERIALS ? Object.keys(API_ENDPOINTS.MATERIALS) : 'N/A',
+      createRequestValue: endpoint,
+      allEndpoints: API_ENDPOINTS,
+    });
+    
+    // Use fallback if endpoint is undefined, null, or empty
+    if (!endpoint || endpoint.trim() === '') {
+      endpoint = '/materials/material-requests';
+      console.log('⚠️ Using fallback endpoint:', endpoint);
+    }
+    
+    console.log('🔍 Final endpoint:', endpoint);
+    console.log('🔍 Payload:', payload);
+    
+    return apiCall<any>(endpoint, {
+      method: 'POST',
+      data: payload,
+    });
+  },
+  getMyRequests: async (params: { status?: 'pending' | 'approved' | 'rejected'; page?: number; limit?: number } = {}) => {
+    const { status, page = 1, limit = 10 } = params;
+    return apiCall<any>(API_ENDPOINTS.MATERIALS.MY_REQUESTS, {
       method: 'GET',
       params: { status, page, limit },
     });

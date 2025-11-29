@@ -1,5 +1,5 @@
 // API Configuration Constants
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.1.3:8000';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.0.198:8000';
 
 // API Endpoints
 export const API_ENDPOINTS = {
@@ -52,6 +52,7 @@ export const API_ENDPOINTS = {
         DEPOSIT: '/wallets/{walletId}/deposit', // POST
         WITHDRAW: '/wallets/{walletId}/withdraw', // POST
         GET_BY_ID: '/wallets/{walletId}', // GET
+        RETRY_PAYMENT: '/wallets/transactions/{transactionId}/retry', // POST
       },
       WALLET_TRANSACTIONS: {
         GET_MY: '/wallet-transactions/my', // GET ?typeGroup=&direction=&page=&limit=
@@ -60,6 +61,8 @@ export const API_ENDPOINTS = {
     CREATE: '/materials', // POST
     LIST_APPROVED: '/materials', // GET ?page=&limit= (returns approved materials)
     LIST_MY: '/materials/my', // GET ?status=&page=&limit=
+    CREATE_REQUEST: '/materials/material-requests', // POST - Create material request
+    MY_REQUESTS: '/materials/my-request', // GET ?status=&page=&limit= - Get my material requests
   },
   SUBSCRIPTIONS: {
     GET_ALL: '/subscriptions', // GET
@@ -88,7 +91,10 @@ export const API_ENDPOINTS = {
     BUSINESS_HISTORY: '/borrow-transactions/business', // GET /borrow-transactions/business
     CONFIRM: '/borrow-transactions/confirm', // PATCH /borrow-transactions/confirm/{id}
     CUSTOMER_CANCEL: '/borrow-transactions/customer/cancel', // PATCH /borrow-transactions/customer/cancel/{id}
-    RETURN_CHECK: '/borrow-transactions', // POST /borrow-transactions/{serialNumber}/return-check
+    CUSTOMER_EXTEND: '/borrow-transactions/customer/extend', // PATCH /borrow-transactions/customer/extend/{id}
+    DAMAGE_POLICY: '/borrow-transactions/damage-policy', // GET /borrow-transactions/damage-policy
+    RETURN_CHECK: '/borrow-transactions', // POST /borrow-transactions/{serialNumber}/check
+    RETURN_CONFIRM: '/borrow-transactions', // POST /borrow-transactions/{serialNumber}/confirm
   },
   STAFF: {
     GET_ALL: '/staffs', // GET /staffs?search=&status=&limit=&page=
@@ -96,6 +102,9 @@ export const API_ENDPOINTS = {
     CREATE: '/staffs', // POST /staffs
     UPDATE: '/staffs', // PATCH /staffs/{id}
     DELETE: '/staffs', // DELETE /staffs/{id}
+  },
+  LEADERBOARD: {
+    MONTHLY: '/monthly-leaderboards', // GET /monthly-leaderboards?month=&year=&page=&limit=
   },
 } as const;
 

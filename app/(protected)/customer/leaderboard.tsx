@@ -129,11 +129,16 @@ export default function Leaderboard() {
         const isCurrentUser = currentUserId && customer._id === currentUserId;
         const realisticName = generateRealisticName(customer.fullName, customer.phone);
         
+        // Get avatar from API if available, otherwise generate from name
+        const avatarUrl = customer?.userId?.avatar 
+          ? customer.userId.avatar 
+          : generateAvatarUrl(realisticName);
+        
         return {
           id: entry._id,
           name: realisticName,
           username: customer.phone || customer._id.substring(0, 8),
-          avatar: generateAvatarUrl(realisticName), // Generate colorful avatar from name
+          avatar: avatarUrl, // Use API avatar if available, otherwise generate
           score: entry.rankingPoints,
           rank: entry.rank,
           trend: 'same' as const, // API doesn't provide trend, default to 'same'

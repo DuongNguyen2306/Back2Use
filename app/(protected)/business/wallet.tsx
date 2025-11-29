@@ -67,6 +67,9 @@ export default function BusinessWalletScreen() {
   // Processing state
   const [isProcessing, setIsProcessing] = useState(false);
   
+  // Payment method state
+  const [paymentMethod, setPaymentMethod] = useState<'vnpay' | 'momo'>('vnpay');
+  
   // VNPay WebView states
   const [showPaymentWebView, setShowPaymentWebView] = useState(false);
   const [paymentUrl, setPaymentUrl] = useState('');
@@ -311,6 +314,7 @@ export default function BusinessWalletScreen() {
     console.log('🚀 Starting add funds process...');
     console.log('💰 Amount:', amount);
     console.log('💳 Wallet ID:', wallet?._id);
+    console.log('💳 Payment Method:', paymentMethod);
     
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
       console.log('❌ Invalid amount');
@@ -324,25 +328,55 @@ export default function BusinessWalletScreen() {
       return;
     }
 
+    // Validate payment method
+    const validPaymentMethod = paymentMethod && (paymentMethod === 'vnpay' || paymentMethod === 'momo') 
+      ? paymentMethod 
+      : 'vnpay';
+    
+    if (!validPaymentMethod || (validPaymentMethod !== 'vnpay' && validPaymentMethod !== 'momo')) {
+      console.log('❌ Invalid payment method:', paymentMethod);
+      Alert.alert('Error', 'Please select a valid payment method');
+      return;
+    }
+
     try {
       setIsProcessing(true);
       console.log('📡 Calling deposit API...');
       console.log('📡 API URL:', `/wallets/${wallet._id}/deposit`);
       console.log('📡 Amount:', Number(amount));
+      console.log('📡 Payment Method:', validPaymentMethod);
       
-      const response = await walletApi.deposit(wallet._id, Number(amount));
-      console.log('✅ Deposit API response:', response);
+      const response = await walletApi.deposit(wallet._id, Number(amount), validPaymentMethod);
+      console.log('✅ Deposit API response:', JSON.stringify(response, null, 2));
       
-      if (response.url || response.payUrl) {
-        const paymentUrl = response.url || response.payUrl;
-        console.log('🔗 Payment URL received:', paymentUrl);
+      // Handle different response structures
+      // Response can be: { url: "...", payUrl: "..." } or { paymentResponse: { payUrl: "..." } }
+      let paymentUrl = response.url || response.payUrl;
+      if (!paymentUrl && response.paymentResponse) {
+        paymentUrl = response.paymentResponse.payUrl || response.paymentResponse.url;
+      }
+      
+      console.log('🔗 Payment URL extracted:', paymentUrl);
+      console.log('🔗 Response structure:', {
+        hasUrl: !!response.url,
+        hasPayUrl: !!response.payUrl,
+        hasPaymentResponse: !!response.paymentResponse,
+        transactionId: response.transactionId
+      });
+      
+      if (paymentUrl) {
+        // Save transaction ID for retry if needed
+        if (response.transactionId) {
+          console.log('💾 Saving transaction ID:', response.transactionId);
+          // Could save to state if needed for retry
+        }
         
         // Save payment amount for result display
         setSavedPaymentAmount(Number(amount));
         setPaymentAmount(Number(amount));
         
-        // Show VNPay WebView
-        setPaymentUrl(paymentUrl || '');
+        // Show Payment WebView
+        setPaymentUrl(paymentUrl);
         setShowPaymentWebView(true);
         setShowAddFunds(false);
       } else {
@@ -405,16 +439,53 @@ export default function BusinessWalletScreen() {
     setShowPaymentResult(true);
     setPaymentResultShown(true);
     
+    // Reset transaction page to 1 to get latest transactions
+    setTransactionPage(1);
+    
     // Immediate refresh
     await loadBusinessData();
-    await loadTransactions();
+    await loadTransactions(1, false); // Force reload from page 1
     
-    // Additional refresh after delay to ensure data is updated
-    setTimeout(async () => {
-      console.log('🔄 Refreshing data after payment success...');
+    // Poll for transaction status update (backend may need time to process)
+    let retryCount = 0;
+    const maxRetries = 6; // Poll up to 6 times (12 seconds total)
+    const pollInterval = 2000; // 2 seconds
+    
+    const pollForTransactionUpdate = async () => {
+      if (retryCount >= maxRetries) {
+        console.log('⏱️ Max retries reached, stopping polling');
+        // Final refresh
+        await loadBusinessData();
+        await loadTransactions(1, false);
+        return;
+      }
+      
+      retryCount++;
+      console.log(`🔄 Polling for transaction update (attempt ${retryCount}/${maxRetries})...`);
+      
       await loadBusinessData();
-      await loadTransactions();
-    }, 3000); // 3 seconds delay
+      await loadTransactions(1, false); // Force reload from page 1
+      
+      // Continue polling to ensure backend has processed
+      if (retryCount < maxRetries) {
+        setTimeout(pollForTransactionUpdate, pollInterval);
+      } else {
+        // Final refresh after all retries
+        console.log('🔄 Final refresh after all polling attempts...');
+        await loadBusinessData();
+        await loadTransactions(1, false);
+      }
+    };
+    
+    // Start polling after initial delay
+    setTimeout(pollForTransactionUpdate, pollInterval);
+    
+    // Additional refresh after longer delay to ensure data is updated
+    setTimeout(async () => {
+      console.log('🔄 Final refresh after payment success (10s delay)...');
+      await loadBusinessData();
+      await loadTransactions(1, false);
+    }, 10000); // 10 seconds delay
   };
 
   const handlePaymentFailure = () => {
@@ -648,6 +719,16 @@ export default function BusinessWalletScreen() {
                           {getStatusText(transaction.status)}
                   </Text>
               </View>
+                      {transaction.status === 'processing' && transaction.transactionType === 'deposit' && (
+                        <TouchableOpacity
+                          style={styles.retryButton}
+                          onPress={() => handleRetryPayment(transaction._id)}
+                          disabled={isProcessing}
+                        >
+                          <Ionicons name="refresh" size={14} color="#0F4D3A" />
+                          <Text style={styles.retryButtonText}>Retry</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                     </View>
                 ))
@@ -684,6 +765,51 @@ export default function BusinessWalletScreen() {
             keyboardShouldPersistTaps="handled"
           >
             <Text style={styles.modalSubtitle}>Enter amount to add to your wallet</Text>
+            
+            {/* Payment Method Selection */}
+            <View style={styles.paymentMethodContainer}>
+              <Text style={styles.paymentMethodLabel}>Payment Method</Text>
+              <View style={styles.paymentMethodButtons}>
+                <TouchableOpacity
+                  style={[
+                    styles.paymentMethodButton,
+                    paymentMethod === 'vnpay' && styles.paymentMethodButtonActive
+                  ]}
+                  onPress={() => setPaymentMethod('vnpay')}
+                >
+                  <Ionicons 
+                    name="card" 
+                    size={20} 
+                    color={paymentMethod === 'vnpay' ? '#FFFFFF' : '#0F4D3A'} 
+                  />
+                  <Text style={[
+                    styles.paymentMethodText,
+                    paymentMethod === 'vnpay' && styles.paymentMethodTextActive
+                  ]}>
+                    VNPay
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.paymentMethodButton,
+                    paymentMethod === 'momo' && styles.paymentMethodButtonActive
+                  ]}
+                  onPress={() => setPaymentMethod('momo')}
+                >
+                  <Ionicons 
+                    name="phone-portrait" 
+                    size={20} 
+                    color={paymentMethod === 'momo' ? '#FFFFFF' : '#A50064'} 
+                  />
+                  <Text style={[
+                    styles.paymentMethodText,
+                    paymentMethod === 'momo' && styles.paymentMethodTextActive
+                  ]}>
+                    MoMo
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
             
             <View style={styles.amountInputContainer}>
               <Text style={styles.currencySymbol}>VNĐ</Text>
@@ -1248,6 +1374,59 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  paymentMethodContainer: {
+    marginBottom: 20,
+  },
+  paymentMethodLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 12,
+  },
+  paymentMethodButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  paymentMethodButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFFFFF',
+    gap: 8,
+  },
+  paymentMethodButtonActive: {
+    backgroundColor: '#0F4D3A',
+    borderColor: '#0F4D3A',
+  },
+  paymentMethodText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F4D3A',
+  },
+  paymentMethodTextActive: {
+    color: '#FFFFFF',
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+    gap: 4,
+  },
+  retryButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0F4D3A',
   },
   // WebView styles
   webViewContainer: {

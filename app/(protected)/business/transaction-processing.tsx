@@ -66,11 +66,34 @@ export default function TransactionProcessingScreen() {
   
   // Process return states
   const [showReturnModal, setShowReturnModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [returnSerialNumber, setReturnSerialNumber] = useState('');
   const [returnCondition, setReturnCondition] = useState('good');
   const [returnNote, setReturnNote] = useState('');
   const [returnImages, setReturnImages] = useState<string[]>([]);
   const [processingReturn, setProcessingReturn] = useState(false);
+  const [checkingReturn, setCheckingReturn] = useState(false);
+  const [confirmingReturn, setConfirmingReturn] = useState(false);
+  
+  // Damage policy and check data
+  const [damagePolicy, setDamagePolicy] = useState<Array<{ issue: string; points: number }>>([]);
+  const [loadingDamagePolicy, setLoadingDamagePolicy] = useState(false);
+  const [checkData, setCheckData] = useState({
+    frontImage: null as any,
+    frontIssue: '',
+    backImage: null as any,
+    backIssue: '',
+    leftImage: null as any,
+    leftIssue: '',
+    rightImage: null as any,
+    rightIssue: '',
+    topImage: null as any,
+    topIssue: '',
+    bottomImage: null as any,
+    bottomIssue: '',
+  });
+  const [calculatedPoints, setCalculatedPoints] = useState(0);
+  const [calculatedCondition, setCalculatedCondition] = useState<'good' | 'damaged'>('good');
   
   // QR Scanner states
   const [showQRScanner, setShowQRScanner] = useState(false);
@@ -151,6 +174,110 @@ export default function TransactionProcessingScreen() {
   ];
 
   const [transactions, setTransactions] = useState<Transaction[]>(mockTransactions);
+
+  // Load damage policy when return modal opens
+  useEffect(() => {
+    if (showReturnModal && damagePolicy.length === 0 && !loadingDamagePolicy) {
+      loadDamagePolicy();
+    }
+  }, [showReturnModal]);
+
+  // Calculate damage points and condition when checkData changes
+  useEffect(() => {
+    calculateDamagePoints();
+  }, [checkData, damagePolicy]);
+
+  const loadDamagePolicy = async () => {
+    try {
+      setLoadingDamagePolicy(true);
+      const response = await borrowTransactionsApi.getDamagePolicy();
+      if (response.statusCode === 200 && response.data) {
+        setDamagePolicy(response.data);
+      }
+    } catch (error: any) {
+      console.error('Error loading damage policy:', error);
+      Alert.alert('Error', 'Failed to load damage policy');
+    } finally {
+      setLoadingDamagePolicy(false);
+    }
+  };
+
+  const calculateDamagePoints = () => {
+    if (damagePolicy.length === 0) {
+      setCalculatedPoints(0);
+      setCalculatedCondition('good');
+      return;
+    }
+
+    // Collect all issues from all faces
+    const allIssues: string[] = [];
+    const faces = ['front', 'back', 'left', 'right', 'top', 'bottom'];
+    
+    faces.forEach(face => {
+      const issue = checkData[`${face}Issue` as keyof typeof checkData] as string;
+      if (issue && issue !== 'none' && issue.trim() !== '') {
+        allIssues.push(issue);
+      }
+    });
+
+    // Calculate total points
+    let totalPoints = 0;
+    allIssues.forEach(issue => {
+      const policy = damagePolicy.find(p => p.issue === issue);
+      if (policy) {
+        totalPoints += policy.points;
+      }
+    });
+
+    // Count issues by type
+    const scratchHeavyCount = allIssues.filter(i => i === 'scratch_heavy').length;
+    const dentSmallCount = allIssues.filter(i => i === 'dent_small').length;
+    const dentLargeCount = allIssues.filter(i => i === 'dent_large').length;
+    const crackSmallCount = allIssues.filter(i => i === 'crack_small').length;
+    const crackLargeCount = allIssues.filter(i => i === 'crack_large').length;
+    const hasDeformed = allIssues.includes('deformed');
+    const hasBroken = allIssues.includes('broken');
+
+    // Apply damage rules
+    let isDamaged = false;
+
+    // Rule 1: Total points > 12
+    if (totalPoints > 12) {
+      isDamaged = true;
+    }
+
+    // Rule 2: More than 3 scratch_heavy
+    if (scratchHeavyCount > 3) {
+      isDamaged = true;
+    }
+
+    // Rule 3: Dent rules
+    if (dentSmallCount > 3) {
+      isDamaged = true;
+    }
+    if (dentLargeCount > 1) {
+      isDamaged = true;
+    }
+    if (dentLargeCount > 0 && dentSmallCount > 0) {
+      isDamaged = true;
+    }
+
+    // Rule 4: Crack rules
+    if (crackSmallCount > 1) {
+      isDamaged = true;
+    }
+    if (crackLargeCount > 0) {
+      isDamaged = true;
+    }
+
+    // Rule 5: Critical issues (immediate damage)
+    if (hasDeformed || hasBroken || crackLargeCount > 0) {
+      isDamaged = true;
+    }
+
+    setCalculatedPoints(totalPoints);
+    setCalculatedCondition(isDamaged ? 'damaged' : 'good');
+  };
 
   useEffect(() => {
     loadBusinessData();
@@ -633,7 +760,21 @@ export default function TransactionProcessingScreen() {
                       const item = mockPackagingItems.find((p) => p.id === selectedTransaction.packagingItemId);
                       if (item?.qrCode) {
                         setReturnSerialNumber(item.qrCode);
-                        setReturnCondition('good');
+                        // Reset check data
+                        setCheckData({
+                          frontImage: null,
+                          frontIssue: '',
+                          backImage: null,
+                          backIssue: '',
+                          leftImage: null,
+                          leftIssue: '',
+                          rightImage: null,
+                          rightIssue: '',
+                          topImage: null,
+                          topIssue: '',
+                          bottomImage: null,
+                          bottomIssue: '',
+                        });
                         setReturnNote('');
                         setReturnImages([]);
                         setShowReturnModal(true);
@@ -644,7 +785,7 @@ export default function TransactionProcessingScreen() {
                     }}
                   >
                     <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-                    <Text style={styles.processReturnButtonText}>Process Return</Text>
+                    <Text style={styles.processReturnButtonText}>Check Return</Text>
                   </TouchableOpacity>
                 )}
               </ScrollView>
@@ -706,7 +847,7 @@ export default function TransactionProcessingScreen() {
         </View>
       </Modal>
 
-      {/* Process Return Modal */}
+      {/* Check Return Modal */}
       <Modal
         visible={showReturnModal}
         transparent={true}
@@ -716,8 +857,24 @@ export default function TransactionProcessingScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Process Return</Text>
-              <TouchableOpacity onPress={() => setShowReturnModal(false)}>
+              <Text style={styles.modalTitle}>Check Return</Text>
+              <TouchableOpacity onPress={() => {
+                setShowReturnModal(false);
+                setCheckData({
+                  frontImage: null,
+                  frontIssue: '',
+                  backImage: null,
+                  backIssue: '',
+                  leftImage: null,
+                  leftIssue: '',
+                  rightImage: null,
+                  rightIssue: '',
+                  topImage: null,
+                  topIssue: '',
+                  bottomImage: null,
+                  bottomIssue: '',
+                });
+              }}>
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
@@ -734,140 +891,280 @@ export default function TransactionProcessingScreen() {
                 />
               </View>
 
+              {/* Damage Assessment for 6 Faces */}
+              {['front', 'back', 'left', 'right', 'top', 'bottom'].map((face) => (
+                <View key={face} style={styles.faceGroup}>
+                  <Text style={styles.faceLabel}>{face.charAt(0).toUpperCase() + face.slice(1)} Face</Text>
+                  
+                  {/* Image Upload */}
+                  <View style={styles.imageUploadContainer}>
+                    {checkData[`${face}Image` as keyof typeof checkData] ? (
+                      <View style={styles.imagePreview}>
+                        <Image 
+                          source={{ uri: checkData[`${face}Image` as keyof typeof checkData] as string }} 
+                          style={styles.imagePreviewImage} 
+                        />
+                        <TouchableOpacity
+                          style={styles.removeImageButton}
+                          onPress={() => {
+                            setCheckData(prev => ({
+                              ...prev,
+                              [`${face}Image`]: null,
+                            }));
+                          }}
+                        >
+                          <Ionicons name="close-circle" size={24} color="#EF4444" />
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.addImageButton}
+                        onPress={async () => {
+                          try {
+                            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                            if (status !== 'granted') {
+                              Alert.alert('Permission Denied', 'Camera roll permission is required');
+                              return;
+                            }
+
+                            const result = await ImagePicker.launchImageLibraryAsync({
+                              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                              allowsEditing: true,
+                              aspect: [4, 3],
+                              quality: 0.8,
+                            });
+
+                            if (!result.canceled && result.assets[0]) {
+                              setCheckData(prev => ({
+                                ...prev,
+                                [`${face}Image`]: result.assets[0].uri,
+                              }));
+                            }
+                          } catch (error) {
+                            console.error('Error picking image:', error);
+                            Alert.alert('Error', 'Failed to pick image');
+                          }
+                        }}
+                      >
+                        <Ionicons name="camera" size={24} color="#0F4D3A" />
+                        <Text style={styles.addImageButtonText}>Add {face} Image</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Issue Dropdown */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Issue</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.issueChipsContainer}>
+                      {damagePolicy.map((policy) => (
+                        <TouchableOpacity
+                          key={policy.issue}
+                          style={[
+                            styles.issueChip,
+                            checkData[`${face}Issue` as keyof typeof checkData] === policy.issue && styles.issueChipActive
+                          ]}
+                          onPress={() => {
+                            setCheckData(prev => ({
+                              ...prev,
+                              [`${face}Issue`]: policy.issue,
+                            }));
+                          }}
+                        >
+                          <Text style={[
+                            styles.issueChipText,
+                            checkData[`${face}Issue` as keyof typeof checkData] === policy.issue && styles.issueChipTextActive
+                          ]}>
+                            {policy.issue.replace(/_/g, ' ')} ({policy.points} pts)
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </View>
+              ))}
+
+              {/* Calculated Results */}
+              <View style={styles.calculationResult}>
+                <Text style={styles.calculationLabel}>Total Damage Points: {calculatedPoints}</Text>
+                <View style={[
+                  styles.conditionBadge,
+                  calculatedCondition === 'damaged' ? styles.conditionBadgeDamaged : styles.conditionBadgeGood
+                ]}>
+                  <Text style={[
+                    styles.conditionBadgeText,
+                    calculatedCondition === 'damaged' ? styles.conditionBadgeTextDamaged : styles.conditionBadgeTextGood
+                  ]}>
+                    Condition: {calculatedCondition.toUpperCase()}
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.submitButton, checkingReturn && styles.submitButtonDisabled]}
+                onPress={async () => {
+                  if (!returnSerialNumber.trim()) {
+                    Alert.alert('Error', 'Serial number is required');
+                    return;
+                  }
+
+                  try {
+                    setCheckingReturn(true);
+                    await borrowTransactionsApi.checkReturn(returnSerialNumber, checkData);
+
+                    // After check success, show confirm modal
+                    setShowReturnModal(false);
+                    setShowConfirmModal(true);
+                  } catch (error: any) {
+                    console.error('Error checking return:', error);
+                    Alert.alert('Error', error.message || 'Failed to check return');
+                  } finally {
+                    setCheckingReturn(false);
+                  }
+                }}
+                disabled={checkingReturn}
+              >
+                {checkingReturn ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons name="search" size={20} color="#FFFFFF" />
+                    <Text style={styles.submitButtonText}>Check</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Confirm Return Modal */}
+      <Modal
+        visible={showConfirmModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowConfirmModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Confirm Return</Text>
+              <TouchableOpacity onPress={() => {
+                setShowConfirmModal(false);
+                setReturnNote('');
+              }}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.modalBody}>
               <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Condition *</Text>
-                <View style={styles.conditionContainer}>
-                  {['good', 'damaged', 'broken'].map((condition) => (
-                    <TouchableOpacity
-                      key={condition}
-                      style={[
-                        styles.conditionOption,
-                        returnCondition === condition && styles.conditionOptionActive
-                      ]}
-                      onPress={() => setReturnCondition(condition)}
-                    >
-                      <Text style={[
-                        styles.conditionOptionText,
-                        returnCondition === condition && styles.conditionOptionTextActive
-                      ]}>
-                        {condition.charAt(0).toUpperCase() + condition.slice(1)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                <Text style={styles.formLabel}>Serial Number</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={returnSerialNumber}
+                  editable={false}
+                />
+              </View>
+
+              <View style={styles.calculationResult}>
+                <Text style={styles.calculationLabel}>Total Damage Points: {calculatedPoints}</Text>
+                <View style={[
+                  styles.conditionBadge,
+                  calculatedCondition === 'damaged' ? styles.conditionBadgeDamaged : styles.conditionBadgeGood
+                ]}>
+                  <Text style={[
+                    styles.conditionBadgeText,
+                    calculatedCondition === 'damaged' ? styles.conditionBadgeTextDamaged : styles.conditionBadgeTextGood
+                  ]}>
+                    Final Condition: {calculatedCondition.toUpperCase()}
+                  </Text>
                 </View>
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Note *</Text>
+                <Text style={styles.formLabel}>Note</Text>
                 <TextInput
                   style={[styles.formInput, styles.textArea]}
                   value={returnNote}
                   onChangeText={setReturnNote}
-                  placeholder="Enter return notes..."
+                  placeholder="Enter notes (optional)..."
                   multiline
                   numberOfLines={4}
                   textAlignVertical="top"
                 />
               </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Images</Text>
-                <View style={styles.imagesContainer}>
-                  {returnImages.map((uri, index) => (
-                    <View key={index} style={styles.imagePreview}>
-                      <Image source={{ uri }} style={styles.imagePreviewImage} />
-                      <TouchableOpacity
-                        style={styles.removeImageButton}
-                        onPress={() => {
-                          setReturnImages(returnImages.filter((_, i) => i !== index));
-                        }}
-                      >
-                        <Ionicons name="close-circle" size={24} color="#EF4444" />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                  {returnImages.length < 5 && (
-                    <TouchableOpacity
-                      style={styles.addImageButton}
-                      onPress={async () => {
-                        try {
-                          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                          if (status !== 'granted') {
-                            Alert.alert('Permission Denied', 'Camera roll permission is required to add images');
-                            return;
-                          }
-
-                          const result = await ImagePicker.launchImageLibraryAsync({
-                            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                            allowsEditing: true,
-                            aspect: [4, 3],
-                            quality: 0.8,
-                          });
-
-                          if (!result.canceled && result.assets[0]) {
-                            setReturnImages([...returnImages, result.assets[0].uri]);
-                          }
-                        } catch (error) {
-                          console.error('Error picking image:', error);
-                          Alert.alert('Error', 'Failed to pick image');
-                        }
-                      }}
-                    >
-                      <Ionicons name="camera" size={24} color="#0F4D3A" />
-                      <Text style={styles.addImageButtonText}>Add Image</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-
               <TouchableOpacity
-                style={[styles.submitButton, processingReturn && styles.submitButtonDisabled]}
+                style={[styles.submitButton, confirmingReturn && styles.submitButtonDisabled]}
                 onPress={async () => {
                   if (!returnSerialNumber.trim()) {
                     Alert.alert('Error', 'Serial number is required');
                     return;
                   }
-                  if (!returnNote.trim()) {
-                    Alert.alert('Error', 'Note is required');
-                    return;
-                  }
 
                   try {
-                    setProcessingReturn(true);
-                    await borrowTransactionsApi.processReturnCheck(returnSerialNumber, {
-                      condition: returnCondition,
-                      note: returnNote,
-                      images: returnImages,
+                    setConfirmingReturn(true);
+                    
+                    // Prepare damage faces data
+                    const damageFaces = [];
+                    const faces = ['front', 'back', 'left', 'right', 'top', 'bottom'];
+                    faces.forEach(face => {
+                      const issue = checkData[`${face}Issue` as keyof typeof checkData] as string;
+                      if (issue && issue !== 'none') {
+                        damageFaces.push({
+                          face,
+                          issue,
+                        });
+                      }
                     });
 
-                    Alert.alert('Success', 'Return processed successfully', [
+                    await borrowTransactionsApi.confirmReturn(returnSerialNumber, {
+                      note: returnNote || undefined,
+                      damageFaces,
+                      totalDamagePoints: calculatedPoints,
+                      finalCondition: calculatedCondition,
+                    });
+
+                    Alert.alert('Success', 'Return confirmed successfully', [
                       {
                         text: 'OK',
                         onPress: () => {
-                          setShowReturnModal(false);
+                          setShowConfirmModal(false);
                           setReturnSerialNumber('');
-                          setReturnCondition('good');
                           setReturnNote('');
-                          setReturnImages([]);
+                          setCheckData({
+                            frontImage: null,
+                            frontIssue: '',
+                            backImage: null,
+                            backIssue: '',
+                            leftImage: null,
+                            leftIssue: '',
+                            rightImage: null,
+                            rightIssue: '',
+                            topImage: null,
+                            topIssue: '',
+                            bottomImage: null,
+                            bottomIssue: '',
+                          });
                           onRefresh();
                         }
                       }
                     ]);
                   } catch (error: any) {
-                    console.error('Error processing return:', error);
-                    Alert.alert('Error', error.message || 'Failed to process return');
+                    console.error('Error confirming return:', error);
+                    Alert.alert('Error', error.message || 'Failed to confirm return');
                   } finally {
-                    setProcessingReturn(false);
+                    setConfirmingReturn(false);
                   }
                 }}
-                disabled={processingReturn}
+                disabled={confirmingReturn}
               >
-                {processingReturn ? (
+                {confirmingReturn ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <>
                     <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-                    <Text style={styles.submitButtonText}>Process Return</Text>
+                    <Text style={styles.submitButtonText}>Confirm</Text>
                   </>
                 )}
               </TouchableOpacity>
