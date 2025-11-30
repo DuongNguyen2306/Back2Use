@@ -200,7 +200,7 @@ export default function CustomerDashboard() {
   const handleProductNotFound = async (serialNumber: string) => {
     try {
       // Check if customer has a borrowing transaction with this serial number
-      const customerHistory = await borrowTransactionsApi.getMy({ page: 1, limit: 100 });
+      const customerHistory = await borrowTransactionsApi.getCustomerHistory({ page: 1, limit: 100 });
       const transactions = customerHistory.data?.items || (Array.isArray(customerHistory.data) ? customerHistory.data : []);
       
       const borrowingTransaction = transactions.find((t: any) => 
@@ -294,7 +294,7 @@ export default function CustomerDashboard() {
       let response;
       try {
         response = await productsApi.scan(actualId);
-        console.log('📦 API Response:', JSON.stringify(response, null, 2));
+      console.log('📦 API Response:', JSON.stringify(response, null, 2));
       } catch (scanError: any) {
         // If 404 or 400 with "Invalid product ID", product might be currently borrowed
         const is404 = scanError?.response?.status === 404;
@@ -501,7 +501,7 @@ export default function CustomerDashboard() {
       );
       return;
     }
-    
+
     console.log('✅ Balance sufficient, proceeding to confirm...');
 
     // TÍNH LẠI TIỀN CỌC REALTIME CHO ALERT (vì người dùng có thể gõ lại số ngày)
@@ -1037,18 +1037,18 @@ export default function CustomerDashboard() {
                    if (!pricePerDay || pricePerDay <= 0) return null;
                    
                    return (
-                     <View style={styles.depositInfo}>
-                       <Ionicons name="cash-outline" size={20} color="#059669" />
-                       <View style={{ flex: 1 }}>
-                         <Text style={styles.depositLabel}>Tiền cọc:</Text>
-                         <Text style={styles.depositValue}>
+                   <View style={styles.depositInfo}>
+                     <Ionicons name="cash-outline" size={20} color="#059669" />
+                     <View style={{ flex: 1 }}>
+                       <Text style={styles.depositLabel}>Tiền cọc:</Text>
+                       <Text style={styles.depositValue}>
                            {depositValue.toLocaleString('vi-VN')} VNĐ
                          </Text>
                          <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
                            ({pricePerDay.toLocaleString('vi-VN')} VNĐ/ngày × {days} ngày)
-                         </Text>
-                       </View>
+                       </Text>
                      </View>
+                   </View>
                    );
                  })()}
 

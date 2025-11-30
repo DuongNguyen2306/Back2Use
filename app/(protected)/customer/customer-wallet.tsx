@@ -2,27 +2,25 @@ import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService
 import { walletApi, walletTransactionsApi, type WalletDetails, type WalletTransaction } from '@/services/api/walletService';
 import { User } from '@/types/auth.types';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  AppState,
-  Dimensions,
-  Image,
-  Modal,
-  Platform,
-  RefreshControl,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    AppState,
+    Dimensions,
+    Modal,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import CustomerHeader from '../../../components/CustomerHeader';
 import { useAuth } from '../../../context/AuthProvider';
 import { useI18n } from '../../../hooks/useI18n';
 
@@ -821,36 +819,12 @@ export default function CustomerWallet() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#00704A" />
-        <View style={styles.headerBlock}>
-          <SafeAreaView>
-            <View style={styles.headerContent}>
-              <Text style={styles.headerTitle}>My Wallet</Text>
-              <View style={styles.headerRight}>
-                <TouchableOpacity 
-                  style={styles.refreshButton}
-                  onPress={forceRefresh}
-                >
-                  <Ionicons name="refresh" size={22} color="#FFFFFF" />
-                </TouchableOpacity>
-                {user && (
-                  <TouchableOpacity 
-                    style={styles.headerAvatar}
-                    onPress={() => router.push('/(protected)/customer/my-profile')}
-                  >
-                    {user.avatar ? (
-                      <Image source={{ uri: user.avatar }} style={styles.headerAvatarImage} />
-                    ) : (
-                      <Text style={styles.headerAvatarText}>
-                        {(user.name || user.fullName || 'U').charAt(0).toUpperCase()}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          </SafeAreaView>
-        </View>
+        <CustomerHeader 
+          title="My Wallet"
+          subtitle="Manage your balance"
+          user={user}
+          showNotifications={true}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#0F4D3A" />
           <Text style={styles.loadingText}>Loading...</Text>
@@ -861,37 +835,12 @@ export default function CustomerWallet() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
-      {/* Header Section - Clean Dark Green */}
-      <View style={styles.headerBlock}>
-        <SafeAreaView style={styles.headerSafeArea}>
-          <View style={styles.headerContent}>
-            <Text style={styles.headerTitle}>My Wallet</Text>
-            <View style={styles.headerRight}>
-              <TouchableOpacity 
-                style={styles.refreshButton}
-                onPress={forceRefresh}
-              >
-                <Ionicons name="refresh" size={22} color="#FFFFFF" />
-              </TouchableOpacity>
-              {user && (
-                <TouchableOpacity 
-                  style={styles.headerAvatar}
-                  onPress={() => router.push('/(protected)/customer/my-profile')}
-                >
-                  {user.avatar ? (
-                    <Image source={{ uri: user.avatar }} style={styles.headerAvatarImage} />
-                  ) : (
-                    <Text style={styles.headerAvatarText}>
-                      {(user.name || user.fullName || 'U').charAt(0).toUpperCase()}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        </SafeAreaView>
-      </View>
+      <CustomerHeader 
+        title="My Wallet"
+        subtitle="Manage your balance"
+        user={user}
+        showNotifications={true}
+      />
 
       {/* White/Light Gray Background Content */}
       <View style={styles.whiteBackground}>

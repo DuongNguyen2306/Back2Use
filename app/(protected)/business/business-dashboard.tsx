@@ -212,26 +212,6 @@ export default function BusinessDashboard() {
               </View>
             </View>
 
-            <TouchableOpacity
-              style={styles.processButtonContainer}
-              onPress={() => {
-                // Navigate to transaction-processing and trigger QR scanner
-                router.push({
-                  pathname: '/(protected)/business/transaction-processing',
-                  params: { openQRScanner: 'true' }
-                });
-              }}
-              activeOpacity={0.8}
-            >
-              <View style={styles.processButton}>
-                <View style={styles.processButtonIcon}>
-                  <Ionicons name="scan" size={28} color="#FFFFFF" />
-                </View>
-                <Text style={styles.processButtonText}>Process Returns</Text>
-                <Ionicons name="chevron-forward" size={24} color="#FFFFFF" style={{ opacity: 0.8 }} />
-              </View>
-            </TouchableOpacity>
-
             {authState.role !== 'staff' as any && (
               <View style={styles.quickActionsCard}>
                 <View style={styles.quickActionsHeader}>
@@ -529,38 +509,6 @@ const styles = StyleSheet.create({
     color: "#666666",
     fontWeight: "600",
     textAlign: "center",
-  },
-  processButtonContainer: {
-    borderRadius: 16,
-    overflow: "hidden",
-    shadowColor: "#00704A",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  processButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 20,
-    gap: 12,
-    backgroundColor: "#00704A",
-  },
-  processButtonIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  processButtonText: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "700",
-    flex: 1,
-    letterSpacing: 0.3,
   },
   quickActionsCard: {
     backgroundColor: "#FFFFFF",

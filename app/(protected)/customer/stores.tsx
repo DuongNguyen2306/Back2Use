@@ -21,6 +21,7 @@ import {
   View,
 } from 'react-native';
 import MapView, { Marker, Region } from 'react-native-maps';
+import CustomerHeader from '../../../components/CustomerHeader';
 import { useAuth } from '../../../context/AuthProvider';
 import { useI18n } from '../../../hooks/useI18n';
 
@@ -464,21 +465,12 @@ export default function Stores() {
 
   return (
     <View style={styles.container}>
-      {/* Unified Header */}
-      <SafeAreaView style={styles.headerSafeArea}>
-        <StatusBar barStyle="light-content" backgroundColor="#0F4D3A" />
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Stores</Text>
-          <TouchableOpacity 
-            style={styles.headerProfile}
-            onPress={() => router.push('/(protected)/customer/my-profile')}
-          >
-            <Text style={styles.headerProfileText}>
-              {(user?.name || user?.fullName || 'U').charAt(0).toUpperCase()}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <CustomerHeader 
+        title="Stores"
+        subtitle="Find nearby stores"
+        user={user}
+        showNotifications={true}
+      />
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Map View */}

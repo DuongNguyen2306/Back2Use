@@ -153,7 +153,7 @@ export default function BusinessOverview() {
                   <Ionicons name="cube" size={32} color="#00704A" />
                   <Text style={styles.actionText}>Inventory</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.actionCard} onPress={() => router.push("/(protected)/business/transaction")}>
+                <TouchableOpacity style={styles.actionCard} onPress={() => router.push("/(protected)/business/transaction-processing")}>
                   <Ionicons name="receipt" size={32} color="#00704A" />
                   <Text style={styles.actionText}>Transactions</Text>
                 </TouchableOpacity>

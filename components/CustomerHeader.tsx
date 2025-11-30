@@ -1,4 +1,6 @@
 import { User } from '@/types/auth.types';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import React from 'react';
 import {
   Dimensions,
@@ -21,6 +23,7 @@ interface CustomerHeaderProps {
   rightAction?: React.ReactNode;
   backgroundColor?: string;
   onProfilePress?: () => void;
+  showNotifications?: boolean;
 }
 
 export default function CustomerHeader({
@@ -31,7 +34,16 @@ export default function CustomerHeader({
   rightAction,
   backgroundColor = '#00704A',
   onProfilePress,
+  showNotifications = true,
 }: CustomerHeaderProps) {
+  const handleProfilePress = () => {
+    if (onProfilePress) {
+      onProfilePress();
+    } else {
+      router.push('/(protected)/customer/my-profile');
+    }
+  };
+
   return (
     <>
       <StatusBar barStyle="light-content" backgroundColor={backgroundColor} />
@@ -43,11 +55,8 @@ export default function CustomerHeader({
           <View style={styles.decorativeCircle3} />
         </View>
         
-        <View style={styles.topBar}>
-          <Text style={styles.brandTitle}>BACK2USE</Text>
-        </View>
-        
         <View style={styles.greetingRow}>
+          {/* Left: Logo/Greeting */}
           <View style={styles.greetingLeft}>
             <Text style={styles.greetingSub}>{title}</Text>
             {subtitle && (
@@ -55,13 +64,25 @@ export default function CustomerHeader({
             )}
           </View>
           
+          {/* Right: Notifications + Avatar */}
           <View style={styles.greetingRight}>
             {rightAction}
             
+            {/* Notifications Button */}
+            {showNotifications && (
+              <TouchableOpacity 
+                style={styles.notificationButton}
+                onPress={() => router.push('/(protected)/customer/notifications')}
+              >
+                <Ionicons name="notifications-outline" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            )}
+            
+            {/* Avatar Button - Navigate to Menu/Profile */}
             {showProfile && (
               <TouchableOpacity 
                 style={styles.avatarLg}
-                onPress={onProfilePress}
+                onPress={handleProfilePress}
               >
                 {user?.avatar ? (
                   <Image source={{ uri: user.avatar }} style={styles.avatarLgImage} />
@@ -167,10 +188,18 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingLeft: 16,
   },
+  notificationButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarLg: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',

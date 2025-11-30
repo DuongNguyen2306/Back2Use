@@ -107,6 +107,16 @@ export const API_ENDPOINTS = {
   LEADERBOARD: {
     MONTHLY: '/monthly-leaderboards', // GET /monthly-leaderboards?month=&year=&page=&limit=
   },
+  NOTIFICATIONS: {
+    GET_ALL: '/notifications', // GET /notifications
+    GET_BY_ID: '/notifications', // GET /notifications/{id}
+    CREATE: '/notifications', // POST /notifications
+    UPDATE: '/notifications', // PATCH /notifications/{id}
+    DELETE: '/notifications', // DELETE /notifications/{id}
+    MARK_AS_READ: '/notifications', // PATCH /notifications/{id}/read
+    GET_BY_RECEIVER: '/notifications/receiver', // GET /notifications/receiver/{receiverId}
+    DELETE_BY_RECEIVER: '/notifications/receiver', // DELETE /notifications/receiver/{receiverId}
+  },
 } as const;
 
 // Request timeout (in milliseconds)
