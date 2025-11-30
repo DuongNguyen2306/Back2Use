@@ -75,10 +75,10 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     const isOnAdminScreen = pathname?.includes('/admin');
     
     // Only redirect if user is on wrong screen for their role
-    if (state.role === "business") {
-      // If user is business but on customer or admin screen, redirect to business
+    if (state.role === "business" || state.role === "staff") {
+      // If user is business/staff but on customer or admin screen, redirect to business
       if (isOnCustomerScreen || isOnAdminScreen) {
-        console.log("🔄 AuthGate: User is business but on wrong screen, redirecting to business dashboard");
+        console.log(`🔄 AuthGate: User is ${state.role} but on wrong screen, redirecting to business dashboard`);
         hasNavigatedRef.current = true;
         router.replace("/(protected)/business");
       }

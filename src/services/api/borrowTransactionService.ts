@@ -158,6 +158,49 @@ export const borrowTransactionsApi = {
     }
   },
 
+  // Get customer borrow transaction detail
+  getCustomerDetail: async (transactionId: string): Promise<any> => {
+    try {
+      let accessToken: string | undefined;
+      if (getCurrentAccessToken) {
+        try {
+          accessToken = await getCurrentAccessToken() || undefined;
+        } catch (error) {
+          console.warn('Error getting token from provider:', error);
+        }
+      }
+
+      if (!accessToken) {
+        try {
+          accessToken = await AsyncStorage.getItem('ACCESS_TOKEN') || undefined;
+        } catch (error) {
+          console.warn('Error getting token from AsyncStorage:', error);
+        }
+      }
+
+      if (!accessToken) {
+        throw new Error('No access token available. Please log in first.');
+      }
+
+      const endpoint = `${API_ENDPOINTS.BORROW_TRANSACTIONS.CUSTOMER_DETAIL}/${transactionId}`;
+
+      const response = await apiClient.get(endpoint, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: REQUEST_TIMEOUT,
+      });
+
+      return response.data;
+    } catch (error: any) {
+      // Silently handle errors - don't log to console.error to avoid UI error display
+      console.log('⚠️ Error getting customer transaction detail (silently handled):', error?.response?.status);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to get transaction detail';
+      throw new Error(errorMessage);
+    }
+  },
+
   // Get business borrow transaction history
   getBusinessHistory: async (params?: {
     status?: string;
@@ -531,7 +574,7 @@ export const borrowTransactionsApi = {
       if (checkData.bottomImage) {
         formData.append('bottomImage', {
           uri: checkData.bottomImage,
-          type: 'image/jpeg',
+            type: 'image/jpeg',
           name: 'bottom.jpg',
         } as any);
       }

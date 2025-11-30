@@ -93,8 +93,11 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error) => {
-    console.log('❌ API Error:', error.response?.status, error.config?.url);
-    console.log('Error details:', error.response?.data);
+    // Only log errors that are not user-facing (avoid logging expected errors like validation)
+    if (error.response?.status && error.response.status >= 500) {
+      console.log('❌ API Error:', error.response?.status, error.config?.url);
+      console.log('Error details:', error.response?.data);
+    }
     
     // Do NOT auto-clear tokens here. Let the auth flow decide how to handle 401.
     // This avoids race conditions where tokens are valid/just refreshed.
@@ -137,7 +140,33 @@ async function apiCall<T>(
 
     return response.data;
   } catch (error: any) {
-    console.error('API call failed:', error);
+    // Silently handle 404 and 400 "Invalid product ID" errors for product scan endpoint
+    if (endpoint.includes('/products/scan/')) {
+      const is404 = error.response?.status === 404;
+      const is400InvalidId = error.response?.status === 400 && 
+                             (error.response?.data?.message?.toLowerCase().includes('invalid product') ||
+                              error.response?.data?.message?.toLowerCase().includes('product id'));
+      
+      if (is404 || is400InvalidId) {
+        console.log('⚠️ Product scan error (404/400) - silently handled');
+        // Return a response object instead of throwing
+        return {
+          success: false,
+          statusCode: error.response?.status || 404,
+          message: error.response?.data?.message || 'Product not found',
+          data: {} as any,
+        } as T;
+      }
+    }
+    
+    // Only log server errors (500+), not validation errors (400)
+    // This prevents error toasts from showing for expected validation errors
+    if (error.response?.status && error.response.status >= 500) {
+      console.error('API call failed (server error):', error);
+    } else if (!error.response) {
+      // Network errors - log but don't show toast
+      console.log('API call failed (network error):', error.message);
+    }
     
     if (error.response) {
       const errorMessage = error.response.data?.message || `HTTP error! status: ${error.response.status}`;

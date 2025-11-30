@@ -88,6 +88,7 @@ export const API_ENDPOINTS = {
     CREATE: '/borrow-transactions', // POST /borrow-transactions
     GET_MY: '/borrow-transactions/my', // GET /borrow-transactions/my
     CUSTOMER_HISTORY: '/borrow-transactions/customer-history', // GET /borrow-transactions/customer-history
+    CUSTOMER_DETAIL: '/borrow-transactions/customer', // GET /borrow-transactions/customer/{id}
     BUSINESS_HISTORY: '/borrow-transactions/business', // GET /borrow-transactions/business
     CONFIRM: '/borrow-transactions/confirm', // PATCH /borrow-transactions/confirm/{id}
     CUSTOMER_CANCEL: '/borrow-transactions/customer/cancel', // PATCH /borrow-transactions/customer/cancel/{id}

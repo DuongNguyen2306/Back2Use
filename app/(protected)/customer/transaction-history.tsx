@@ -13,6 +13,10 @@ interface CustomerBorrowHistoryItem {
       _id: string;
       name: string;
       imageUrl?: string;
+      materialId?: {
+        _id: string;
+        materialName: string;
+      };
     };
     productSizeId: {
       _id: string;
@@ -20,8 +24,8 @@ interface CustomerBorrowHistoryItem {
     };
     qrCode?: string;
     serialNumber: string;
-    status: string;
-    reuseCount: number;
+    status?: string;
+    reuseCount?: number;
   };
   businessId: {
     _id: string;
@@ -36,10 +40,38 @@ interface CustomerBorrowHistoryItem {
   dueDate: string;
   depositAmount: number;
   status: string;
+  extensionCount?: number;
   isLateProcessed: boolean;
+  previousConditionImages?: {
+    _id: string;
+  };
+  currentConditionImages?: {
+    _id: string;
+  };
+  previousDamageFaces?: any[];
+  currentDamageFaces?: any[];
+  totalConditionPoints?: number;
   createdAt: string;
   updatedAt: string;
   qrCode?: string;
+  walletTransaction?: {
+    _id: string;
+    walletId: string;
+    relatedUserId: string;
+    relatedUserType: string;
+    transactionType: string;
+    amount: number;
+    direction: string;
+    referenceId: string;
+    referenceType: string;
+    balanceType: string;
+    toBalanceType?: string | null;
+    description: string;
+    status: string;
+    createdAt: string;
+    updatedAt: string;
+    __v: number;
+  };
 }
 
 export default function CustomerTransactionHistory() {
@@ -165,22 +197,10 @@ export default function CustomerTransactionHistory() {
   };
 
   const handleTransactionPress = (transaction: CustomerBorrowHistoryItem) => {
-    const productName = transaction.productId?.productGroupId?.name || 'N/A';
-    const sizeName = transaction.productId?.productSizeId?.sizeName || 'N/A';
-    const businessName = transaction.businessId?.businessName || 'N/A';
-    const borrowDate = new Date(transaction.borrowDate).toLocaleDateString('vi-VN');
-    const dueDate = new Date(transaction.dueDate).toLocaleDateString('vi-VN');
-    
-    Alert.alert(
-      "Transaction Details",
-      `Product: ${productName} - ${sizeName}\n` +
-      `Store: ${businessName}\n` +
-      `Borrow Date: ${borrowDate}\n` +
-      `Due Date: ${dueDate}\n` +
-      `Deposit: ${transaction.depositAmount.toLocaleString('vi-VN')} VNĐ\n` +
-      `Status: ${getStatusLabel(transaction.status)}`,
-      [{ text: "Close" }]
-    );
+    router.push({
+      pathname: '/(protected)/customer/transaction-detail/[id]',
+      params: { id: transaction._id }
+    });
   };
 
   const handleExtend = async (transactionId: string) => {
@@ -367,14 +387,13 @@ export default function CustomerTransactionHistory() {
             const isExtending = extendingId === transaction._id;
             
             return (
-              <View
+              <TouchableOpacity
                 key={transaction._id}
                 style={styles.transactionCard}
+                onPress={() => handleTransactionPress(transaction)}
+                activeOpacity={0.7}
               >
-                <TouchableOpacity
-                  style={styles.cardContent}
-                  onPress={() => handleTransactionPress(transaction)}
-                >
+                <View style={styles.cardContent}>
                   {/* Left: Product Thumbnail */}
                   {productImage ? (
                     <Image source={{ uri: productImage }} style={styles.productThumbnail} />
@@ -414,15 +433,18 @@ export default function CustomerTransactionHistory() {
                       </Text>
                     </View>
                   </View>
-                </TouchableOpacity>
+                </View>
                 
                 {/* Action Buttons */}
-                <View style={styles.actionButtonsContainer}>
+                <View style={styles.actionButtonsContainer} onStartShouldSetResponder={() => true}>
                   {/* Extend Button - Only show for borrowing transactions (not cancelled, not overdue) */}
                   {canExtend && (
                     <TouchableOpacity
                       style={[styles.extendButton, isExtending && styles.extendButtonDisabled]}
-                      onPress={() => openExtendModal(transaction._id)}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        openExtendModal(transaction._id);
+                      }}
                       disabled={isExtending}
                     >
                       {isExtending ? (
@@ -435,26 +457,29 @@ export default function CustomerTransactionHistory() {
                       )}
                     </TouchableOpacity>
                   )}
-                  
-                  {/* Cancel Button - Only show for pending transactions (not cancelled) */}
-                  {canCancel && !isCancelled && (
-                    <TouchableOpacity
-                      style={[styles.cancelButton, isCanceling && styles.cancelButtonDisabled]}
-                      onPress={() => handleCancel(transaction._id)}
-                      disabled={isCanceling}
-                    >
-                      {isCanceling ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <>
-                          <Ionicons name="close-circle-outline" size={18} color="#FFFFFF" />
-                          <Text style={styles.cancelButtonText}>Cancel Order</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  )}
+                
+                {/* Cancel Button - Only show for pending transactions (not cancelled) */}
+                {canCancel && !isCancelled && (
+                  <TouchableOpacity
+                    style={[styles.cancelButton, isCanceling && styles.cancelButtonDisabled]}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleCancel(transaction._id);
+                    }}
+                    disabled={isCanceling}
+                  >
+                    {isCanceling ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <>
+                        <Ionicons name="close-circle-outline" size={18} color="#FFFFFF" />
+                        <Text style={styles.cancelButtonText}>Cancel Order</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })
         )}

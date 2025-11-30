@@ -10,8 +10,10 @@ export interface Staff {
   fullName: string;
   email: string;
   phone: string;
-  status: 'active' | 'inactive';
+  status: 'active' | 'inactive' | 'removed';
   avatar?: string;
+  position?: string;
+  staffRole?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -23,6 +25,15 @@ export interface CreateStaffRequest {
   phone: string;
 }
 
+export interface UpdateStaffRequest {
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  status?: string;
+  position?: string;
+  staffRole?: string;
+}
+
 export interface CreateStaffResponse {
   statusCode: number;
   message: string;
@@ -32,10 +43,12 @@ export interface CreateStaffResponse {
 export interface StaffListResponse {
   statusCode: number;
   message: string;
-  data: Staff[];
-  total: number;
-  currentPage: number;
-  totalPages: number;
+  data: {
+    data: Staff[];
+    total: number;
+    currentPage: number;
+    totalPages: number;
+  };
 }
 
 export interface DeleteStaffResponse {
@@ -83,7 +96,7 @@ export const staffApi = {
   },
 
   // Update staff member
-  update: async (staffId: string, data: Partial<CreateStaffRequest & { status?: string }>): Promise<CreateStaffResponse> => {
+  update: async (staffId: string, data: UpdateStaffRequest): Promise<CreateStaffResponse> => {
     const endpoint = `${API_ENDPOINTS.STAFF.UPDATE}/${staffId}`;
     return apiCall<CreateStaffResponse>(endpoint, {
       method: 'PATCH',
@@ -99,5 +112,6 @@ export const staffApi = {
     });
   },
 };
+
 
 

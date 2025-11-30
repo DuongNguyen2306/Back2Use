@@ -2,16 +2,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Image,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Image,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
 import { getCurrentUserProfileWithAutoRefresh, leaderboardApi, LeaderboardEntry } from '../../../src/services/api/userService';
@@ -278,9 +278,9 @@ export default function Leaderboard() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Leaderboard</Text>
         <View style={styles.headerSpacer} />
-      </View>
+        </View>
 
-      {/* Filter Tabs */}
+        {/* Filter Tabs */}
       <View style={styles.filterTabs}>
         <TouchableOpacity
           style={[styles.filterTab, activeFilter === 'today' && styles.activeFilterTab]}
@@ -314,49 +314,49 @@ export default function Leaderboard() {
           <Text style={styles.loadingText}>Loading leaderboard...</Text>
         </View>
       ) : (
-        <ScrollView 
-          style={styles.scrollContent} 
+      <ScrollView 
+        style={styles.scrollContent} 
           contentContainerStyle={styles.scrollContentContainer}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
               colors={['#00704A']}
               tintColor="#00704A"
-            />
-          }
-        >
+          />
+        }
+      >
           {/* Podium Section (Top 3) */}
           {top3Users.length > 0 && (
-            <View style={styles.podiumSection}>
-              <View style={styles.podiumContainer}>
-                {/* 2nd Place */}
-                {top3Users[1] && renderPodiumUser(top3Users[1], 1)}
-                
-                {/* 1st Place */}
-                {top3Users[0] && renderPodiumUser(top3Users[0], 0)}
-                
-                {/* 3rd Place */}
-                {top3Users[2] && renderPodiumUser(top3Users[2], 2)}
-              </View>
-            </View>
+        <View style={styles.podiumSection}>
+          <View style={styles.podiumContainer}>
+            {/* 2nd Place */}
+            {top3Users[1] && renderPodiumUser(top3Users[1], 1)}
+            
+            {/* 1st Place */}
+            {top3Users[0] && renderPodiumUser(top3Users[0], 0)}
+            
+            {/* 3rd Place */}
+            {top3Users[2] && renderPodiumUser(top3Users[2], 2)}
+          </View>
+        </View>
           )}
 
           {/* Ranking List (Starting from Rank 4) */}
-          <View style={styles.leaderboardSection}>
-            {remainingUsers.length > 0 ? (
-              <View style={styles.leaderboardList}>
-                {remainingUsers.map(user => renderLeaderboardItem(user))}
-              </View>
-            ) : (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="trophy-outline" size={64} color="#9CA3AF" />
-                <Text style={styles.emptyText}>No leaderboard data available</Text>
-              </View>
-            )}
-          </View>
-        </ScrollView>
+        <View style={styles.leaderboardSection}>
+          {remainingUsers.length > 0 ? (
+            <View style={styles.leaderboardList}>
+              {remainingUsers.map(user => renderLeaderboardItem(user))}
+            </View>
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="trophy-outline" size={64} color="#9CA3AF" />
+              <Text style={styles.emptyText}>No leaderboard data available</Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
       )}
     </View>
   );

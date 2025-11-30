@@ -196,13 +196,53 @@ export default function CustomerDashboard() {
 
   const stopScanning = () => setShowQRScanner(false);
 
+  // Helper function to handle product not found case
+  const handleProductNotFound = async (serialNumber: string) => {
+    try {
+      // Check if customer has a borrowing transaction with this serial number
+      const customerHistory = await borrowTransactionsApi.getMy({ page: 1, limit: 100 });
+      const transactions = customerHistory.data?.items || (Array.isArray(customerHistory.data) ? customerHistory.data : []);
+      
+      const borrowingTransaction = transactions.find((t: any) => 
+        t.status === 'borrowing' &&
+        t.productId?.serialNumber === serialNumber
+      );
+      
+      if (borrowingTransaction) {
+        console.log('✅ Found borrowing transaction - product is currently borrowed');
+        Alert.alert(
+          'Sản phẩm đang được mượn',
+          'Sản phẩm này đang được mượn. Vui lòng trả sản phẩm tại cửa hàng.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        // Product not found - likely being borrowed by someone else or doesn't exist
+        // Show message that product is being borrowed
+        console.log('⚠️ Product not found - likely being borrowed');
+        Alert.alert(
+          'Sản phẩm đang được mượn',
+          'Sản phẩm này đang được mượn hoặc không có sẵn.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (historyError: any) {
+      console.log('⚠️ Error checking transaction history:', historyError);
+      // Show message even if we can't check transaction history
+      Alert.alert(
+        'Sản phẩm đang được mượn',
+        'Sản phẩm này đang được mượn hoặc không có sẵn.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
   const onBarcode = async (e: { data?: string }) => {
     if (scanLock.current) return;
     scanLock.current = true;
-    const serialNumber = e?.data ?? "";
-    console.log('📱 QR Code scanned:', serialNumber);
+    const scannedData = e?.data ?? "";
+    console.log('📱 QR Code scanned:', scannedData);
     
-    if (!serialNumber || serialNumber.trim() === '') {
+    if (!scannedData || scannedData.trim() === '') {
       Alert.alert('Error', 'Invalid QR code');
       scanLock.current = false;
       return;
@@ -211,16 +251,86 @@ export default function CustomerDashboard() {
     Vibration.vibrate(Platform.OS === "ios" ? 30 : 50);
     setShowQRScanner(false);
     
+    // Extract ID from deep link if present
+    let actualId = scannedData;
+    if (scannedData.includes('://')) {
+      const match = scannedData.match(/(?:com\.)?back2use:\/\/item\/([^\/]+)/);
+      if (match && match[1]) {
+        actualId = match[1];
+        console.log('🔗 Extracted ID from deep link:', actualId);
+      } else {
+        const parts = scannedData.split('/');
+        actualId = parts[parts.length - 1];
+        console.log('🔗 Extracted ID from path:', actualId);
+      }
+    }
+    
+    // Check if this is a transaction ID (24 character hex string - MongoDB ObjectId)
+    const isTransactionId = /^[0-9a-fA-F]{24}$/.test(actualId);
+    if (isTransactionId) {
+      console.log('🔍 Detected transaction ID, navigating to transaction detail');
+      try {
+        // Try to get transaction detail to verify it exists
+        const transactionDetail = await borrowTransactionsApi.getCustomerDetail(actualId);
+        if (transactionDetail?.statusCode === 200 && transactionDetail?.data) {
+          router.push({
+            pathname: '/(protected)/customer/transaction-detail/[id]',
+            params: { id: actualId }
+          });
+          scanLock.current = false;
+          return;
+        }
+      } catch (error: any) {
+        // Silently handle transaction detail errors - don't show on UI
+        console.log('⚠️ Not a valid transaction ID, trying as product serial number');
+        // Continue to try as product serial number
+      }
+    }
+    
     try {
       // Gọi API để lấy thông tin sản phẩm từ serial number
-      console.log('🔄 Calling productsApi.scan with:', serialNumber);
-      const response = await productsApi.scan(serialNumber);
+      console.log('🔄 Calling productsApi.scan with:', actualId);
       
-      console.log('📦 API Response:', JSON.stringify(response, null, 2));
+      let response;
+      try {
+        response = await productsApi.scan(actualId);
+        console.log('📦 API Response:', JSON.stringify(response, null, 2));
+      } catch (scanError: any) {
+        // If 404 or 400 with "Invalid product ID", product might be currently borrowed
+        const is404 = scanError?.response?.status === 404;
+        const is400InvalidId = scanError?.response?.status === 400 && 
+                               (scanError?.response?.data?.message?.toLowerCase().includes('invalid product') ||
+                                scanError?.response?.data?.message?.toLowerCase().includes('product id'));
+        
+        if (is404 || is400InvalidId) {
+          console.log('⚠️ Product not found or invalid (404/400) - checking if it\'s currently borrowed...');
+          await handleProductNotFound(actualId);
+          scanLock.current = false;
+          return;
+        }
+        // Re-throw other errors
+        throw scanError;
+      }
+      
+      // Check if response indicates 404 or 400 (from apiCall silent handling)
+      const responseData: any = response;
+      
+      // Check for 404 or 400 first - before processing response
+      const is404Response = responseData.statusCode === 404 || 
+                            (responseData.success === false && responseData.statusCode === 404);
+      const is400InvalidIdResponse = responseData.statusCode === 400 &&
+                                      (responseData.message?.toLowerCase().includes('invalid product') ||
+                                       responseData.message?.toLowerCase().includes('product id'));
+      
+      if (is404Response || is400InvalidIdResponse) {
+        console.log('⚠️ Product not found or invalid (404/400 in response) - checking if it\'s currently borrowed...');
+        await handleProductNotFound(actualId);
+        scanLock.current = false;
+        return;
+      }
       
       // API trả về: { success: true, data: { product: {...}, qrCode: "...", serialNumber: "...", ... } }
       // Hoặc: { statusCode: 200, data: {...} }
-      const responseData: any = response;
       let productData: any = null;
       let qrCode: string = '';
       let productStatus: string = '';
@@ -237,6 +347,14 @@ export default function CustomerDashboard() {
         productData = data.product || data;
         qrCode = data.qrCode || '';
         productStatus = data.status || '';
+      }
+      
+      // Check if productData is empty or null
+      if (!productData || Object.keys(productData).length === 0) {
+        console.log('⚠️ No product data in response - checking if it\'s currently borrowed...');
+        await handleProductNotFound(actualId);
+        scanLock.current = false;
+        return;
       }
       
       if (productData) {
@@ -257,7 +375,7 @@ export default function CustomerDashboard() {
           name: productGroupName || "Product",
           size: productSizeName,
         type: "container",
-          data: serialNumber,
+          data: actualId,
           product: productData, // Lưu thông tin sản phẩm đầy đủ
           qrCode: qrCode || productData.qrCode || '',
           status: productStatus || productData.status || 'available',
@@ -269,10 +387,13 @@ export default function CustomerDashboard() {
         setShowProductModal(true);
       } else {
         console.error('❌ No product data in response');
-        Alert.alert('Error', responseData.message || 'Product not found');
+        // Don't show alert - silently handle
+        console.log('⚠️ Product not found - silently handled');
       }
     } catch (error: any) {
-      Alert.alert('Error', 'Failed to scan product. Please try again.');
+      console.error('❌ Error scanning product:', error);
+      // Don't show alert - silently handle
+      console.log('⚠️ Error scanning - silently handled');
     } finally {
       scanLock.current = false;
     }

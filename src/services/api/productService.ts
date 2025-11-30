@@ -126,6 +126,16 @@ export const productsApi = {
         }
       }
 
+      // Check if this might be a transaction ID (24 character hex string)
+      // Transaction IDs are MongoDB ObjectIds (24 hex characters)
+      // Serial numbers are usually different format (e.g., "TIẾ-1763976862439-26522-4")
+      const isLikelyTransactionId = /^[0-9a-fA-F]{24}$/.test(actualSerialNumber);
+      if (isLikelyTransactionId) {
+        console.log('⚠️ Detected potential transaction ID, this might not be a product serial number');
+        // Still try to scan, but the API will return 404 if it's not a product
+        // The caller should handle this error appropriately
+      }
+
       // Get token if not provided
       let accessToken: string | undefined;
       if (getCurrentAccessToken) {

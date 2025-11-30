@@ -61,8 +61,13 @@ export default function BusinessMenu() {
               setActiveSubscription([]);
             }
           }
-        } catch (error) {
-          console.error('Error loading business profile:', error);
+        } catch (error: any) {
+          // Silently handle 403 errors (staff trying to access business profile)
+          if (error?.response?.status === 403) {
+            console.log('⚠️ Staff role cannot access business profile API');
+          } else if (error?.response?.status && error.response.status >= 500) {
+            console.error('Error loading business profile:', error);
+          }
         } finally {
           setLoading(false);
         }
@@ -242,7 +247,8 @@ export default function BusinessMenu() {
     );
   };
 
-  const shortcuts = [
+  // All shortcuts for business owner
+  const allShortcuts = [
     {
       id: 'inventory',
       icon: 'cube-outline',
@@ -287,6 +293,11 @@ export default function BusinessMenu() {
     },
   ];
 
+  // Filter shortcuts based on role
+  // Staff: no shortcuts (only profile section)
+  // Business: all shortcuts
+  const shortcuts = auth.state.role === 'staff' as any ? [] : allShortcuts;
+
   const userName = businessProfile?.businessName || 
                    businessProfile?.userId?.username || 
                    'User Name';
@@ -299,22 +310,24 @@ export default function BusinessMenu() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Menu</Text>
-        <View style={styles.headerRight}>
-          <TouchableOpacity 
-            style={styles.headerIconButton}
-            onPress={() => router.push('/(protected)/business/settings')}
-          >
-            <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.headerIconButton}
-            onPress={() => {
-              Alert.alert('Search', 'Feature under development');
-            }}
-          >
-            <Ionicons name="search-outline" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+        {auth.state.role !== 'staff' as any && (
+          <View style={styles.headerRight}>
+            <TouchableOpacity 
+              style={styles.headerIconButton}
+              onPress={() => router.push('/(protected)/business/settings')}
+            >
+              <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.headerIconButton}
+              onPress={() => {
+                Alert.alert('Search', 'Feature under development');
+              }}
+            >
+              <Ionicons name="search-outline" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       <ScrollView 
@@ -337,15 +350,17 @@ export default function BusinessMenu() {
               />
               <Text style={styles.userName}>{userName}</Text>
             </View>
-            <TouchableOpacity 
-              style={styles.switchRoleButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                handleSwitchRole();
-              }}
-            >
-              <Ionicons name="swap-horizontal" size={20} color="#00704A" />
-            </TouchableOpacity>
+            {auth.state.role !== 'staff' as any && (
+              <TouchableOpacity 
+                style={styles.switchRoleButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleSwitchRole();
+                }}
+              >
+                <Ionicons name="swap-horizontal" size={20} color="#00704A" />
+              </TouchableOpacity>
+            )}
           </View>
         </TouchableOpacity>
 
@@ -398,35 +413,39 @@ export default function BusinessMenu() {
             </View>
           )}
 
-          <TouchableOpacity
-            style={styles.settingsListItem}
-            onPress={() => setExpandedSettings(!expandedSettings)}
-          >
-            <View style={styles.settingsListItemLeft}>
-              <Ionicons name="settings-outline" size={24} color="#00704A" />
-              <Text style={styles.settingsListItemText}>Settings & Privacy</Text>
-            </View>
-            <Ionicons 
-              name={expandedSettings ? "chevron-up" : "chevron-down"} 
-              size={20} 
-              color="#6B7280" 
-            />
-          </TouchableOpacity>
-          {expandedSettings && (
-            <View style={styles.expandedContent}>
-              <TouchableOpacity 
-                style={styles.expandedItem}
-                onPress={() => router.push('/(protected)/business/settings')}
+          {auth.state.role !== 'staff' as any && (
+            <>
+              <TouchableOpacity
+                style={styles.settingsListItem}
+                onPress={() => setExpandedSettings(!expandedSettings)}
               >
-                <Text style={styles.expandedItemText}>Settings</Text>
+                <View style={styles.settingsListItemLeft}>
+                  <Ionicons name="settings-outline" size={24} color="#00704A" />
+                  <Text style={styles.settingsListItemText}>Settings & Privacy</Text>
+                </View>
+                <Ionicons 
+                  name={expandedSettings ? "chevron-up" : "chevron-down"} 
+                  size={20} 
+                  color="#6B7280" 
+                />
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.expandedItem}
-                onPress={() => router.push('/(protected)/business/privacy')}
-              >
-                <Text style={styles.expandedItemText}>Privacy</Text>
-              </TouchableOpacity>
-            </View>
+              {expandedSettings && (
+                <View style={styles.expandedContent}>
+                  <TouchableOpacity 
+                    style={styles.expandedItem}
+                    onPress={() => router.push('/(protected)/business/settings')}
+                  >
+                    <Text style={styles.expandedItemText}>Settings</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.expandedItem}
+                    onPress={() => router.push('/(protected)/business/privacy')}
+                  >
+                    <Text style={styles.expandedItemText}>Privacy</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </>
           )}
         </View>
 

@@ -458,12 +458,12 @@ export default function InventoryManagementScreen() {
             <Ionicons name="add-circle-outline" size={16} color="white" />
             <Text style={styles.headerButtonText}>Request</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.addButton}
-            onPress={() => setShowCreateGroupModal(true)}
-          >
+        <TouchableOpacity 
+          style={styles.addButton}
+          onPress={() => setShowCreateGroupModal(true)}
+        >
             <Ionicons name="add" size={20} color="white" />
-          </TouchableOpacity>
+        </TouchableOpacity>
         </View>
       </View>
 

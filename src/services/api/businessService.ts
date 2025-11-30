@@ -299,12 +299,30 @@ export const productsApi = {
   scan: async (serialNumber: string): Promise<ScanProductResponse> => {
     // Đảm bảo endpoint được định nghĩa đúng
     const scanEndpoint = API_ENDPOINTS.PRODUCTS?.SCAN || '/products/scan';
-    const endpoint = `${scanEndpoint}/${serialNumber}`;
-    console.log('🔍 Scanning QR with endpoint:', endpoint, 'serialNumber:', serialNumber);
+    // URL encode the serial number to handle special characters (e.g., Vietnamese characters)
+    const encodedSerialNumber = encodeURIComponent(serialNumber);
+    const endpoint = `${scanEndpoint}/${encodedSerialNumber}`;
+    console.log('🔍 Scanning QR with endpoint:', endpoint, 'serialNumber:', serialNumber, 'encoded:', encodedSerialNumber);
     console.log('🔍 API_ENDPOINTS.PRODUCTS:', API_ENDPOINTS.PRODUCTS);
-    return apiCall<ScanProductResponse>(endpoint, {
-      method: 'GET',
-    });
+    
+    try {
+      return await apiCall<ScanProductResponse>(endpoint, {
+        method: 'GET',
+      });
+    } catch (error: any) {
+      // Silently handle 404 errors - return a response object instead of throwing
+      if (error?.response?.status === 404) {
+        console.log('⚠️ Product not found (404) - returning empty response');
+        return {
+          success: false,
+          statusCode: 404,
+          message: 'Product not found',
+          data: {} as any,
+        };
+      }
+      // Re-throw other errors
+      throw error;
+    }
   },
 };
 

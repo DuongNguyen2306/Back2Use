@@ -36,22 +36,32 @@ export default function CustomerLayout() {
         return;
       }
       
+      // If user is staff or business, redirect immediately without calling API
+      if (authState.role === 'staff' || authState.role === 'business') {
+        if (!isRedirectingRef.current) {
+          isRedirectingRef.current = true;
+          console.log(`🚀 CustomerLayout: User is ${authState.role}, redirecting to business dashboard...`);
+          router.replace('/(protected)/business');
+        }
+        return;
+      }
+      
       try {
         hasCheckedRoleRef.current = true;
         console.log('🔍 CustomerLayout: Checking role from backend...');
         console.log('🔍 Current role in state:', authState.role);
         
-        // Get role from backend
+        // Get role from backend (only for customer role)
         const userProfile = await getCurrentUserProfileWithAutoRefresh();
         const backendRole = userProfile?.role;
         
         console.log('🔍 Role from backend:', backendRole);
         
-        if (backendRole === 'business') {
-          console.log('✅ CustomerLayout: Backend role is business, updating auth state...');
+        if (backendRole === 'business' || backendRole === 'staff') {
+          console.log(`✅ CustomerLayout: Backend role is ${backendRole}, updating auth state...`);
           
           // Update role in auth state immediately
-          await authActions.updateRole('business');
+          await authActions.updateRole(backendRole as any);
           
           // Redirect immediately without waiting
           if (!isRedirectingRef.current) {
@@ -61,10 +71,22 @@ export default function CustomerLayout() {
             router.replace('/(protected)/business');
           }
         } else {
-          // Reset check flag if role is not business so it can check again later
+          // Reset check flag if role is not business/staff so it can check again later
           hasCheckedRoleRef.current = false;
         }
       } catch (error: any) {
+        // Silently handle 403 errors (staff/business trying to access customer API)
+        if (error?.response?.status === 403) {
+          console.log('⚠️ CustomerLayout: Access denied (staff/business role)');
+          // Redirect to business if not already redirecting
+          if (!isRedirectingRef.current && (authState.role === 'staff' || authState.role === 'business')) {
+            isRedirectingRef.current = true;
+            router.replace('/(protected)/business');
+          }
+          hasCheckedRoleRef.current = false;
+          return;
+        }
+        
         // Don't log network errors as errors - they're expected when offline
         const isNetworkError = error?.message?.toLowerCase().includes('network') ||
                                error?.message?.toLowerCase().includes('timeout') ||
@@ -93,20 +115,20 @@ export default function CustomerLayout() {
     return () => clearTimeout(timeout);
   }, [authState.isAuthenticated, authState.isHydrated, pathname, authActions]);
   
-  // Immediately redirect if user is business but on customer screen
+  // Immediately redirect if user is business or staff but on customer screen
   // This is a safety check - AuthGate should handle this, but we double-check here
   useEffect(() => {
-    // Only redirect if we're on a customer screen and user is business
+    // Only redirect if we're on a customer screen and user is business or staff
     const isOnCustomerScreen = pathname?.includes('/customer');
     
-    if (authState.isHydrated && authState.isAuthenticated && authState.role === 'business' && isOnCustomerScreen) {
+    if (authState.isHydrated && authState.isAuthenticated && (authState.role === 'business' || authState.role === 'staff') && isOnCustomerScreen) {
       if (!isRedirectingRef.current) {
         isRedirectingRef.current = true;
-        console.log('🚀 CustomerLayout: User is business but on customer screen, redirecting to business dashboard');
+        console.log(`🚀 CustomerLayout: User is ${authState.role} but on customer screen, redirecting to business dashboard`);
         // Redirect immediately
         router.replace('/(protected)/business');
       }
-    } else if (!isOnCustomerScreen || authState.role !== 'business') {
+    } else if (!isOnCustomerScreen || (authState.role !== 'business' && authState.role !== 'staff')) {
       // Reset redirect flag if we're not on customer screen or role changed
       isRedirectingRef.current = false;
     }

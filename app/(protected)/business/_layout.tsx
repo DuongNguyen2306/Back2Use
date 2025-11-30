@@ -2,25 +2,39 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, Stack, usePathname } from "expo-router";
 import { useEffect, useState } from "react";
 import { Image, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../../../context/AuthProvider";
 
 export default function BusinessLayout() {
   const pathname = usePathname();
+  const auth = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
   
-  const navigationItems = [
+  // All navigation items
+  const allNavigationItems = [
     { id: "dashboard", label: "Home", icon: "home-button", route: "/(protected)/business" },
     { id: "wallet", label: "Wallet", icon: "wallet", route: "/(protected)/business/wallet" },
     { id: "materials", label: "Inventory Management", icon: "cube", route: "/(protected)/business/materials" },
-    { id: "transaction", label: "Transaction", icon: "receipt", route: "/(protected)/business/transaction" },
+    { id: "transaction", label: "Transaction", icon: "receipt", route: "/(protected)/business/transaction-processing" },
     { id: "menu", label: "Menu", icon: "reorder-three", route: "/(protected)/business/menu" },
   ];
+
+  // Filter navigation items based on role
+  // Staff: only dashboard, transaction (return), menu (profile)
+  // Business: all items
+  const navigationItems = auth.state.role === 'staff' as any
+    ? allNavigationItems.filter(item => 
+        item.id === 'dashboard' || 
+        item.id === 'transaction' || 
+        item.id === 'menu'
+      )
+    : allNavigationItems;
 
   // Function to get active tab based on pathname
   const getActiveTab = (path: string) => {
     if (path.includes("menu")) return "menu";
     if (path.includes("wallet")) return "wallet";
     if (path.includes("materials")) return "materials";
-    if (path.includes("transaction")) return "transaction";
+    if (path.includes("transaction") || path.includes("transaction-processing")) return "transaction";
     if (path.includes("business") || path === "/(protected)/business") return "dashboard";
     
     return "dashboard"; // default

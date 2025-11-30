@@ -26,6 +26,12 @@ export default function BusinessDashboard() {
   // Load business profile data
   useEffect(() => {
     const loadBusinessData = async () => {
+      // Staff doesn't need business profile
+      if (authState.role === 'staff' as any) {
+        setLoading(false);
+        return;
+      }
+      
       try {
         console.log('🔍 Loading business profile...');
         const profileResponse = await businessesApi.getProfileWithAutoRefresh();
@@ -34,15 +40,20 @@ export default function BusinessDashboard() {
         if (profileResponse.data && profileResponse.data.business) {
           setBusinessProfile(profileResponse.data.business);
         }
-      } catch (error) {
-        console.error('❌ Error loading business profile:', error);
+      } catch (error: any) {
+        // Silently handle 403 errors (staff trying to access business profile)
+        if (error?.response?.status === 403) {
+          console.log('⚠️ Staff role cannot access business profile API');
+        } else if (error?.response?.status && error.response.status >= 500) {
+          console.error('❌ Error loading business profile:', error);
+        }
       } finally {
         setLoading(false);
       }
     }
 
     loadBusinessData()
-  }, [])
+  }, [authState.role])
 
   // Check for welcome modal on mount (only show once)
   useEffect(() => {
@@ -81,6 +92,14 @@ export default function BusinessDashboard() {
   // Get business name from profile
   const businessName = businessProfile?.businessName || "Business Owner";
   const businessOwnerName = businessProfile?.userId?.username || businessProfile?.userId?.email || "Business Owner";
+  
+  // Get greeting based on role
+  const greeting = authState.role === 'staff' as any 
+    ? "Hello Staff" 
+    : `Hello, ${businessOwnerName}!`;
+  const subtitle = authState.role === 'staff' as any
+    ? "Staff Dashboard"
+    : (businessProfile ? `${businessName} - Business Management` : "Business Management");
 
   // Calculate stats with updated logic
   const totalItems = storeItems.length
@@ -122,8 +141,8 @@ export default function BusinessDashboard() {
       />
       
       <BusinessHeader
-        title={loading ? "Loading..." : `Hello, ${businessOwnerName}!`}
-        subtitle={businessProfile ? `${businessName} - Business Management` : "Business Management"}
+        title={loading ? "Loading..." : greeting}
+        subtitle={subtitle}
         user={businessProfile ? {
           id: businessProfile.userId._id,
           name: businessProfile.userId.username,
@@ -213,48 +232,50 @@ export default function BusinessDashboard() {
               </View>
             </TouchableOpacity>
 
-            <View style={styles.quickActionsCard}>
-              <View style={styles.quickActionsHeader}>
-                <Text style={styles.quickActionsTitle}>Quick Actions</Text>
+            {authState.role !== 'staff' as any && (
+              <View style={styles.quickActionsCard}>
+                <View style={styles.quickActionsHeader}>
+                  <Text style={styles.quickActionsTitle}>Quick Actions</Text>
+                </View>
+                <View style={styles.quickActionsGrid}>
+                  <TouchableOpacity style={styles.quickActionButton} activeOpacity={0.7}>
+                    <View style={styles.quickActionContent}>
+                      <View style={styles.quickActionIconContainer}>
+                        <Ionicons name="cube" size={32} color="#00704A" />
+                      </View>
+                      <Text style={styles.quickActionText}>Inventory</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.quickActionButton} activeOpacity={0.7}>
+                    <View style={styles.quickActionContent}>
+                      <View style={styles.quickActionIconContainer}>
+                        <Ionicons name="settings" size={32} color="#00704A" />
+                      </View>
+                      <Text style={styles.quickActionText}>Pricing</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.quickActionButton} activeOpacity={0.7}>
+                    <View style={styles.quickActionContent}>
+                      <View style={styles.quickActionIconContainer}>
+                        <Ionicons name="bar-chart" size={32} color="#00704A" />
+                      </View>
+                      <Text style={styles.quickActionText}>Reports</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.quickActionButton} activeOpacity={0.7}>
+                    <View style={styles.quickActionContent}>
+                      <View style={styles.quickActionIconContainer}>
+                        <Ionicons name="card" size={32} color="#00704A" />
+                      </View>
+                      <Text style={styles.quickActionText}>Subscription</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <View style={styles.quickActionsGrid}>
-                <TouchableOpacity style={styles.quickActionButton} activeOpacity={0.7}>
-                  <View style={styles.quickActionContent}>
-                    <View style={styles.quickActionIconContainer}>
-                      <Ionicons name="cube" size={32} color="#00704A" />
-                    </View>
-                    <Text style={styles.quickActionText}>Inventory</Text>
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.quickActionButton} activeOpacity={0.7}>
-                  <View style={styles.quickActionContent}>
-                    <View style={styles.quickActionIconContainer}>
-                      <Ionicons name="settings" size={32} color="#00704A" />
-                    </View>
-                    <Text style={styles.quickActionText}>Pricing</Text>
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.quickActionButton} activeOpacity={0.7}>
-                  <View style={styles.quickActionContent}>
-                    <View style={styles.quickActionIconContainer}>
-                      <Ionicons name="bar-chart" size={32} color="#00704A" />
-                    </View>
-                    <Text style={styles.quickActionText}>Reports</Text>
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.quickActionButton} activeOpacity={0.7}>
-                  <View style={styles.quickActionContent}>
-                    <View style={styles.quickActionIconContainer}>
-                      <Ionicons name="card" size={32} color="#00704A" />
-                    </View>
-                    <Text style={styles.quickActionText}>Subscription</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-            </View>
+            )}
 
             <View style={styles.activityCard}>
               <View style={styles.activityHeader}>
