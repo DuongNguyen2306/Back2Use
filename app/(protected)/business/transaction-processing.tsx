@@ -257,21 +257,20 @@ export default function TransactionProcessingScreen() {
   }, [auth.state.isHydrated, auth.state.accessToken, auth.state.isAuthenticated, auth.state.role]);
 
   useEffect(() => {
-    if (auth.state.isHydrated && auth.state.accessToken && auth.state.isAuthenticated && auth.state.role === 'business') {
+    // Allow both business and staff to load transactions
+    if (auth.state.isHydrated && auth.state.accessToken && auth.state.isAuthenticated && (auth.state.role === 'business' || auth.state.role === 'staff')) {
       loadTransactions();
     }
   }, [activeTab, searchTerm, auth.state.isHydrated, auth.state.accessToken, auth.state.isAuthenticated, auth.state.role]);
 
   const loadTransactions = async () => {
-    // Staff doesn't need to load transactions list, they only scan QR codes
-    if (auth.state.role === 'staff' as any) {
-      setLoading(false);
-      setRefreshing(false);
-      setTransactions([]);
+    // Allow both business and staff to load transactions
+    if (!auth.state.isHydrated || !auth.state.accessToken || !auth.state.isAuthenticated) {
       return;
     }
 
-    if (!auth.state.isHydrated || !auth.state.accessToken || !auth.state.isAuthenticated || auth.state.role !== 'business') {
+    // Only allow business and staff roles
+    if (auth.state.role !== 'business' && auth.state.role !== 'staff') {
       return;
     }
 
@@ -314,9 +313,9 @@ export default function TransactionProcessingScreen() {
         setTransactions([]);
       }
     } catch (error: any) {
-      // Silently handle 500 errors for staff (Business not found)
-      if (error?.response?.status === 500 && auth.state.role === 'staff' as any) {
-        console.log('⚠️ Staff role cannot access business transactions API');
+      // Silently handle 403/500 errors (Access denied / Business not found)
+      if (error?.response?.status === 403 || error?.response?.status === 500) {
+        console.log('⚠️ Error accessing business transactions API:', error?.response?.status);
         setTransactions([]);
       } else if (error?.response?.status && error.response.status >= 500) {
         console.error('Error loading transactions:', error);
@@ -573,6 +572,11 @@ export default function TransactionProcessingScreen() {
       return 'failed-other';
     }
 
+    // Nếu có returnedAt và status không phải failed/cancelled, coi là thành công
+    if (transaction.returnedAt) {
+      return 'success';
+    }
+
     if (transaction.status === 'completed' || transaction.status === 'returned') {
       return 'success';
     }
@@ -671,10 +675,18 @@ export default function TransactionProcessingScreen() {
           return { text: 'Hoàn tất', color: '#10B981', bgColor: '#D1FAE5' };
         }
       } else {
+        // Return transaction
         if (returnCategory === 'success') {
           return { text: 'Hoàn tất', color: '#10B981', bgColor: '#D1FAE5' };
-        } else {
+        } else if (returnCategory === 'failed-other') {
           return { text: 'Thất bại', color: '#EF4444', bgColor: '#FEE2E2' };
+        } else {
+          // Nếu có returnedAt nhưng returnCategory là null, vẫn coi là thành công
+          if (transaction.returnedAt) {
+            return { text: 'Hoàn tất', color: '#10B981', bgColor: '#D1FAE5' };
+          }
+          // Nếu không có returnedAt và status không rõ, hiển thị status gốc
+          return { text: transaction.status || 'Đang xử lý', color: '#6B7280', bgColor: '#F3F4F6' };
         }
       }
       return { text: transaction.status, color: '#6B7280', bgColor: '#F3F4F6' };

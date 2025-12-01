@@ -2,25 +2,25 @@ import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService
 import { walletApi, walletTransactionsApi, type WalletDetails, type WalletTransaction } from '@/services/api/walletService';
 import { User } from '@/types/auth.types';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    AppState,
-    Dimensions,
-    Modal,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  AppState,
+  Dimensions,
+  Modal,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { WebView } from 'react-native-webview';
-import CustomerHeader from '../../../components/CustomerHeader';
 import { useAuth } from '../../../context/AuthProvider';
 import { useI18n } from '../../../hooks/useI18n';
 
@@ -48,6 +48,7 @@ interface DepositTransaction {
 
 export default function CustomerWallet() {
   const auth = useAuth();
+  const router = useRouter();
   const { t } = useI18n();
   const [user, setUser] = useState<User | null>(null);
   const [wallet, setWallet] = useState<WalletDetails | null>(null);
@@ -819,14 +820,18 @@ export default function CustomerWallet() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <CustomerHeader 
-          title="My Wallet"
-          subtitle="Manage your balance"
-          user={user}
-          showNotifications={true}
-        />
+        <StatusBar barStyle="light-content" backgroundColor="#00704A" />
+        <SafeAreaView style={styles.headerSafeArea}>
+          <View style={styles.header}>
+            <View style={styles.headerLeft} />
+            <View style={styles.headerTitleContainer}>
+              <Text style={styles.headerTitle}>My Wallet</Text>
+            </View>
+            <View style={styles.headerRight} />
+          </View>
+        </SafeAreaView>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#0F4D3A" />
+          <ActivityIndicator size="large" color="#00704A" />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       </View>
@@ -835,18 +840,54 @@ export default function CustomerWallet() {
 
   return (
     <View style={styles.container}>
-      <CustomerHeader 
-        title="My Wallet"
-        subtitle="Manage your balance"
-        user={user}
-        showNotifications={true}
-      />
+      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
+      <SafeAreaView style={styles.headerSafeArea}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft} />
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>My Wallet</Text>
+          </View>
+          <View style={styles.headerRight} />
+        </View>
+      </SafeAreaView>
 
-      {/* White/Light Gray Background Content */}
+      {/* Balance Card */}
+      <View style={styles.balanceCard}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle}>Available Balance</Text>
+          <TouchableOpacity 
+            style={styles.eyeButton}
+            onPress={() => setShowBalance(!showBalance)}
+          >
+            <Ionicons 
+              name={showBalance ? "eye" : "eye-off"} 
+              size={20} 
+              color="rgba(255,255,255,0.8)"
+            />
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.balanceContainer}>
+          {showBalance ? (
+            <Text style={styles.balanceAmount}>
+              {wallet?.balance && typeof wallet.balance === 'number' 
+                ? wallet.balance.toLocaleString('vi-VN') 
+                : '0'} VNĐ
+            </Text>
+          ) : (
+            <Text style={styles.balanceHidden}>•••••••• VNĐ</Text>
+          )}
+        </View>
+        
+        <Text style={styles.cardSubtitle}>Customer Account</Text>
+      </View>
+
+      {/* White Background Content */}
       <View style={styles.whiteBackground}>
         <ScrollView 
           style={styles.content} 
           showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
           refreshControl={
             <RefreshControl
               refreshing={transactionsLoading}
@@ -856,89 +897,35 @@ export default function CustomerWallet() {
             />
           }
         >
-          {/* Balance Card - Floating overlap */}
-          <View style={styles.balanceCard}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Available Balance</Text>
-              <TouchableOpacity 
-                style={styles.eyeButton}
-                onPress={() => setShowBalance(!showBalance)}
-              >
-                <Ionicons 
-                  name={showBalance ? "eye" : "eye-off"} 
-                  size={20} 
-                  color="rgba(255,255,255,0.8)"
-                />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.balanceContainer}>
-              {showBalance ? (
-                <Text style={styles.balanceAmount}>
-                  {wallet?.balance && typeof wallet.balance === 'number' 
-                    ? wallet.balance.toLocaleString('vi-VN') 
-                    : '0'} VNĐ
-                </Text>
-              ) : (
-                <Text style={styles.balanceHidden}>•••••••• VNĐ</Text>
-              )}
-            </View>
-            
-            <Text style={styles.cardSubtitle}>Customer Account</Text>
-          </View>
-
-        {/* Summary Cards */}
-        <View style={styles.summarySection}>
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryIcon}>
-              <Ionicons name="trending-up" size={24} color="#10B981" />
-            </View>
-            <View style={styles.summaryContent}>
-              <Text style={styles.summaryLabel}>Total Income</Text>
-              <Text style={styles.summaryValue}>{totalIncome.toLocaleString('vi-VN')} VNĐ</Text>
-            </View>
-          </View>
-          
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryIcon}>
-              <Ionicons name="trending-down" size={24} color="#EF4444" />
-            </View>
-            <View style={styles.summaryContent}>
-              <Text style={styles.summaryLabel}>Total Expenses</Text>
-              <Text style={styles.summaryValue}>{totalExpenses.toLocaleString('vi-VN')} VNĐ</Text>
-            </View>
-          </View>
-        </View>
-          
-        {/* Action Buttons - Deposit & Withdraw */}
-        <View style={styles.actionSection}>
+          {/* Action Buttons - Large Deposit & Withdraw */}
+          <View style={styles.actionSection}>
             <TouchableOpacity 
-            style={[styles.actionButton, styles.addFundsButton]}
-            onPress={() => {
-              console.log('💰 Deposit button pressed');
-              setShowAddFunds(true);
-            }}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="add-circle" size={24} color="white" />
-            <Text style={styles.actionButtonText}>Deposit</Text>
-            </TouchableOpacity>
-          
-            <TouchableOpacity 
-            style={[styles.actionButton, styles.withdrawButton]}
+              style={[styles.actionButton, styles.depositButton]}
               onPress={() => {
-              console.log('💸 Withdraw button pressed');
+                console.log('💰 Deposit button pressed');
+                setShowAddFunds(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add-circle" size={28} color="white" />
+              <Text style={styles.actionButtonText}>Deposit</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.withdrawButton]}
+              onPress={() => {
+                console.log('💸 Withdraw button pressed');
                 setShowWithdraw(true);
               }}
-            activeOpacity={0.8}
+              activeOpacity={0.8}
             >
-            <Ionicons name="remove-circle" size={24} color="white" />
-            <Text style={styles.actionButtonText}>Withdraw</Text>
+              <Ionicons name="remove-circle" size={28} color="white" />
+              <Text style={styles.actionButtonText}>Withdraw</Text>
             </TouchableOpacity>
-      </View>
+          </View>
 
-        {/* Transaction History Section */}
-        <View style={styles.transactionHistorySection}>
+          {/* Transaction History Section */}
+          <View style={styles.transactionHistorySection}>
           <Text style={styles.sectionTitle}>Transaction History</Text>
           
           {/* Filter Buttons */}
@@ -970,10 +957,10 @@ export default function CustomerWallet() {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+          </View>
 
-        {/* Transaction List */}
-        <View style={styles.transactionSection}>
+          {/* Transaction List */}
+          <View style={styles.transactionSection}>
               {transactionsLoading ? (
                 <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color="#0F4D3A" />
@@ -1072,8 +1059,8 @@ export default function CustomerWallet() {
               )}
             </>
           )}
-        </View>
-      </ScrollView>
+          </View>
+        </ScrollView>
       </View>
 
       {/* Deposit Modal */}
@@ -1525,59 +1512,49 @@ export default function CustomerWallet() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#00704A',
+    backgroundColor: '#F9FAFB',
   },
-  headerBlock: {
-    backgroundColor: '#00704A',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 20 : 50,
-    paddingBottom: 20, // Space for balance card overlap
-    paddingHorizontal: 20,
-  },
+  // Header Styles (Simple like Stores/Rewards)
   headerSafeArea: {
-    // SafeAreaView handles safe area automatically
+    backgroundColor: '#00704A',
   },
-  headerContent: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#00704A',
+    borderBottomLeftRadius: 20,
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
+  headerLeft: {
+    width: 40,
+  },
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
   },
   headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  refreshButton: {
     width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  headerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
-  headerAvatarImage: {
-    width: 40,
-    height: 40,
+  // Balance Card
+  balanceCard: {
+    backgroundColor: '#00704A',
     borderRadius: 20,
-  },
-  headerAvatarText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#00704A',
+    padding: 24,
+    marginHorizontal: 20,
+    marginTop: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 12,
   },
   whiteBackground: {
     flex: 1,
@@ -1586,6 +1563,10 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
+  },
+  scrollContent: {
+    paddingTop: 20,
+    paddingBottom: 20,
   },
   iconGhost: { 
     height: 36, 
@@ -1645,23 +1626,29 @@ const styles = StyleSheet.create({
   },
   actionSection: {
     flexDirection: 'row',
-    marginBottom: 20,
-    gap: 12,
+    marginTop: 20,
+    marginBottom: 24,
+    gap: 16,
   },
   actionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 12,
-    gap: 8,
+    paddingVertical: 18,
+    borderRadius: 16,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  addFundsButton: {
-    backgroundColor: '#0F4D3A',
+  depositButton: {
+    backgroundColor: '#00704A',
   },
   withdrawButton: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#F97316',
   },
   actionButtonText: {
     color: 'white',
@@ -1877,22 +1864,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  balanceCard: {
-    backgroundColor: '#0F4D3A',
-    borderRadius: 16,
-    padding: 20,
-    marginTop: 20, // Clear gap from header title
-    marginBottom: 20,
-    marginHorizontal: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
   cardTitle: {
     fontSize: 16,
-    color: 'rgba(255,255,255,0.8)',
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '500',
+  },
+  eyeButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  balanceContainer: {
+    marginBottom: 12,
+  },
+  balanceAmount: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  balanceHidden: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    letterSpacing: 4,
   },
   cardSubtitle: {
     fontSize: 14,
@@ -1914,22 +1909,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-  },
-  eyeButton: {
-    padding: 4,
-  },
-  balanceContainer: {
-    marginVertical: 15,
-  },
-  balanceAmount: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  balanceHidden: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
   },
   statusBadge: {
     paddingHorizontal: 8,

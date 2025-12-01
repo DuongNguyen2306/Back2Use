@@ -21,7 +21,6 @@ import {
   View,
 } from 'react-native';
 import MapView, { Marker, Region } from 'react-native-maps';
-import CustomerHeader from '../../../components/CustomerHeader';
 import { useAuth } from '../../../context/AuthProvider';
 import { useI18n } from '../../../hooks/useI18n';
 
@@ -450,12 +449,11 @@ export default function Stores() {
   if (loading) {
     return (
       <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#00704A" />
         <SafeAreaView style={styles.headerSafeArea}>
-          <StatusBar barStyle="light-content" backgroundColor="#0F4D3A" />
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Stores</Text>
-            <View style={styles.headerProfile}>
-              <Text style={styles.headerProfileText}>U</Text>
+            <View style={styles.headerTitleContainer}>
+              <Text style={styles.headerTitle}>Stores</Text>
             </View>
           </View>
         </SafeAreaView>
@@ -465,16 +463,38 @@ export default function Stores() {
 
   return (
     <View style={styles.container}>
-      <CustomerHeader 
-        title="Stores"
-        subtitle="Find nearby stores"
-        user={user}
-        showNotifications={true}
-      />
+      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
+      <SafeAreaView style={styles.headerSafeArea}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft} />
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>Stores</Text>
+          </View>
+          <View style={styles.headerRight} />
+        </View>
+      </SafeAreaView>
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Map View */}
-        <View style={styles.mapSection}>
+      {/* Search Bar - Floating below header */}
+      <View style={styles.searchBarContainer}>
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={20} color="#6B7280" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search stores..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#9CA3AF"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color="#6B7280" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Map View - Large (40% of screen) */}
+      <View style={styles.mapSection}>
 
           <View style={styles.mapContainer}>
             {businessesLoading ? (
@@ -584,28 +604,8 @@ export default function Stores() {
           </View>
         </View>
 
-        {/* Store List Section */}
-        <View style={styles.storeListSection}>
-          <Text style={styles.sectionTitle}>Stores</Text>
-          
-          {/* Search Bar */}
-          <View style={styles.searchContainer}>
-            <Ionicons name="search" size={20} color="#6B7280" style={styles.searchIcon} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search stores..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholderTextColor="#9CA3AF"
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Ionicons name="close-circle" size={20} color="#6B7280" />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Category Filter */}
+        {/* Filters - Below Map */}
+        <View style={styles.filtersSection}>
           {categories.length > 0 && (
             <ScrollView 
               horizontal 
@@ -634,7 +634,10 @@ export default function Stores() {
               ))}
             </ScrollView>
           )}
-          
+        </View>
+
+        {/* Store List Section */}
+        <View style={styles.storeListSection}>
           {/* Filter Tabs */}
           <View style={styles.filterTabs}>
             <TouchableOpacity
@@ -682,10 +685,11 @@ export default function Stores() {
             )}
           </View>
         </View>
-      </ScrollView>
     </View>
   );
 }
+
+const { height: screenHeight } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
   container: {
@@ -694,7 +698,7 @@ const styles = StyleSheet.create({
   },
   // Header Styles
   headerSafeArea: {
-    backgroundColor: '#0F4D3A',
+    backgroundColor: '#00704A',
   },
   header: {
     flexDirection: 'row',
@@ -702,50 +706,75 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#0F4D3A',
+    backgroundColor: '#00704A',
+    borderBottomLeftRadius: 20,
+  },
+  headerLeft: {
+    width: 40,
+  },
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerRight: {
+    width: 40,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  headerProfile: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  // Search Bar
+  searchBarContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 12,
     backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
-  headerProfileText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#0F4D3A',
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  searchIcon: {
+    marginRight: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#111827',
   },
   // Scroll Content
   scrollContent: {
     flex: 1,
   },
-  // Map Section
+  // Map Section - 40% of screen
   mapSection: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
+    height: screenHeight * 0.4,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
   },
   mapContainer: {
-    height: 250,
-    borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    position: 'relative',
+    flex: 1,
     backgroundColor: '#F3F4F6',
   },
   map: {
     flex: 1,
+    width: '100%',
+  },
+  // Filters Section
+  filtersSection: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   mapLoadingContainer: {
     flex: 1,
@@ -845,14 +874,10 @@ const styles = StyleSheet.create({
   },
   // Store List Section
   storeListSection: {
+    flex: 1,
     paddingHorizontal: 20,
+    paddingTop: 16,
     paddingBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 16,
   },
   // Filter Tabs
   filterTabs: {
@@ -1033,25 +1058,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 8,
   },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 16,
-  },
-  searchIcon: {
-    marginRight: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: '#111827',
-  },
   categoryContainer: {
-    marginBottom: 16,
+    marginBottom: 0,
   },
   categoryContent: {
     paddingRight: 20,

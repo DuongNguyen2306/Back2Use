@@ -1,5 +1,5 @@
 // API Configuration Constants
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.0.198:8000';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.1.11:8000';
 
 // API Endpoints
 export const API_ENDPOINTS = {
@@ -116,6 +116,15 @@ export const API_ENDPOINTS = {
     MARK_AS_READ: '/notifications', // PATCH /notifications/{id}/read
     GET_BY_RECEIVER: '/notifications/receiver', // GET /notifications/receiver/{receiverId}
     DELETE_BY_RECEIVER: '/notifications/receiver', // DELETE /notifications/receiver/{receiverId}
+  },
+  VOUCHERS: {
+    GET_ALL: '/customer/vouchers', // GET /customer/vouchers
+    GET_MY: '/customer/vouchers/my', // GET /customer/vouchers/my
+    REDEEM: '/customer/vouchers/redeem', // POST /customer/vouchers/redeem
+  },
+  BUSINESS_VOUCHERS: {
+    GET_BY_CODE_ID: '/business-vouchers/voucher-codes', // GET /business-vouchers/voucher-codes/{voucherCodeId}
+    USE_VOUCHER_CODE: '/business-vouchers/voucher-codes/use', // POST /business-vouchers/voucher-codes/use
   },
 } as const;
 

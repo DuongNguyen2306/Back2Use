@@ -212,6 +212,7 @@ export default function BusinessDashboard() {
               </View>
             </View>
 
+            {/* Quick Actions for Business Owner */}
             {authState.role !== 'staff' as any && (
               <View style={styles.quickActionsCard}>
                 <View style={styles.quickActionsHeader}>
@@ -251,6 +252,42 @@ export default function BusinessDashboard() {
                         <Ionicons name="card" size={32} color="#00704A" />
                       </View>
                       <Text style={styles.quickActionText}>Subscription</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* Staff Quick Actions - Voucher Scanner */}
+            {authState.role === 'staff' as any && (
+              <View style={styles.quickActionsCard}>
+                <View style={styles.quickActionsHeader}>
+                  <Text style={styles.quickActionsTitle}>Staff Actions</Text>
+                </View>
+                <View style={styles.quickActionsGrid}>
+                  <TouchableOpacity 
+                    style={styles.quickActionButton} 
+                    activeOpacity={0.7}
+                    onPress={() => router.push('/(protected)/business/voucher-scan')}
+                  >
+                    <View style={styles.quickActionContent}>
+                      <View style={styles.quickActionIconContainer}>
+                        <Ionicons name="qr-code-outline" size={32} color="#00704A" />
+                      </View>
+                      <Text style={styles.quickActionText}>Quét Voucher</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={styles.quickActionButton} 
+                    activeOpacity={0.7}
+                    onPress={() => router.push('/(protected)/business/transaction-processing')}
+                  >
+                    <View style={styles.quickActionContent}>
+                      <View style={styles.quickActionIconContainer}>
+                        <Ionicons name="receipt-outline" size={32} color="#00704A" />
+                      </View>
+                      <Text style={styles.quickActionText}>Xử lý Trả hàng</Text>
                     </View>
                   </TouchableOpacity>
                 </View>

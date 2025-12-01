@@ -1,24 +1,30 @@
+import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService';
+import { voucherApi } from '@/services/api/voucherService';
+import { User } from '@/types/auth.types';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
+    Alert,
     Dimensions,
+    RefreshControl,
+    SafeAreaView,
     ScrollView,
+    StatusBar,
     StyleSheet,
     Text,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
-// import { LinearGradient } from 'expo-linear-gradient';
-import CustomerHeader from '../../../components/CustomerHeader';
+import SimpleHeader from '../../../components/SimpleHeader';
 import { useAuth } from '../../../context/AuthProvider';
 import { useI18n } from '../../../hooks/useI18n';
-import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService';
-import { User } from '@/types/auth.types';
 
 const { width } = Dimensions.get('window');
 
-interface Voucher {
+// UI Voucher interface for display
+interface UIVoucher {
   id: string;
   title: string;
   discount: string;
@@ -27,24 +33,134 @@ interface Voucher {
   gradient: string[];
   validUntil: string;
   isUsed: boolean;
+  voucherId?: string; // For redeem
 }
+
+// Gradient colors for vouchers
+const GRADIENT_COLORS = [
+  ['#FF6B35', '#F7931E'],
+  ['#0F4D3A', '#1F2937'],
+  ['#DC2626', '#7C2D12'],
+  ['#059669', '#0D9488'],
+  ['#7C3AED', '#A855F7'],
+  ['#EA580C', '#F97316'],
+];
 
 export default function Rewards() {
   const auth = useAuth();
   const { t } = useI18n();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'vouchers' | 'my-vouchers' | 'history'>('vouchers');
+  const [availableVouchers, setAvailableVouchers] = useState<UIVoucher[]>([]);
+  const [myVouchers, setMyVouchers] = useState<UIVoucher[]>([]);
+  const [usedVouchers, setUsedVouchers] = useState<UIVoucher[]>([]);
+  const [loadingVouchers, setLoadingVouchers] = useState(false);
+  const [redeemingId, setRedeemingId] = useState<string | null>(null);
 
-  // Load user data
+  // Convert API voucher to UI format (handle both old and new API formats)
+  const convertVoucherToUI = (voucher: any, index: number = 0): UIVoucher => {
+    const gradient = GRADIENT_COLORS[index % GRADIENT_COLORS.length];
+    
+    // Handle my vouchers format (from /customer/vouchers/my)
+    // This format has voucherInfo nested inside
+    if (voucher.voucherInfo) {
+      const voucherInfo = voucher.voucherInfo;
+      const discountPercent = voucherInfo.discountPercent || 0;
+      const customName = voucherInfo.customName || 'Discount Voucher';
+      const customDescription = voucherInfo.customDescription || voucherInfo.description || 'Special discount voucher';
+      const fullCode = voucher.fullCode || voucherInfo.baseCode || 'N/A';
+      const endDate = voucherInfo.endDate || voucherInfo.validUntil;
+      
+      // Determine if voucher is used based on status
+      // status can be: "redeemed" (just redeemed, not used yet), "used", "expired"
+      const isUsed = voucher.status === 'used' || voucher.status === 'expired';
+      const isRedeemed = voucher.status === 'redeemed';
+
+      return {
+        id: voucher._id,
+        voucherId: voucher.voucherId || voucher._id, // Use voucherId for redeem, _id for display
+        title: 'Up to',
+        discount: `${discountPercent}% OFF`,
+        description: customDescription,
+        code: fullCode,
+        gradient,
+        validUntil: endDate ? new Date(endDate).toLocaleDateString('vi-VN') : 'N/A',
+        isUsed: isUsed,
+      };
+    }
+    
+    // Handle available vouchers format (from /customer/vouchers)
+    // This format has voucher data directly
+    if (voucher.customName || voucher.discountPercent !== undefined) {
+      const discountPercent = voucher.discountPercent || 0;
+      const customName = voucher.customName || 'Discount Voucher';
+      const customDescription = voucher.customDescription || voucher.description || 'Special discount voucher';
+      const baseCode = voucher.baseCode || voucher.code || 'N/A';
+      const endDate = voucher.endDate || voucher.validUntil;
+      const isUsed = voucher.isUsed || false;
+      const isRedeemable = voucher.isRedeemable !== false; // Default to true if not specified
+
+      return {
+        id: voucher._id,
+        voucherId: voucher._id,
+        title: 'Up to',
+        discount: `${discountPercent}% OFF`,
+        description: customDescription,
+        code: baseCode,
+        gradient,
+        validUntil: endDate ? new Date(endDate).toLocaleDateString('vi-VN') : 'N/A',
+        isUsed: isUsed,
+      };
+    }
+
+    // Handle old API format (standard vouchers)
+    const isMyVoucher = 'isUsed' in voucher;
+    let discountText = '';
+    if (voucher.discountType === 'percentage') {
+      discountText = `${voucher.discountValue}% OFF`;
+    } else {
+      discountText = `${voucher.discountValue?.toLocaleString('vi-VN') || 0} VNĐ`;
+    }
+
+    let title = 'Up to';
+    if (voucher.discountType === 'percentage' && voucher.discountValue >= 50) {
+      title = 'Get up to';
+    } else if (voucher.discountType === 'fixed') {
+      title = 'Save';
+    }
+
+    return {
+      id: voucher._id,
+      voucherId: voucher._id,
+      title: voucher.title || title,
+      discount: discountText,
+      description: voucher.description || 'Special discount voucher',
+      code: voucher.code || 'N/A',
+      gradient,
+      validUntil: voucher.validUntil ? new Date(voucher.validUntil).toLocaleDateString('vi-VN') : 'N/A',
+      isUsed: isMyVoucher ? voucher.isUsed : false,
+    };
+  };
+
+  // Load user data (silently handle errors)
   useEffect(() => {
     const loadUserData = async () => {
       try {
-        setLoading(true);
         const userData = await getCurrentUserProfileWithAutoRefresh();
         setUser(userData);
-      } catch (error) {
-        console.error('Error loading user data:', error);
+      } catch (error: any) {
+        // Silently handle all errors - don't show to user
+        // Don't log "No valid access token" errors - they're expected during auth flow
+        const isTokenError = error?.message?.toLowerCase().includes('no valid access token') ||
+                            error?.message?.toLowerCase().includes('token');
+        const is403Error = error?.response?.status === 403;
+        
+        // Only log unexpected errors in development, not to UI
+        if (!isTokenError && !is403Error && __DEV__) {
+          // Silent log for debugging only
+        }
       } finally {
         setLoading(false);
       }
@@ -53,145 +169,252 @@ export default function Rewards() {
     loadUserData();
   }, []);
 
-// Mock data
-  const vouchers: Voucher[] = [
-    {
-      id: '1',
-      title: 'Up to',
-      discount: '25% OFF',
-      description: 'Package discount coupon',
-      code: 'ST-V2586',
-      gradient: ['#FF6B35', '#F7931E'],
-      validUntil: '2024-12-31',
-      isUsed: false,
-    },
-    {
-      id: '2',
-      title: 'Get up to',
-      discount: '40% OFF',
-      description: 'Discount on first order',
-      code: 'FO-404030',
-      gradient: ['#0F4D3A', '#1F2937'],
-      validUntil: '2024-11-30',
-      isUsed: false,
-    },
-    {
-      id: '3',
-      title: 'FREE',
-      discount: 'SHIPPING',
-      description: 'Free delivery on orders over $50',
-      code: 'FS-2024',
-      gradient: ['#DC2626', '#7C2D12'],
-      validUntil: '2024-10-15',
-      isUsed: true,
-    },
-    {
-      id: '4',
-      title: 'Save',
-      discount: '30% OFF',
-      description: 'On new products only',
-      code: 'NP-30OFF',
-      gradient: ['#059669', '#0D9488'],
-      validUntil: '2024-09-20',
-      isUsed: false,
-    },
-  ];
+  // Load vouchers based on active tab
+  const loadVouchers = useCallback(async (showLoading: boolean = true) => {
+    if (!auth.state.isAuthenticated) return;
+
+    try {
+      if (showLoading) setLoadingVouchers(true);
+
+      // Load available vouchers (for "vouchers" tab)
+      try {
+        const allVouchersResponse = await voucherApi.getAll({ page: 1, limit: 100 });
+        if (allVouchersResponse.statusCode === 200) {
+          // Handle both formats: data as array or data.items
+          let vouchersArray: any[] = [];
+          if (Array.isArray(allVouchersResponse.data)) {
+            // New format: data is array directly
+            vouchersArray = allVouchersResponse.data;
+          } else if (allVouchersResponse.data?.items && Array.isArray(allVouchersResponse.data.items)) {
+            // Old format: data.items is array
+            vouchersArray = allVouchersResponse.data.items;
+          }
+          
+          if (vouchersArray.length > 0) {
+            const converted = vouchersArray.map((v, i) => convertVoucherToUI(v, i));
+            setAvailableVouchers(converted);
+          } else {
+            setAvailableVouchers([]);
+          }
+        }
+      } catch (error: any) {
+        // Silently handle errors
+        if (error?.response?.status !== 403 && error?.response?.status !== 500) {
+          // Only log unexpected errors
+        }
+        setAvailableVouchers([]);
+      }
+
+      // Load my vouchers (for "my-vouchers" and "history" tabs)
+      try {
+        const myVouchersResponse = await voucherApi.getMy({ page: 1, limit: 100 });
+        if (myVouchersResponse.statusCode === 200) {
+          // Handle both formats: data as array or data.items
+          let vouchersArray: any[] = [];
+          if (Array.isArray(myVouchersResponse.data)) {
+            // New format: data is array directly
+            vouchersArray = myVouchersResponse.data;
+          } else if (myVouchersResponse.data?.items && Array.isArray(myVouchersResponse.data.items)) {
+            // Old format: data.items is array
+            vouchersArray = myVouchersResponse.data.items;
+          }
+          
+          if (vouchersArray.length > 0) {
+            const allMyVouchers = vouchersArray.map((v, i) => convertVoucherToUI(v, i));
+            // Filter: "redeemed" status = not used yet (show in My Vouchers)
+            // "used" or "expired" status = used (show in History)
+            setMyVouchers(allMyVouchers.filter(v => !v.isUsed));
+            setUsedVouchers(allMyVouchers.filter(v => v.isUsed));
+          } else {
+            setMyVouchers([]);
+            setUsedVouchers([]);
+          }
+        }
+      } catch (error: any) {
+        // Silently handle errors
+        if (error?.response?.status !== 403 && error?.response?.status !== 500) {
+          // Only log unexpected errors
+        }
+        setMyVouchers([]);
+        setUsedVouchers([]);
+      }
+    } catch (error) {
+      // Silently handle general errors
+    } finally {
+      if (showLoading) setLoadingVouchers(false);
+    }
+  }, [auth.state.isAuthenticated]);
+
+  // Load vouchers when component mounts or tab changes
+  useEffect(() => {
+    if (auth.state.isAuthenticated && auth.state.isHydrated) {
+      loadVouchers();
+    }
+  }, [auth.state.isAuthenticated, auth.state.isHydrated, activeTab, loadVouchers]);
+
+  // Handle refresh
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadVouchers(false);
+    setRefreshing(false);
+  }, [loadVouchers]);
+
+  // Handle redeem voucher
+  const handleRedeemVoucher = async (voucherId: string) => {
+    if (redeemingId) return; // Prevent multiple clicks
+
+    try {
+      setRedeemingId(voucherId);
+      const response = await voucherApi.redeem(voucherId);
+      
+      // If statusCode is 200, consider it successful
+      if (response.statusCode === 200) {
+        // Reload vouchers to reflect changes
+        await loadVouchers(false);
+        // Use API message if available, otherwise use default success message
+        const successMessage = response.message && 
+          (response.message.toLowerCase().includes('success') || 
+           response.message.toLowerCase().includes('thành công') ||
+           response.message.toLowerCase().includes('redeem'))
+          ? response.message
+          : 'Bạn đã nhận voucher thành công!';
+        Alert.alert('Thành công', successMessage);
+      } else {
+        // Only show error if statusCode is not 200
+        Alert.alert('Lỗi', response.message || 'Không thể nhận voucher. Vui lòng thử lại.');
+      }
+    } catch (error: any) {
+      // Show user-friendly error message
+      const errorMessage = error?.response?.data?.message || error?.message || 'Không thể nhận voucher. Vui lòng thử lại.';
+      Alert.alert('Lỗi', errorMessage);
+    } finally {
+      setRedeemingId(null);
+    }
+  };
 
   const userStats = {
     points: (user as any)?.rewardPoints || 0,
     ranking: 8, // Mock ranking for now
   };
 
-  const renderVoucherCard = (voucher: Voucher) => (
-    <TouchableOpacity key={voucher.id} style={[styles.voucherCard, voucher.isUsed && styles.usedVoucherCard]}>
-      <View style={[
-        styles.voucherGradient, 
-        { backgroundColor: voucher.gradient[0] },
-        voucher.isUsed && styles.usedVoucherGradient
-      ]}>
-        {/* Watermark Graphics */}
-        <View style={styles.watermarkContainer}>
-          <View style={styles.watermark}>
-            <Text style={styles.watermarkText}>%</Text>
-            <View style={styles.watermarkDots}>
-              <View style={styles.watermarkDot} />
-              <View style={styles.watermarkDot} />
+  const renderVoucherCard = (voucher: UIVoucher, isAvailable: boolean = false) => {
+    const isRedeeming = redeemingId === voucher.voucherId;
+    
+    const handleCardPress = () => {
+      // Navigate to voucher detail screen
+      router.push({
+        pathname: '/(protected)/customer/voucher-detail/[id]',
+        params: { id: voucher.id }
+      });
+    };
+    
+    return (
+      <TouchableOpacity 
+        key={voucher.id} 
+        style={[styles.voucherCard, voucher.isUsed && styles.usedVoucherCard]}
+        disabled={isRedeeming}
+        onPress={handleCardPress}
+      >
+        <View style={[
+          styles.voucherGradient, 
+          { backgroundColor: voucher.gradient[0] },
+          voucher.isUsed && styles.usedVoucherGradient
+        ]}>
+          {/* Watermark Graphics */}
+          <View style={styles.watermarkContainer}>
+            <View style={styles.watermark}>
+              <Text style={styles.watermarkText}>%</Text>
+              <View style={styles.watermarkDots}>
+                <View style={styles.watermarkDot} />
+                <View style={styles.watermarkDot} />
+              </View>
+            </View>
+          </View>
+          
+          <View style={styles.voucherContent}>
+            <View style={styles.voucherHeader}>
+              <Text style={[styles.voucherTitle, voucher.isUsed && styles.usedVoucherText]}>
+                {voucher.title}
+              </Text>
+            </View>
+            <Text style={[styles.voucherDiscount, voucher.isUsed && styles.usedVoucherText]}>
+              {voucher.discount}
+            </Text>
+            <Text style={[styles.voucherDescription, voucher.isUsed && styles.usedVoucherText]}>
+              {voucher.description}
+            </Text>
+            <View style={styles.voucherCodeContainer}>
+              <Text style={styles.voucherCode}>{voucher.code}</Text>
+            </View>
+            <View style={styles.voucherFooter}>
+              <Text style={[styles.validUntil, voucher.isUsed && styles.usedVoucherText]}>
+                HSD: {voucher.validUntil}
+              </Text>
+              {voucher.isUsed ? (
+                <Text style={styles.usedLabel}>{t('rewards').used}</Text>
+              ) : isAvailable ? (
+                <TouchableOpacity 
+                  style={[styles.useButton, isRedeeming && styles.useButtonDisabled]}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    if (voucher.voucherId) {
+                      handleRedeemVoucher(voucher.voucherId);
+                    }
+                  }}
+                  disabled={isRedeeming}
+                >
+                  {isRedeeming ? (
+                    <ActivityIndicator size="small" color="#0F4D3A" />
+                  ) : (
+                    <Text style={styles.useButtonText}>Nhận ngay</Text>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <Text style={styles.ownedLabel}>Đã sở hữu</Text>
+              )}
             </View>
           </View>
         </View>
-        
-        <View style={styles.voucherContent}>
-          <View style={styles.voucherHeader}>
-            <Text style={[styles.voucherTitle, voucher.isUsed && styles.usedVoucherText]}>
-              {voucher.title}
-            </Text>
-          </View>
-          <Text style={[styles.voucherDiscount, voucher.isUsed && styles.usedVoucherText]}>
-            {voucher.discount}
-          </Text>
-          <Text style={[styles.voucherDescription, voucher.isUsed && styles.usedVoucherText]}>
-            {voucher.description}
-          </Text>
-          <View style={styles.voucherCodeContainer}>
-            <Text style={styles.voucherCode}>{voucher.code}</Text>
-          </View>
-          <View style={styles.voucherFooter}>
-            <Text style={[styles.validUntil, voucher.isUsed && styles.usedVoucherText]}>
-              Valid until: {voucher.validUntil}
-            </Text>
-            {voucher.isUsed ? (
-              <Text style={styles.usedLabel}>{t('rewards').used}</Text>
-            ) : (
-              <TouchableOpacity style={styles.useButton}>
-                <Text style={styles.useButtonText}>{t('rewards').useNow}</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-
-  const getTimeBasedGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 18) return 'Good Afternoon';
-    return 'Good Evening';
-  };
-
-  const getCurrentTime = () => {
-    const now = new Date();
-    return now.toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      minute: '2-digit',
-      hour12: false 
-    });
+      </TouchableOpacity>
+    );
   };
 
   if (loading) {
     return (
       <View style={styles.container}>
-        <CustomerHeader
-          title="Loading..."
-          user={user}
-        />
+        <SimpleHeader title="Rewards" />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <CustomerHeader
-        title={getTimeBasedGreeting() + ", " + ((user as any)?.fullName || user?.name || "User")}
-        subtitle="Rewards & Vouchers"
-        user={user}
-      />
-
-      <ScrollView style={styles.scrollContent}>
-        {/* Section Title */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Rewards</Text>
+      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
+      <SafeAreaView style={styles.headerSafeArea}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft} />
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>Rewards</Text>
           </View>
+          <TouchableOpacity 
+            style={styles.headerIconButton}
+            onPress={() => {
+              // Navigate to history or show info
+              setActiveTab('history');
+            }}
+          >
+            <Ionicons name="time-outline" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+
+      <ScrollView 
+        style={styles.scrollContent} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
           
         {/* User Stats Card */}
         <View style={styles.statsCard}>
@@ -249,33 +472,66 @@ export default function Rewards() {
         </View>
 
         {/* Content based on active tab */}
-        {activeTab === 'vouchers' && (
-          <View style={styles.voucherList}>
-            {vouchers.map(renderVoucherCard)}
+        {loadingVouchers ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#0F4D3A" />
+            <Text style={styles.loadingText}>Đang tải...</Text>
           </View>
-        )}
-        
-        {activeTab === 'my-vouchers' && (
-          <View style={styles.voucherList}>
-            {vouchers.filter(v => !v.isUsed).map(renderVoucherCard)}
-          </View>
-        )}
-        
-        {activeTab === 'history' && (
-          <View style={styles.historyList}>
-            {vouchers.filter(v => v.isUsed).map((voucher) => (
-              <View key={voucher.id} style={styles.historyItem}>
-                <View style={styles.historyIcon}>
-                  <Ionicons name="checkmark-circle" size={24} color="#10B981" />
-                    </View>
-                <View style={styles.historyContent}>
-                  <Text style={styles.historyTitle}>{voucher.title} - {voucher.discount}</Text>
-                  <Text style={styles.historyDescription}>{voucher.description}</Text>
-                  <Text style={styles.historyDate}>Used on: {voucher.validUntil}</Text>
-                </View>
+        ) : (
+          <>
+            {activeTab === 'vouchers' && (
+              <View style={styles.voucherList}>
+                {availableVouchers.length > 0 ? (
+                  availableVouchers.map(v => renderVoucherCard(v, true))
+                ) : (
+                  <View style={styles.emptyState}>
+                    <Ionicons name="ticket-outline" size={48} color="#9CA3AF" />
+                    <Text style={styles.emptyStateText}>Không có voucher nào</Text>
+                    <Text style={styles.emptyStateSubtext}>Vui lòng thử lại sau</Text>
+                  </View>
+                )}
               </View>
-            ))}
-          </View>
+            )}
+            
+            {activeTab === 'my-vouchers' && (
+              <View style={styles.voucherList}>
+                {myVouchers.length > 0 ? (
+                  myVouchers.map(v => renderVoucherCard(v, false))
+                ) : (
+                  <View style={styles.emptyState}>
+                    <Ionicons name="ticket-outline" size={48} color="#9CA3AF" />
+                    <Text style={styles.emptyStateText}>Bạn chưa có voucher nào</Text>
+                    <Text style={styles.emptyStateSubtext}>Nhận voucher từ tab "Vouchers"</Text>
+                  </View>
+                )}
+              </View>
+            )}
+            
+            {activeTab === 'history' && (
+              <View style={styles.historyList}>
+                {usedVouchers.length > 0 ? (
+                  usedVouchers.map((voucher) => (
+                    <View key={voucher.id} style={styles.historyItem}>
+                      <View style={styles.historyIcon}>
+                        <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+                      </View>
+                      <View style={styles.historyContent}>
+                        <Text style={styles.historyTitle}>{voucher.title} - {voucher.discount}</Text>
+                        <Text style={styles.historyDescription}>{voucher.description}</Text>
+                        <Text style={styles.historyDate}>Mã: {voucher.code}</Text>
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <View style={styles.emptyState}>
+                    <Ionicons name="time-outline" size={48} color="#9CA3AF" />
+                    <Text style={styles.emptyStateText}>Chưa có lịch sử</Text>
+                    <Text style={styles.emptyStateSubtext}>Các voucher đã sử dụng sẽ hiển thị ở đây</Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
     </View>
@@ -286,6 +542,36 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
+  },
+  headerSafeArea: {
+    backgroundColor: '#00704A',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#00704A',
+    borderBottomLeftRadius: 20,
+  },
+  headerLeft: {
+    width: 40,
+  },
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  headerIconButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scrollContent: {
     flex: 1,
@@ -302,14 +588,15 @@ const styles = StyleSheet.create({
   statsCard: {
     borderRadius: 16,
     padding: 20,
+    marginTop: 20,
     marginBottom: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
-    // Light gold gradient background
-    backgroundColor: '#FEF3C7',
+    // Cream/Light Yellow background
+    backgroundColor: '#FFF8E1',
   },
   statsRow: {
     flexDirection: 'row',
@@ -323,7 +610,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#FCD34D',
+    backgroundColor: '#FFD54F',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -477,6 +764,41 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontSize: 12,
     fontWeight: '500',
+  },
+  ownedLabel: {
+    color: '#10B981',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  useButtonDisabled: {
+    opacity: 0.6,
+  },
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  emptyState: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStateText: {
+    marginTop: 16,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  emptyStateSubtext: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
   },
   watermarkContainer: {
     position: 'absolute',

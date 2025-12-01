@@ -87,15 +87,16 @@ export default function CustomerLayout() {
           return;
         }
         
-        // Don't log network errors as errors - they're expected when offline
+        // Silently handle all errors - don't log to UI
+        // Don't log network errors - they're expected when offline
         const isNetworkError = error?.message?.toLowerCase().includes('network') ||
                                error?.message?.toLowerCase().includes('timeout') ||
-                               error?.message?.toLowerCase().includes('connection');
+                               error?.message?.toLowerCase().includes('connection') ||
+                               error?.message?.toLowerCase().includes('no valid access token');
         
-        if (isNetworkError) {
-          console.warn('⚠️ CustomerLayout: Network error checking role from backend (will retry later):', error.message);
-        } else {
-          console.error('❌ CustomerLayout: Error checking role from backend:', error);
+        // Only log unexpected errors in development, not to UI
+        if (!isNetworkError && __DEV__) {
+          // Silent log for debugging only
         }
         // Reset check flag on error so it can retry
         hasCheckedRoleRef.current = false;
