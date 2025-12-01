@@ -1,16 +1,19 @@
+import { User } from '@/types/auth.types';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React from 'react';
 import {
-    Image,
-    SafeAreaView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Dimensions,
+  Image,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { User } from '@/types/auth.types';
+
+const { height: screenHeight } = Dimensions.get('window');
 
 interface BusinessHeaderProps {
   title: string;
@@ -45,17 +48,24 @@ export default function BusinessHeader({
     <>
       <StatusBar barStyle="light-content" backgroundColor={backgroundColor} />
       <SafeAreaView style={[styles.header, { backgroundColor }]}>
-        <View style={styles.headerContent}>
-          {/* Left: Title/Subtitle */}
-          <View style={styles.headerLeft}>
-            <Text style={styles.headerTitle}>{title}</Text>
+        {/* Background Decoration */}
+        <View style={styles.backgroundDecoration}>
+          <View style={styles.decorativeCircle1} />
+          <View style={styles.decorativeCircle2} />
+          <View style={styles.decorativeCircle3} />
+        </View>
+        
+        <View style={styles.greetingRow}>
+          {/* Left: Logo/Greeting */}
+          <View style={styles.greetingLeft}>
+            <Text style={styles.greetingSub}>{title}</Text>
             {subtitle && (
-              <Text style={styles.headerSubtitle}>{subtitle}</Text>
+              <Text style={styles.greetingNice}>{subtitle}</Text>
             )}
           </View>
           
           {/* Right: Notifications + Avatar */}
-          <View style={styles.headerRight}>
+          <View style={styles.greetingRight}>
             {rightAction}
             
             {/* Notifications Button */}
@@ -71,17 +81,15 @@ export default function BusinessHeader({
             {/* Avatar Button - Navigate to Menu/Profile */}
             {showProfile && (
               <TouchableOpacity 
-                style={styles.profileButton}
+                style={styles.avatarLg}
                 onPress={handleProfilePress}
               >
                 {user?.avatar ? (
-                  <Image source={{ uri: user.avatar }} style={styles.profileImage} />
+                  <Image source={{ uri: user.avatar }} style={styles.avatarLgImage} />
                 ) : (
-                  <View style={styles.profilePlaceholder}>
-                    <Text style={styles.profilePlaceholderText}>
-                      {(user?.name || user?.fullName || 'U').charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
+                  <Text style={styles.avatarLgText}>
+                    {(user?.name || user?.fullName || 'U').charAt(0).toUpperCase()}
+                  </Text>
                 )}
               </TouchableOpacity>
             )}
@@ -94,35 +102,87 @@ export default function BusinessHeader({
 
 const styles = StyleSheet.create({
   header: {
-    paddingTop: 10,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
+    backgroundColor: '#00704A',
+    paddingHorizontal: 24,
+    paddingTop: 5,
+    paddingBottom: 40, // Increased to accommodate floating card
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    minHeight: screenHeight * 0.25, // 25% of screen height
+    maxHeight: screenHeight * 0.30, // 30% of screen height
+    overflow: 'hidden',
+    position: 'relative',
   },
-  headerContent: {
+  backgroundDecoration: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0.1,
+  },
+  decorativeCircle1: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#FFFFFF',
+    top: -40,
+    right: -20,
+  },
+  decorativeCircle2: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FFFFFF',
+    bottom: -20,
+    left: -10,
+  },
+  decorativeCircle3: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FFFFFF',
+    top: '50%',
+    right: 30,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    zIndex: 1,
+  },
+  brandTitle: {
+    color: '#fff',
+    fontWeight: '800',
+    letterSpacing: 2,
+    fontSize: 14,
+  },
+  greetingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    zIndex: 1,
   },
-  headerLeft: {
+  greetingLeft: {
     flex: 1,
     paddingRight: 16,
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 2,
-  },
-  headerSubtitle: {
+  greetingSub: {
+    color: 'rgba(255,255,255,0.9)',
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
+    marginBottom: 4,
   },
-  headerRight: {
+  greetingNice: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 24,
+  },
+  greetingRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -136,17 +196,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  profileButton: {
-    padding: 2,
-  },
-  profileImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  profilePlaceholder: {
+  avatarLg: {
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -156,9 +206,14 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#FFFFFF',
   },
-  profilePlaceholderText: {
-    color: '#00704A',
-    fontSize: 18,
+  avatarLgText: {
+    fontSize: 20,
     fontWeight: '600',
+    color: '#00704A',
+  },
+  avatarLgImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
   },
 });

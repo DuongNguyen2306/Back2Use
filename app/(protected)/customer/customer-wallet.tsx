@@ -234,14 +234,21 @@ export default function CustomerWallet() {
       console.log('📡 Amount:', Number(amount));
       console.log('📡 Payment Method:', validPaymentMethod);
       
-      const response = await walletApi.deposit(wallet._id, Number(amount), validPaymentMethod);
+      // Call deposit API - returnUrl is configured on backend
+      const response = await walletApi.deposit(
+        wallet._id, 
+        Number(amount), 
+        validPaymentMethod
+      );
       console.log('✅ Deposit API response:', JSON.stringify(response, null, 2));
       
       // Handle different response structures
-      // Response can be: { url: "...", payUrl: "..." } or { paymentResponse: { payUrl: "..." } }
+      // Response can be: 
+      // - { url: "...", transactionId: "...", paymentResponse: { payUrl: "..." } }
+      // - { url: "...", payUrl: "..." }
       let paymentUrl = response.url || response.payUrl;
       if (!paymentUrl && response.paymentResponse) {
-        paymentUrl = response.paymentResponse.payUrl || response.paymentResponse.url;
+        paymentUrl = response.paymentResponse.payUrl || response.paymentResponse.url || response.paymentResponse.shortLink;
       }
       
       console.log('🔗 Payment URL extracted:', paymentUrl);
@@ -348,72 +355,9 @@ export default function CustomerWallet() {
     }
   };
 
-  const startPollingForRealSuccess = async () => {
-    // Prevent multiple polling instances
-    if (isPollingRef.current) {
-      console.log('⚠️ Polling already running, skipping...');
-      return;
-    }
+  // Đã loại bỏ polling - không cần nữa vì đã phát hiện thành công từ URL callback
 
-    // Cleanup any existing polling
-    if (pollingRef.current) {
-      clearTimeout(pollingRef.current);
-      pollingRef.current = null;
-    }
-
-    isPollingRef.current = true;
-    let attempts = 0;
-    const maxAttempts = 20; // ~20 giây
-
-    const poll = async () => {
-      // Check if polling was stopped
-      if (!isPollingRef.current) {
-        console.log('🛑 Polling stopped');
-        return;
-      }
-
-      if (attempts >= maxAttempts) {
-        console.log('⏱️ Max polling attempts reached');
-        setPaymentStatus('failed');
-        isPollingRef.current = false;
-        pollingRef.current = null;
-        return;
-      }
-
-      try {
-        // Tải lại ví + danh sách giao dịch mới nhất
-        await loadUserData();
-        await loadTransactions(1, false);
-
-        // Tìm giao dịch vừa nạp (dựa trên amount + thời gian gần nhất + type deposit)
-        const recentTopUp = realTransactions
-          .filter(t => 
-            t.transactionType === 'deposit' &&
-            t.direction === 'in' &&
-            t.amount === savedPaymentAmount &&
-            new Date(t.createdAt) > new Date(Date.now() - 5 * 60 * 1000) // trong 5 phút gần nhất
-          )
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-
-        if (recentTopUp?.status === 'completed') {
-          console.log('✅ Transaction completed, stopping polling');
-          setPaymentStatus('success');
-          isPollingRef.current = false;
-          pollingRef.current = null;
-          return;
-        }
-      } catch (err) {
-        console.log('Polling error, continue...', err);
-      }
-
-      attempts++;
-      pollingRef.current = setTimeout(poll, 1500); // kiểm tra mỗi 1.5s
-    };
-
-    poll();
-  };
-
-  // Cleanup polling on unmount or when payment status changes
+  // Cleanup polling refs on unmount
   useEffect(() => {
     return () => {
       if (pollingRef.current) {
@@ -424,72 +368,7 @@ export default function CustomerWallet() {
     };
   }, []);
 
-  // Stop polling when payment status changes to success or failed
-  useEffect(() => {
-    if (paymentStatus === 'success' || paymentStatus === 'failed') {
-      if (pollingRef.current) {
-        clearTimeout(pollingRef.current);
-        pollingRef.current = null;
-      }
-      isPollingRef.current = false;
-    }
-  }, [paymentStatus]);
-
-  const handlePaymentSuccess = async () => {
-    console.log('✅ Payment successful, closing WebView and showing result');
-    setShowPaymentWebView(false);
-    setPaymentResult('success');
-    setShowPaymentResult(true);
-    setPaymentResultShown(true);
-    
-    // Reset transaction page to 1 to get latest transactions
-    setTransactionPage(1);
-    
-    // Immediate refresh
-    await loadUserData();
-    await loadTransactions(1, false); // Force reload from page 1
-    
-    // Poll for transaction status update (backend may need time to process)
-    let retryCount = 0;
-    const maxRetries = 6; // Poll up to 6 times (12 seconds total)
-    const pollInterval = 2000; // 2 seconds
-    
-    const pollForTransactionUpdate = async () => {
-      if (retryCount >= maxRetries) {
-        console.log('⏱️ Max retries reached, stopping polling');
-        // Final refresh
-        await loadUserData();
-        await loadTransactions(1, false);
-        return;
-      }
-      
-      retryCount++;
-      console.log(`🔄 Polling for transaction update (attempt ${retryCount}/${maxRetries})...`);
-      
-      await loadUserData();
-      await loadTransactions(1, false); // Force reload from page 1
-      
-      // Continue polling to ensure backend has processed
-      if (retryCount < maxRetries) {
-        setTimeout(pollForTransactionUpdate, pollInterval);
-      } else {
-        // Final refresh after all retries
-        console.log('🔄 Final refresh after all polling attempts...');
-        await loadUserData();
-        await loadTransactions(1, false);
-      }
-    };
-    
-    // Start polling after initial delay
-    setTimeout(pollForTransactionUpdate, pollInterval);
-    
-    // Additional refresh after longer delay to ensure data is updated
-    setTimeout(async () => {
-      console.log('🔄 Final refresh after payment success (10s delay)...');
-      await loadUserData();
-      await loadTransactions(1, false);
-    }, 10000); // 10 seconds delay
-  };
+  // Đã loại bỏ handlePaymentSuccess - không cần nữa vì xử lý trực tiếp trong WebView callback
 
   const handlePaymentFailure = () => {
     console.log('❌ Payment failed, closing WebView and showing result');
@@ -1246,35 +1125,140 @@ export default function CustomerWallet() {
             style={styles.webView}
             onNavigationStateChange={(navState) => {
               const url = navState.url;
-              console.log('WebView URL:', url);
+              console.log('🔍 WebView URL:', url);
 
-              // Chỉ cần phát hiện MoMo hoặc VNPay trả người dùng về là đóng WebView
-              // KHÔNG được hiện thành công ngay!!!
-              if (
-                url.includes('momo/redirect') ||
-                url.includes('vnp_ResponseCode=') ||
-                url.includes('payment-success') ||
-                url.includes('payment-failed') ||
-                url.includes('resultCode=')
-              ) {
-                // Đóng WebView ngay lập tức
+              // Chỉ xử lý callback từ backend, không xử lý khi đang ở payment gateway
+              const isBackendCallback = url.includes('backend.back2use.vn') || 
+                                       url.includes('back-2-use.up.railway.app') ||
+                                       url.includes('/api/payments/');
+
+              // Phát hiện redirect về payment-success (có thể từ localhost/web frontend)
+              // Đây là dấu hiệu backend đã xác nhận thanh toán thành công
+              if (url.includes('payment-success')) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const txnRef = urlParams.get('txnRef') || urlParams.get('status');
+                const paymentAmountValue = Number(amount);
+                
+                console.log('✅ Payment success detected from redirect:', { url, txnRef, amount: paymentAmountValue });
+                
+                // Đóng WebView ngay
                 setShowPaymentWebView(false);
                 setPaymentUrl('');
-
-                // HIỆN MÀN HÌNH "Đang xử lý..." thay vì thành công
-                setPaymentStatus('pending');
-                setShowPaymentResult(true);
-                setSavedPaymentAmount(Number(amount)); // để hiển thị số tiền đang chờ
-
-                // Bắt đầu polling để chờ backend cập nhật thật sự
-                startPollingForRealSuccess();
-
+                
+                // Navigate to payment-success screen
+                router.push({
+                  pathname: '/(protected)/customer/payment-success',
+                  params: {
+                    txnRef: txnRef || '',
+                    amount: paymentAmountValue.toString(),
+                  },
+                });
                 return;
               }
+
+              // Phát hiện redirect về payment-failed
+              if (url.includes('payment-failed')) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const reason = urlParams.get('reason') || '';
+                const paymentAmountValue = Number(amount);
+                
+                console.log('❌ Payment failed detected from redirect:', url);
+                
+                // Đóng WebView ngay
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                
+                // Navigate to payment-success screen (it will show failed status)
+                router.push({
+                  pathname: '/(protected)/customer/payment-success',
+                  params: {
+                    txnRef: '',
+                    amount: paymentAmountValue.toString(),
+                    failed: 'true',
+                    reason: reason,
+                  },
+                });
+                return;
+              }
+
+              // Kiểm tra VNPay callback từ backend
+              if (isBackendCallback && url.includes('vnp_ResponseCode=')) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const responseCode = urlParams.get('vnp_ResponseCode');
+                
+                console.log('💳 VNPay Response Code:', responseCode);
+                
+                // Đóng WebView ngay
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                setSavedPaymentAmount(Number(amount));
+                setPaymentAmount(Number(amount));
+
+                // VNPay: ResponseCode = 00 là thành công
+                if (responseCode === '00') {
+                  console.log('✅ VNPay payment successful');
+                  setPaymentStatus('success');
+                  setPaymentResult('success');
+                  setShowPaymentResult(true);
+                  
+                  // Refresh wallet 1 lần sau 1 giây
+                  setTimeout(async () => {
+                    await loadUserData();
+                    await loadTransactions(1, false);
+                  }, 1000);
+                } else {
+                  console.log('❌ VNPay payment failed');
+                  setPaymentStatus('failed');
+                  setPaymentResult('failed');
+                  setShowPaymentResult(true);
+                }
+                return;
+              }
+
+              // Kiểm tra MoMo callback từ backend (không phải từ MoMo gateway)
+              if (isBackendCallback && (url.includes('momo/redirect') || url.includes('momo/return'))) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const resultCode = urlParams.get('resultCode');
+                
+                console.log('💳 MoMo Result Code:', resultCode);
+                
+                // Đóng WebView ngay
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                setSavedPaymentAmount(Number(amount));
+                setPaymentAmount(Number(amount));
+
+                // MoMo: resultCode = 0 là thành công
+                if (resultCode === '0' || resultCode === null) {
+                  console.log('✅ MoMo payment successful');
+                  setPaymentStatus('success');
+                  setPaymentResult('success');
+                  setShowPaymentResult(true);
+                  
+                  // Refresh wallet 1 lần sau 1 giây
+                  setTimeout(async () => {
+                    await loadUserData();
+                    await loadTransactions(1, false);
+                  }, 1000);
+                } else {
+                  console.log('❌ MoMo payment failed');
+                  setPaymentStatus('failed');
+                  setPaymentResult('failed');
+                  setShowPaymentResult(true);
+                }
+                return;
+              }
+
+              // Các callback khác từ backend đã được xử lý ở trên
+
+              // Cho phép WebView tiếp tục load các URL khác (như MoMo gateway, OTP page, etc.)
             }}
             onError={(error) => {
-              console.error('❌ WebView error:', error);
-              // Don't auto-fail on error, let user complete payment flow
+              // Silently handle WebView errors - don't show logs on screen
+              // Payment gateway may have temporary issues, but user can still complete payment
+              if (__DEV__) {
+                console.warn('WebView error (silent):', error?.nativeEvent || error);
+              }
             }}
           />
               </View>
@@ -1364,37 +1348,233 @@ export default function CustomerWallet() {
             <WebView
             source={{ uri: paymentUrl }}
             style={styles.webView}
-            onNavigationStateChange={(navState) => {
-              const url = navState.url;
-              console.log('WebView URL:', url);
+            onShouldStartLoadWithRequest={(request) => {
+              const url = request.url;
+              console.log('🔍 WebView should load URL:', url);
 
-              // Chỉ cần phát hiện MoMo hoặc VNPay trả người dùng về là đóng WebView
-              // KHÔNG được hiện thành công ngay!!!
-              if (
-                url.includes('momo/redirect') ||
-                url.includes('vnp_ResponseCode=') ||
-                url.includes('payment-success') ||
-                url.includes('payment-failed') ||
-                url.includes('resultCode=')
-              ) {
-                // Đóng WebView ngay lập tức
+              // Check if this is a redirect from backend (back-2-use.up.railway.app or backend domain)
+              const isBackendDomain = url.includes('back-2-use.up.railway.app') || 
+                                     url.includes('backend.back2use.vn') ||
+                                     url.includes('/api/payments/') ||
+                                     url.includes('/momo/redirect') ||
+                                     url.includes('/vnpay/return');
+
+              // Phát hiện redirect về payment-success (từ backend hoặc web frontend)
+              // Backend có thể redirect về: https://back-2-use.up.railway.app/payment-success?txnRef=...
+              if (url.includes('payment-success')) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const txnRef = urlParams.get('txnRef') || urlParams.get('status');
+                const paymentAmountValue = Number(amount);
+                
+                console.log('✅ Payment success detected (onShouldStartLoadWithRequest):', { url, txnRef, amount: paymentAmountValue, isBackendDomain });
+                
+                // Đóng WebView ngay
                 setShowPaymentWebView(false);
                 setPaymentUrl('');
+                
+                // Navigate to payment-success screen
+                router.push({
+                  pathname: '/(protected)/customer/payment-success',
+                  params: {
+                    txnRef: txnRef || '',
+                    amount: paymentAmountValue.toString(),
+                  },
+                });
+                return false; // Prevent WebView from loading this URL
+              }
 
-                // HIỆN MÀN HÌNH "Đang xử lý..." thay vì thành công
-                setPaymentStatus('pending');
-                setShowPaymentResult(true);
-                setSavedPaymentAmount(Number(amount)); // để hiển thị số tiền đang chờ
+              // Phát hiện redirect về payment-failed
+              if (url.includes('payment-failed')) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const reason = urlParams.get('reason') || '';
+                const paymentAmountValue = Number(amount);
+                
+                console.log('❌ Payment failed detected (onShouldStartLoadWithRequest):', url);
+                
+                // Đóng WebView ngay
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                
+                // Navigate to payment-success screen (it will show failed status)
+                router.push({
+                  pathname: '/(protected)/customer/payment-success',
+                  params: {
+                    txnRef: '',
+                    amount: paymentAmountValue.toString(),
+                    failed: 'true',
+                    reason: reason,
+                  },
+                });
+                return false; // Prevent WebView from loading this URL
+              }
 
-                // Bắt đầu polling để chờ backend cập nhật thật sự
-                startPollingForRealSuccess();
+              // Nếu backend redirect về root domain với query params chứa txnRef
+              // Ví dụ: https://back-2-use.up.railway.app/?txnRef=...&status=success
+              if (isBackendDomain && url.includes('txnRef=')) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const txnRef = urlParams.get('txnRef');
+                const status = urlParams.get('status');
+                
+                if (txnRef && (status === 'success' || status === 'already-done')) {
+                  const paymentAmountValue = Number(amount);
+                  
+                  console.log('✅ Payment success detected from backend root redirect:', { url, txnRef, status, amount: paymentAmountValue });
+                  
+                  // Đóng WebView ngay
+                  setShowPaymentWebView(false);
+                  setPaymentUrl('');
+                  
+                  // Navigate to payment-success screen
+                  router.push({
+                    pathname: '/(protected)/customer/payment-success',
+                    params: {
+                      txnRef: txnRef || '',
+                      amount: paymentAmountValue.toString(),
+                    },
+                  });
+                  return false; // Prevent WebView from loading this URL
+                }
+              }
 
+              // Allow other URLs to load normally
+              return true;
+            }}
+            onNavigationStateChange={(navState) => {
+              const url = navState.url;
+              console.log('🔍 WebView URL (onNavigationStateChange):', url);
+
+              // Chỉ xử lý callback từ backend, không xử lý khi đang ở payment gateway
+              const isBackendCallback = url.includes('backend.back2use.vn') || 
+                                       url.includes('back-2-use.up.railway.app') ||
+                                       url.includes('/api/payments/');
+
+              // Phát hiện redirect về payment-success (có thể từ localhost/web frontend)
+              // Đây là dấu hiệu backend đã xác nhận thanh toán thành công
+              if (url.includes('payment-success')) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const txnRef = urlParams.get('txnRef') || urlParams.get('status');
+                const paymentAmountValue = Number(amount);
+                
+                console.log('✅ Payment success detected from redirect:', { url, txnRef, amount: paymentAmountValue });
+                
+                // Đóng WebView ngay
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                
+                // Navigate to payment-success screen
+                router.push({
+                  pathname: '/(protected)/customer/payment-success',
+                  params: {
+                    txnRef: txnRef || '',
+                    amount: paymentAmountValue.toString(),
+                  },
+                });
                 return;
               }
+
+              // Phát hiện redirect về payment-failed
+              if (url.includes('payment-failed')) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const reason = urlParams.get('reason') || '';
+                const paymentAmountValue = Number(amount);
+                
+                console.log('❌ Payment failed detected from redirect:', url);
+                
+                // Đóng WebView ngay
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                
+                // Navigate to payment-success screen (it will show failed status)
+                router.push({
+                  pathname: '/(protected)/customer/payment-success',
+                  params: {
+                    txnRef: '',
+                    amount: paymentAmountValue.toString(),
+                    failed: 'true',
+                    reason: reason,
+                  },
+                });
+                return;
+              }
+
+              // Kiểm tra VNPay callback từ backend
+              if (isBackendCallback && url.includes('vnp_ResponseCode=')) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const responseCode = urlParams.get('vnp_ResponseCode');
+                
+                console.log('💳 VNPay Response Code:', responseCode);
+                
+                // Đóng WebView ngay
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                setSavedPaymentAmount(Number(amount));
+                setPaymentAmount(Number(amount));
+
+                // VNPay: ResponseCode = 00 là thành công
+                if (responseCode === '00') {
+                  console.log('✅ VNPay payment successful');
+                  setPaymentStatus('success');
+                  setPaymentResult('success');
+                  setShowPaymentResult(true);
+                  
+                  // Refresh wallet 1 lần sau 1 giây
+                  setTimeout(async () => {
+                    await loadUserData();
+                    await loadTransactions(1, false);
+                  }, 1000);
+                } else {
+                  console.log('❌ VNPay payment failed');
+                  setPaymentStatus('failed');
+                  setPaymentResult('failed');
+                  setShowPaymentResult(true);
+                }
+                return;
+              }
+
+              // Kiểm tra MoMo callback từ backend (không phải từ MoMo gateway)
+              if (isBackendCallback && (url.includes('momo/redirect') || url.includes('momo/return'))) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const resultCode = urlParams.get('resultCode');
+                
+                console.log('💳 MoMo Result Code:', resultCode);
+                
+                // Đóng WebView ngay
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                setSavedPaymentAmount(Number(amount));
+                setPaymentAmount(Number(amount));
+
+                // MoMo: resultCode = 0 là thành công
+                if (resultCode === '0' || resultCode === null) {
+                  console.log('✅ MoMo payment successful');
+                  setPaymentStatus('success');
+                  setPaymentResult('success');
+                  setShowPaymentResult(true);
+                  
+                  // Refresh wallet 1 lần sau 1 giây
+                  setTimeout(async () => {
+                    await loadUserData();
+                    await loadTransactions(1, false);
+                  }, 1000);
+                } else {
+                  console.log('❌ MoMo payment failed');
+                  setPaymentStatus('failed');
+                  setPaymentResult('failed');
+                  setShowPaymentResult(true);
+                }
+                return;
+              }
+
+              // Các callback khác từ backend đã được xử lý ở trên
+
+              // Cho phép WebView tiếp tục load các URL khác (như MoMo gateway, OTP page, etc.)
             }}
             onError={(error) => {
-              console.error('WebView Error:', error);
-              Alert.alert('Error', 'Failed to load payment page');
+              // Silently handle WebView errors - don't show alerts or logs on screen
+              // Payment gateway may have temporary issues, but user can still complete payment
+              if (__DEV__) {
+                console.warn('WebView error (silent):', error?.nativeEvent || error);
+              }
             }}
           />
         </View>

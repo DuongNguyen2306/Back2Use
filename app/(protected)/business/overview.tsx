@@ -3,14 +3,13 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
     Dimensions,
-    Image,
     ScrollView,
-    StatusBar,
     StyleSheet,
     Text,
     TouchableOpacity,
     View
 } from "react-native";
+import BusinessHeader from "../../../components/BusinessHeader";
 import { useAuth } from "../../../context/AuthProvider";
 import { useTokenRefresh } from "../../../hooks/useTokenRefresh";
 import { businessesApi } from "../../../src/services/api/businessService";
@@ -65,18 +64,11 @@ export default function BusinessOverview() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#00704A" />
-        <View style={styles.heroHeaderArea}>
-          <View style={styles.topBar}>
-            <Text style={styles.brandTitle}>BACK2USE</Text>
-          </View>
-          <View style={styles.greetingRow}>
-            <View>
-              <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-              <Text style={styles.greetingName}>Loading...</Text>
-            </View>
-          </View>
-        </View>
+        <BusinessHeader
+          title={getTimeBasedGreeting()}
+          subtitle="Loading..."
+          user={null}
+        />
         <View style={styles.whiteBackground}>
           <View style={styles.contentWrapper}>
             <View style={styles.loadingContainer}>
@@ -90,27 +82,18 @@ export default function BusinessOverview() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
-
-      <View style={styles.heroHeaderArea}>
-          <View style={styles.topBar}>
-            <Text style={styles.brandTitle}>BACK2USE</Text>
-          </View>
-          <View style={styles.greetingRow}>
-            <View>
-              <Text style={styles.greetingSub}>{getTimeBasedGreeting()},</Text>
-              <Text style={styles.greetingName}>{businessOwnerName}</Text>
-              <Text style={styles.greetingNice}>Business Overview</Text>
-          </View>
-            <View style={styles.avatarLg}>
-              {businessLogo ? (
-                <Image source={{ uri: businessLogo }} style={styles.avatarLgImage} />
-              ) : (
-                <Text style={styles.avatarLgText}>{businessOwnerName.charAt(0).toUpperCase()}</Text>
-              )}
-          </View>
-        </View>
-      </View>
+      <BusinessHeader
+        title={getTimeBasedGreeting()}
+        subtitle="Business Overview"
+        user={businessProfile ? {
+          _id: businessProfile.userId._id,
+          email: businessProfile.userId.email,
+          name: businessProfile.userId.username,
+          fullName: businessProfile.businessName,
+          avatar: businessProfile.businessLogoUrl || undefined,
+          role: 'business' as const,
+        } : null}
+      />
 
       <View style={styles.whiteBackground}>
         <View style={styles.contentWrapper}>

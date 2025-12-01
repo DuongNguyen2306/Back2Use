@@ -1,5 +1,5 @@
 // API Configuration Constants
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.1.11:8000';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://back-2-use.up.railway.app';
 
 // API Endpoints
 export const API_ENDPOINTS = {
@@ -123,6 +123,10 @@ export const API_ENDPOINTS = {
     REDEEM: '/customer/vouchers/redeem', // POST /customer/vouchers/redeem
   },
   BUSINESS_VOUCHERS: {
+    CREATE: '/business-vouchers', // POST /business-vouchers
+    UPDATE: '/business-vouchers', // PATCH /business-vouchers/{businessVoucherId}
+    GET_MY: '/business-vouchers/my', // GET /business-vouchers/my
+    GET_VOUCHER_CODES: '/business-vouchers', // GET /business-vouchers/{businessVoucherId}/voucher-codes
     GET_BY_CODE_ID: '/business-vouchers/voucher-codes', // GET /business-vouchers/voucher-codes/{voucherCodeId}
     USE_VOUCHER_CODE: '/business-vouchers/voucher-codes/use', // POST /business-vouchers/voucher-codes/use
   },

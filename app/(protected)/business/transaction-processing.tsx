@@ -770,13 +770,14 @@ export default function TransactionProcessingScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0F4D3A" />
-      
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Transaction History</Text>
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
+      <SafeAreaView style={styles.headerSafeArea}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft} />
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>Transaction History</Text>
+          </View>
           <View style={styles.headerRight}>
             <TouchableOpacity 
               style={styles.scanButton}
@@ -784,16 +785,9 @@ export default function TransactionProcessingScreen() {
             >
               <Ionicons name="qr-code-outline" size={24} color="#FFFFFF" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.profileIcon}>
-              {businessProfile?.businessLogoUrl ? (
-                <Image source={{ uri: businessProfile.businessLogoUrl }} style={styles.profileImage} />
-              ) : (
-                <Ionicons name="person-circle" size={32} color="#FFFFFF" />
-              )}
-            </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </SafeAreaView>
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
@@ -1460,7 +1454,7 @@ export default function TransactionProcessingScreen() {
           </View>
         </Modal>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1479,38 +1473,42 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6B7280',
   },
-  header: {
-    backgroundColor: '#0F4D3A',
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+  // Header Styles (Simple like Customer Wallet)
+  headerSafeArea: {
+    backgroundColor: '#00704A',
   },
-  headerContent: {
+  header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    width: '100%',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#00704A',
+    borderBottomLeftRadius: 20,
+  },
+  headerLeft: {
+    width: 40,
+  },
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
   },
   headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  scanButton: {
-    padding: 8,
+    width: 40,
+    alignItems: 'flex-end',
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: 'white',
+    color: '#FFFFFF',
   },
-  profileIcon: {
-    padding: 8,
-  },
-  profileImage: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  scanButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   searchContainer: {
     backgroundColor: 'white',

@@ -24,7 +24,7 @@ export class GoogleAuthService {
       console.log('Initiating Google OAuth login...');
       
       // Get API base URL from app config
-      const apiBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl || 'http://192.168.0.197:8000';
+      const apiBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl || 'https://back-2-use.up.railway.app';
       
       // Generate device info for private IP
       const deviceId = `mobile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -69,7 +69,7 @@ export class GoogleAuthService {
       console.log('Handling Google OAuth code:', code);
       
       // Get API base URL from app config
-      const apiBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl || 'http://192.168.0.197:8000';
+      const apiBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl || 'https://back-2-use.up.railway.app';
       const processUrl = `${apiBaseUrl}/auth/google-redirect?code=${code}`;
       console.log('Processing OAuth code:', processUrl);
       

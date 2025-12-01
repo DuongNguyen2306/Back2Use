@@ -6,14 +6,16 @@ import {
     Dimensions,
     Modal,
     ScrollView,
-    StatusBar,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
     View
 } from "react-native";
+import BusinessHeader from "../../../components/BusinessHeader";
 import { useAuth } from "../../../context/AuthProvider";
+import { businessesApi } from "../../../src/services/api/businessService";
+import { BusinessProfile } from "../../../src/types/business.types";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -61,6 +63,25 @@ export default function InventoryManagement() {
   const [categoryFormData, setCategoryFormData] = useState({ name: '', description: '' });
   const [typeFormData, setTypeFormData] = useState({ name: '', description: '', category: '' });
   const itemsPerPage = 6;
+  const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Load business profile
+  useEffect(() => {
+    const loadBusinessData = async () => {
+      try {
+        const profileResponse = await businessesApi.getProfileWithAutoRefresh();
+        if (profileResponse.data && profileResponse.data.business) {
+          setBusinessProfile(profileResponse.data.business);
+        }
+      } catch (error) {
+        console.error('Error loading business profile:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadBusinessData();
+  }, []);
 
   // Mock data
   useEffect(() => {
@@ -317,23 +338,29 @@ export default function InventoryManagement() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#10B981" />
+      <BusinessHeader
+        title="Quản lý kho"
+        subtitle="Inventory Management"
+        user={businessProfile ? {
+          _id: businessProfile.userId._id,
+          email: businessProfile.userId.email,
+          name: businessProfile.userId.username,
+          fullName: businessProfile.businessName,
+          avatar: businessProfile.businessLogoUrl || undefined,
+          role: 'business' as const,
+        } : null}
+      />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Quản lý kho</Text>
-        
-        {/* Search */}
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color="#FFFFFF" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Tìm kiếm sản phẩm..."
-            placeholderTextColor="rgba(255, 255, 255, 0.6)"
-            value={searchTerm}
-            onChangeText={setSearchTerm}
-          />
-        </View>
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={20} color="#6B7280" style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Tìm kiếm sản phẩm..."
+          placeholderTextColor="#9CA3AF"
+          value={searchTerm}
+          onChangeText={setSearchTerm}
+        />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -504,34 +531,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
-  header: {
-    backgroundColor: '#10B981',
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 20,
-  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 25,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     paddingHorizontal: 16,
-    height: 50,
+    height: 48,
+    marginHorizontal: 20,
+    marginTop: -20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   searchIcon: {
     marginRight: 12,
   },
   searchInput: {
     flex: 1,
-    color: '#FFFFFF',
+    color: '#111827',
     fontSize: 16,
   },
   content: {

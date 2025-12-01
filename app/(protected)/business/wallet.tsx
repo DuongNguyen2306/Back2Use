@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -7,7 +8,9 @@ import {
     Dimensions,
     Modal,
     RefreshControl,
+    SafeAreaView,
     ScrollView,
+    StatusBar,
     StyleSheet,
     Text,
     TextInput,
@@ -15,11 +18,11 @@ import {
     View
 } from 'react-native';
 import { WebView } from 'react-native-webview';
-import BusinessHeader from '../../../components/BusinessHeader';
 import { useAuth } from '../../../context/AuthProvider';
 import { useI18n } from '../../../hooks/useI18n';
 import { walletApi, WalletTransaction, walletTransactionsApi } from '../../../lib/api';
 import { businessesApi } from '../../../src/services/api/businessService';
+import { apiCall } from '../../../src/services/api/client';
 import { BusinessProfile, BusinessWallet } from '../../../src/types/business.types';
 
 const { width } = Dimensions.get('window');
@@ -346,14 +349,17 @@ export default function BusinessWalletScreen() {
       console.log('📡 Amount:', Number(amount));
       console.log('📡 Payment Method:', validPaymentMethod);
       
+      // Call deposit API - returnUrl is configured on backend
       const response = await walletApi.deposit(wallet._id, Number(amount), validPaymentMethod);
       console.log('✅ Deposit API response:', JSON.stringify(response, null, 2));
       
       // Handle different response structures
-      // Response can be: { url: "...", payUrl: "..." } or { paymentResponse: { payUrl: "..." } }
+      // Response can be: 
+      // - { url: "...", transactionId: "...", paymentResponse: { payUrl: "..." } }
+      // - { url: "...", payUrl: "..." }
       let paymentUrl = response.url || response.payUrl;
       if (!paymentUrl && response.paymentResponse) {
-        paymentUrl = response.paymentResponse.payUrl || response.paymentResponse.url;
+        paymentUrl = response.paymentResponse.payUrl || response.paymentResponse.url || response.paymentResponse.shortLink;
       }
       
       console.log('🔗 Payment URL extracted:', paymentUrl);
@@ -432,69 +438,37 @@ export default function BusinessWalletScreen() {
     }
   };
 
-  const handlePaymentSuccess = async () => {
-    console.log('✅ Payment successful, closing WebView and showing result');
-    setShowPaymentWebView(false);
-    setPaymentResult('success');
-    setShowPaymentResult(true);
-    setPaymentResultShown(true);
-    
-    // Reset transaction page to 1 to get latest transactions
-    setTransactionPage(1);
-    
-    // Immediate refresh
-    await loadBusinessData();
-    await loadTransactions(1, false); // Force reload from page 1
-    
-    // Poll for transaction status update (backend may need time to process)
-    let retryCount = 0;
-    const maxRetries = 6; // Poll up to 6 times (12 seconds total)
-    const pollInterval = 2000; // 2 seconds
-    
-    const pollForTransactionUpdate = async () => {
-      if (retryCount >= maxRetries) {
-        console.log('⏱️ Max retries reached, stopping polling');
-        // Final refresh
-        await loadBusinessData();
-        await loadTransactions(1, false);
-        return;
-      }
+  const handleRetryPayment = async (transactionId: string) => {
+    try {
+      setIsProcessing(true);
+      console.log('🔄 Retrying payment for transaction:', transactionId);
       
-      retryCount++;
-      console.log(`🔄 Polling for transaction update (attempt ${retryCount}/${maxRetries})...`);
+      // Call retry payment API endpoint
+      const response = await apiCall<any>(`/wallets/transactions/${transactionId}/retry`, {
+        method: 'POST',
+      });
       
-      await loadBusinessData();
-      await loadTransactions(1, false); // Force reload from page 1
+      console.log('✅ Retry payment response:', response);
       
-      // Continue polling to ensure backend has processed
-      if (retryCount < maxRetries) {
-        setTimeout(pollForTransactionUpdate, pollInterval);
+      if (response.data?.url || response.data?.payUrl || response.url || response.payUrl) {
+        const paymentUrl = response.data?.url || response.data?.payUrl || response.url || response.payUrl;
+        console.log('🔗 Payment URL received:', paymentUrl);
+        
+        // Show Payment WebView
+        setPaymentUrl(paymentUrl || '');
+        setShowPaymentWebView(true);
       } else {
-        // Final refresh after all retries
-        console.log('🔄 Final refresh after all polling attempts...');
-        await loadBusinessData();
-        await loadTransactions(1, false);
+        Alert.alert('Error', 'Failed to get payment URL');
       }
-    };
-    
-    // Start polling after initial delay
-    setTimeout(pollForTransactionUpdate, pollInterval);
-    
-    // Additional refresh after longer delay to ensure data is updated
-    setTimeout(async () => {
-      console.log('🔄 Final refresh after payment success (10s delay)...');
-      await loadBusinessData();
-      await loadTransactions(1, false);
-    }, 10000); // 10 seconds delay
+    } catch (error: any) {
+      console.error('❌ Retry payment error:', error);
+      Alert.alert('Error', `Failed to retry payment: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  const handlePaymentFailure = () => {
-    console.log('❌ Payment failed, closing WebView and showing result');
-    setShowPaymentWebView(false);
-    setPaymentResult('failed');
-    setShowPaymentResult(true);
-    setPaymentResultShown(true);
-  };
+  // Đã loại bỏ handlePaymentSuccess và handlePaymentFailure - xử lý trực tiếp trong WebView callback
 
   const handlePaymentResultClose = async () => {
     console.log('🔄 Closing payment result modal');
@@ -545,42 +519,49 @@ export default function BusinessWalletScreen() {
     }
   };
 
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#00704A" />
+        <SafeAreaView style={styles.headerSafeArea}>
+          <View style={styles.header}>
+            <View style={styles.headerLeft} />
+            <View style={styles.headerTitleContainer}>
+              <Text style={styles.headerTitle}>Business Wallet</Text>
+            </View>
+            <View style={styles.headerRight} />
+          </View>
+        </SafeAreaView>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#00704A" />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <BusinessHeader
-        title="Business Wallet"
-        user={businessProfile ? {
-          _id: businessProfile.userId._id,
-          email: businessProfile.userId.email,
-          name: businessProfile.userId.username,
-          fullName: businessProfile.businessName,
-          avatar: businessProfile.businessLogoUrl || undefined,
-          role: 'business' as const,
-        } : null}
-        rightAction={
-          <TouchableOpacity 
-            style={styles.refreshButton}
-            onPress={forceRefresh}
-          >
-            <Ionicons name="refresh" size={20} color="#FFFFFF" />
-        </TouchableOpacity>
-        }
-      />
+      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
+      <SafeAreaView style={styles.headerSafeArea}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft} />
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>Business Wallet</Text>
+          </View>
+          <View style={styles.headerRight}>
+            <TouchableOpacity 
+              style={styles.refreshButton}
+              onPress={forceRefresh}
+            >
+              <Ionicons name="refresh" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
 
-      <ScrollView 
-        style={styles.content} 
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={transactionsLoading}
-            onRefresh={forceRefresh}
-            colors={['#0F4D3A']}
-            tintColor="#0F4D3A"
-          />
-        }
-      >
-        {/* Balance Card */}
-        <View style={styles.balanceCard}>
+      {/* Balance Card */}
+      <View style={styles.balanceCard}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>Available Balance</Text>
             <TouchableOpacity 
@@ -608,8 +589,23 @@ export default function BusinessWalletScreen() {
           <Text style={styles.cardSubtitle}>Business Account</Text>
         </View>
 
-        {/* Summary Cards */}
-        <View style={styles.summarySection}>
+      {/* White Background Content */}
+      <View style={styles.whiteBackground}>
+        <ScrollView 
+          style={styles.content} 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={transactionsLoading}
+              onRefresh={forceRefresh}
+              colors={['#00704A']}
+              tintColor="#00704A"
+            />
+          }
+        >
+          {/* Summary Cards */}
+          <View style={styles.summarySection}>
           <View style={styles.summaryCard}>
             <View style={styles.summaryIcon}>
               <Ionicons name="trending-up" size={24} color="#10B981" />
@@ -742,7 +738,8 @@ export default function BusinessWalletScreen() {
             </>
           )}
         </View>
-      </ScrollView>
+        </ScrollView>
+      </View>
 
       {/* Deposit Modal */}
       <Modal
@@ -918,27 +915,230 @@ export default function BusinessWalletScreen() {
             <View style={{ width: 60 }} />
           </View>
           
-          <WebView
+            <WebView
             source={{ uri: paymentUrl }}
             style={styles.webView}
+            onShouldStartLoadWithRequest={(request) => {
+              const url = request.url;
+              console.log('🔍 WebView should load URL:', url);
+
+              // Check if this is a redirect from backend (back-2-use.up.railway.app or backend domain)
+              const isBackendDomain = url.includes('back-2-use.up.railway.app') || 
+                                     url.includes('backend.back2use.vn') ||
+                                     url.includes('/api/payments/') ||
+                                     url.includes('/momo/redirect') ||
+                                     url.includes('/vnpay/return');
+
+              // Phát hiện redirect về payment-success (từ backend hoặc web frontend)
+              // Backend có thể redirect về: https://back-2-use.up.railway.app/payment-success?txnRef=...
+              if (url.includes('payment-success')) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const txnRef = urlParams.get('txnRef') || urlParams.get('status');
+                const paymentAmountValue = Number(amount);
+                
+                console.log('✅ Payment success detected (onShouldStartLoadWithRequest):', { url, txnRef, amount: paymentAmountValue, isBackendDomain });
+                
+                // Đóng WebView ngay
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                
+                // Navigate to payment-success screen
+                router.push({
+                  pathname: '/(protected)/business/payment-success',
+                  params: {
+                    txnRef: txnRef || '',
+                    amount: paymentAmountValue.toString(),
+                  },
+                });
+                return false; // Prevent WebView from loading this URL
+              }
+
+              // Phát hiện redirect về payment-failed
+              if (url.includes('payment-failed')) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const reason = urlParams.get('reason') || '';
+                const paymentAmountValue = Number(amount);
+                
+                console.log('❌ Payment failed detected (onShouldStartLoadWithRequest):', url);
+                
+                // Đóng WebView ngay
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                
+                // Navigate to payment-success screen (it will show failed status)
+                router.push({
+                  pathname: '/(protected)/business/payment-success',
+                  params: {
+                    txnRef: '',
+                    amount: paymentAmountValue.toString(),
+                    failed: 'true',
+                    reason: reason,
+                  },
+                });
+                return false; // Prevent WebView from loading this URL
+              }
+
+              // Nếu backend redirect về root domain với query params chứa txnRef
+              // Ví dụ: https://back-2-use.up.railway.app/?txnRef=...&status=success
+              if (isBackendDomain && url.includes('txnRef=')) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const txnRef = urlParams.get('txnRef');
+                const status = urlParams.get('status');
+                
+                if (txnRef && (status === 'success' || status === 'already-done')) {
+                  const paymentAmountValue = Number(amount);
+                  
+                  console.log('✅ Payment success detected from backend root redirect:', { url, txnRef, status, amount: paymentAmountValue });
+                  
+                  // Đóng WebView ngay
+                  setShowPaymentWebView(false);
+                  setPaymentUrl('');
+                  
+                  // Navigate to payment-success screen
+                  router.push({
+                    pathname: '/(protected)/business/payment-success',
+                    params: {
+                      txnRef: txnRef || '',
+                      amount: paymentAmountValue.toString(),
+                    },
+                  });
+                  return false; // Prevent WebView from loading this URL
+                }
+              }
+
+              // Allow other URLs to load normally
+              return true;
+            }}
             onNavigationStateChange={(navState) => {
-              console.log('🔍 WebView navigation:', navState.url);
-              
-              // Check for success URL
-              if (navState.url.includes('vnp_ResponseCode=00') || navState.url.includes('success')) {
-                console.log('✅ Payment success detected');
-                handlePaymentSuccess();
+              const url = navState.url;
+              console.log('🔍 WebView URL (onNavigationStateChange):', url);
+
+              // Phát hiện redirect về payment-success (có thể từ localhost/web frontend)
+              // Đây là dấu hiệu backend đã xác nhận thanh toán thành công
+              if (url.includes('payment-success')) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const txnRef = urlParams.get('txnRef') || urlParams.get('status');
+                const paymentAmountValue = Number(amount);
+                
+                console.log('✅ Payment success detected from redirect:', { url, txnRef, amount: paymentAmountValue });
+                
+                // Đóng WebView ngay
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                
+                // Navigate to payment-success screen
+                router.push({
+                  pathname: '/(protected)/business/payment-success',
+                  params: {
+                    txnRef: txnRef || '',
+                    amount: paymentAmountValue.toString(),
+                  },
+                });
+                return;
               }
-              
-              // Check for failure URL
-              if (navState.url.includes('vnp_ResponseCode=') && !navState.url.includes('vnp_ResponseCode=00')) {
-                console.log('❌ Payment failure detected');
-                handlePaymentFailure();
+
+              // Phát hiện redirect về payment-failed
+              if (url.includes('payment-failed')) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const reason = urlParams.get('reason') || '';
+                const paymentAmountValue = Number(amount);
+                
+                console.log('❌ Payment failed detected from redirect:', url);
+                
+                // Đóng WebView ngay
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                
+                // Navigate to payment-success screen (it will show failed status)
+                router.push({
+                  pathname: '/(protected)/business/payment-success',
+                  params: {
+                    txnRef: '',
+                    amount: paymentAmountValue.toString(),
+                    failed: 'true',
+                    reason: reason,
+                  },
+                });
+                return;
               }
+
+              // Chỉ xử lý callback từ backend, không xử lý khi đang ở payment gateway
+              const isBackendCallback = url.includes('backend.back2use.vn') || 
+                                       url.includes('back-2-use.up.railway.app') ||
+                                       url.includes('/api/payments/');
+
+              // Kiểm tra VNPay callback từ backend
+              if (isBackendCallback && url.includes('vnp_ResponseCode=')) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const responseCode = urlParams.get('vnp_ResponseCode');
+                
+                console.log('💳 VNPay Response Code:', responseCode);
+                
+                // Đóng WebView ngay
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                setSavedPaymentAmount(Number(amount));
+                setPaymentAmount(Number(amount));
+
+                // VNPay: ResponseCode = 00 là thành công
+                if (responseCode === '00') {
+                  console.log('✅ VNPay payment successful');
+                  setPaymentResult('success');
+                  setShowPaymentResult(true);
+                  
+                  // Refresh wallet 1 lần sau 1 giây
+                  setTimeout(async () => {
+                    await loadBusinessData();
+                    await loadTransactions();
+                  }, 1000);
+                } else {
+                  console.log('❌ VNPay payment failed');
+                  setPaymentResult('failed');
+                  setShowPaymentResult(true);
+                }
+                return;
+              }
+
+              // Kiểm tra MoMo callback từ backend (không phải từ MoMo gateway)
+              if (isBackendCallback && (url.includes('momo/redirect') || url.includes('momo/return'))) {
+                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
+                const resultCode = urlParams.get('resultCode');
+                
+                console.log('💳 MoMo Result Code:', resultCode);
+                
+                // Đóng WebView ngay
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                setSavedPaymentAmount(Number(amount));
+                setPaymentAmount(Number(amount));
+
+                // MoMo: resultCode = 0 là thành công
+                if (resultCode === '0' || resultCode === null) {
+                  console.log('✅ MoMo payment successful');
+                  setPaymentResult('success');
+                  setShowPaymentResult(true);
+                  
+                  // Refresh wallet 1 lần sau 1 giây
+                  setTimeout(async () => {
+                    await loadBusinessData();
+                    await loadTransactions();
+                  }, 1000);
+                } else {
+                  console.log('❌ MoMo payment failed');
+                  setPaymentResult('failed');
+                  setShowPaymentResult(true);
+                }
+                return;
+              }
+
+              // Các callback khác từ backend đã được xử lý ở trên
             }}
             onError={(error) => {
-              console.error('❌ WebView error:', error);
-              handlePaymentFailure();
+              // Silently handle WebView errors - don't show logs on screen
+              // Payment gateway may have temporary issues, but user can still complete payment
+              if (__DEV__) {
+                console.warn('WebView error (silent):', error?.nativeEvent || error);
+              }
             }}
           />
         </View>
@@ -991,16 +1191,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 20,
+  // Header Styles (Simple like Customer Wallet)
+  headerSafeArea: {
+    backgroundColor: '#00704A',
   },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 16,
-    color: '#6B7280',
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#00704A',
+    borderBottomLeftRadius: 20,
+  },
+  headerLeft: {
+    width: 40,
+  },
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerRight: {
+    width: 40,
+    alignItems: 'flex-end',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   refreshButton: {
     width: 40,
@@ -1010,11 +1228,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  // Balance Card
+  balanceCard: {
+    backgroundColor: '#00704A',
+    borderRadius: 20,
+    padding: 24,
+    marginHorizontal: 20,
+    marginTop: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  whiteBackground: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
   content: {
     flex: 1,
     paddingHorizontal: 20,
   },
-  balanceCard: {
+  scrollContent: {
+    paddingTop: 20,
+    paddingBottom: 20,
+  },
+  balanceCardOld: {
     backgroundColor: '#0F4D3A',
     borderRadius: 16,
     padding: 20,
@@ -1029,17 +1279,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 16,
   },
   cardTitle: {
     fontSize: 16,
-    color: 'rgba(255,255,255,0.8)',
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '500',
   },
   eyeButton: {
-    padding: 4,
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   balanceContainer: {
-    marginVertical: 15,
+    marginBottom: 12,
   },
   balanceAmount: {
     fontSize: 36,
@@ -1050,6 +1304,7 @@ const styles = StyleSheet.create({
     fontSize: 36,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    letterSpacing: 4,
   },
   cardSubtitle: {
     fontSize: 14,
@@ -1123,15 +1378,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 12,
-    gap: 8,
+    paddingVertical: 18,
+    borderRadius: 16,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
   },
   addFundsButton: {
-    backgroundColor: '#0F4D3A',
+    backgroundColor: '#00704A',
   },
   withdrawButton: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#F97316',
   },
   actionButtonText: {
     color: 'white',

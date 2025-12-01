@@ -11,9 +11,18 @@ export const walletApi = {
   getById: async (walletId: string): Promise<WalletDetails> => {
     return apiCall<WalletDetails>(`/wallets/${walletId}`, { method: 'GET' });
   },
-  deposit: async (walletId: string, amount: number, paymentMethod: 'vnpay' | 'momo' = 'vnpay'): Promise<{ url?: string; payUrl?: string } & Record<string, any>> => {
+  deposit: async (
+    walletId: string, 
+    amount: number, 
+    paymentMethod?: 'vnpay' | 'momo'
+  ): Promise<{ url?: string; payUrl?: string; transactionId?: string; paymentResponse?: any } & Record<string, any>> => {
     const endpoint = API_ENDPOINTS.WALLET.DEPOSIT.replace('{walletId}', walletId);
-    return apiCall<any>(endpoint, { method: 'POST', data: { amount, paymentMethod } });
+    const payload: any = { amount };
+    if (paymentMethod) {
+      payload.paymentMethod = paymentMethod;
+    }
+    // Note: returnUrl is configured on backend, not sent from frontend
+    return apiCall<any>(endpoint, { method: 'POST', data: payload });
   },
   withdraw: async (walletId: string, amount: number): Promise<WalletDetails> => {
     const endpoint = API_ENDPOINTS.WALLET.WITHDRAW.replace('{walletId}', walletId);
@@ -30,7 +39,7 @@ export interface WalletTransaction {
   walletId: string;
   userId: string;
   amount: number;
-  transactionType: 'deposit' | 'withdraw' | 'subscription_fee' | 'borrow_deposit' | 'return_refund';
+  transactionType: 'deposit' | 'withdraw' | 'subscription_fee' | 'borrow_deposit' | 'return_refund' | 'top_up';
   direction: 'in' | 'out';
   status: 'processing' | 'completed' | 'failed';
   description: string;

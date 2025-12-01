@@ -4,8 +4,7 @@ import { Ionicons } from "@expo/vector-icons"
 import AsyncStorage from "@react-native-async-storage/async-storage"
 import { router } from "expo-router"
 import { useEffect, useState } from "react"
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
-import BusinessHeader from "../../../components/BusinessHeader"
+import { Image, SafeAreaView, StatusBar, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import BusinessWelcomeModal from "../../../components/BusinessWelcomeModal"
 import { useAuth } from "../../../context/AuthProvider"
 import { businessesApi } from "../../../src/services/api/businessService"
@@ -140,17 +139,40 @@ export default function BusinessDashboard() {
         onClose={() => setShowWelcomeModal(false)}
       />
       
-      <BusinessHeader
-        title={loading ? "Loading..." : greeting}
-        subtitle={subtitle}
-        user={businessProfile ? {
-          id: businessProfile.userId._id,
-          name: businessProfile.userId.username,
-          email: businessProfile.userId.email,
-          avatar: businessProfile.businessLogoUrl,
-        } : null}
-        backgroundColor="#00704A"
-      />
+      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
+      <SafeAreaView style={styles.headerSafeArea}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft} />
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>{loading ? "Loading..." : greeting}</Text>
+            {subtitle && (
+              <Text style={styles.headerSubtitle}>{subtitle}</Text>
+            )}
+          </View>
+          <View style={styles.headerRight}>
+            <TouchableOpacity 
+              style={styles.notificationButton}
+              onPress={() => router.push('/(protected)/business/notifications')}
+            >
+              <Ionicons name="notifications-outline" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            {businessProfile && (
+              <TouchableOpacity 
+                style={styles.avatarButton}
+                onPress={() => router.push('/(protected)/business/menu')}
+              >
+                {businessProfile.businessLogoUrl ? (
+                  <Image source={{ uri: businessProfile.businessLogoUrl }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.avatarText}>
+                    {(businessProfile.userId?.username || 'U').charAt(0).toUpperCase()}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </SafeAreaView>
 
       {/* Main Content */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -454,6 +476,69 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F8F9FA",
+  },
+  // Header Styles (Simple like Customer Wallet)
+  headerSafeArea: {
+    backgroundColor: '#00704A',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#00704A',
+    borderBottomLeftRadius: 20,
+  },
+  headerLeft: {
+    width: 40,
+  },
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+  },
+  notificationButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  avatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  avatarText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#00704A',
   },
   content: {
     flex: 1,
