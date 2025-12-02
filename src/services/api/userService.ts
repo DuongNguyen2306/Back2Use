@@ -46,6 +46,13 @@ export interface GetMonthlyLeaderboardParams {
 // USER API
 // ============================================================================
 
+// Helper function to check if error is a 502 server error
+export const is502Error = (error: any): boolean => {
+  return error?.response?.status === 502 || 
+         error?.status === 502 ||
+         error?.message === 'SERVER_UNAVAILABLE';
+};
+
 // Helper function to get current access token with auto refresh
 let getCurrentAccessToken: (() => Promise<string | null>) | null = null;
 
@@ -113,14 +120,36 @@ export const getCurrentUserProfile = async (token: string): Promise<User> => {
       throw new Error(result.message || 'Failed to get user profile');
     }
   } catch (error: any) {
-    console.error('Error fetching current user profile:', error);
-    console.error('Error details:', {
-      message: error.message,
-      code: error.code,
-      response: error.response?.data,
-      status: error.response?.status,
-      url: error.config?.url
-    });
+    // Handle 502 Bad Gateway errors silently - don't log or show to user
+    const is502Error = error.response?.status === 502 || error.status === 502;
+    
+    if (is502Error) {
+      // Silently handle 502 errors - server is temporarily unavailable
+      // Don't log to console.error to avoid showing in UI
+      // Return null or throw a silent error that won't be displayed
+      throw new Error('SERVER_UNAVAILABLE'); // Special error code that callers can handle silently
+    }
+    
+    // Don't log network errors as errors - they're expected when offline
+    const isNetworkError = error.code === 'ECONNABORTED' || 
+                          error.message === 'Network Error' ||
+                          error.message?.toLowerCase().includes('network') ||
+                          error.message?.toLowerCase().includes('timeout') ||
+                          error.message?.toLowerCase().includes('connection');
+    
+    if (!isNetworkError) {
+      console.error('Error fetching current user profile:', error);
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url
+      });
+    } else {
+      // Log network errors as warnings, not errors
+      console.warn('⚠️ Network error fetching user profile:', error.message);
+    }
     
     if (error.code === 'ECONNABORTED') {
       throw new Error('Request timeout. Please check your connection and try again.');

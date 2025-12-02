@@ -1,6 +1,7 @@
 import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService';
 import { voucherApi } from '@/services/api/voucherService';
 import { User } from '@/types/auth.types';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -34,6 +35,8 @@ interface UIVoucher {
   validUntil: string;
   isUsed: boolean;
   voucherId?: string; // For redeem
+  status?: 'active' | 'inactive' | 'expired'; // Voucher status
+  isActive?: boolean; // Legacy field for isActive
 }
 
 // Gradient colors for vouchers
@@ -101,6 +104,23 @@ export default function Rewards() {
       const endDate = voucher.endDate || voucher.validUntil;
       const isUsed = voucher.isUsed || false;
       const isRedeemable = voucher.isRedeemable !== false; // Default to true if not specified
+      
+      // Get status from voucher (status field or isActive field)
+      let status: 'active' | 'inactive' | 'expired' = 'active';
+      if (voucher.status) {
+        status = voucher.status as 'active' | 'inactive' | 'expired';
+      } else if (voucher.isActive !== undefined) {
+        status = voucher.isActive ? 'active' : 'inactive';
+      }
+      
+      // Check if expired based on endDate
+      if (endDate) {
+        const endDateObj = new Date(endDate);
+        const now = new Date();
+        if (endDateObj < now) {
+          status = 'expired';
+        }
+      }
 
       return {
         id: voucher._id,
@@ -112,6 +132,8 @@ export default function Rewards() {
         gradient,
         validUntil: endDate ? new Date(endDate).toLocaleDateString('vi-VN') : 'N/A',
         isUsed: isUsed,
+        status: status,
+        isActive: status === 'active',
       };
     }
 
@@ -269,8 +291,10 @@ export default function Rewards() {
       
       // If statusCode is 200, consider it successful
       if (response.statusCode === 200) {
-        // Reload vouchers to reflect changes
+        // Reload vouchers to reflect changes - switch to my-vouchers tab to see the new voucher
         await loadVouchers(false);
+        // Switch to my-vouchers tab to show the newly redeemed voucher
+        setActiveTab('my-vouchers');
         // Use API message if available, otherwise use default success message
         const successMessage = response.message && 
           (response.message.toLowerCase().includes('success') || 
@@ -297,8 +321,75 @@ export default function Rewards() {
     ranking: 8, // Mock ranking for now
   };
 
+  const renderLockedVoucherSlot = () => {
+    const progress = 80; // 80% progress to unlock
+    const gradientColors = ['#FF6B35', '#F7931E']; // Same vibrant gradient as active vouchers
+    
+    return (
+      <View style={styles.lockedVoucherCard}>
+        {/* Background Gradient Layer - Vibrant Orange to Red */}
+        <View style={styles.lockedGradientContainer}>
+          <View style={[styles.lockedGradientStart, { backgroundColor: gradientColors[0] }]} />
+          <View style={[styles.lockedGradientEnd, { backgroundColor: gradientColors[1] }]} />
+        </View>
+        
+        {/* Frosted Glass Overlay with Blur */}
+        <BlurView intensity={80} tint="light" style={styles.lockedGlassOverlay}>
+          <View style={styles.lockedVoucherContent}>
+            {/* Large Lock Icon */}
+            <View style={styles.lockedIconContainer}>
+              <Ionicons name="lock-closed" size={48} color="rgba(255, 255, 255, 0.95)" />
+            </View>
+            
+            {/* Description */}
+            <Text style={styles.lockedDescription}>Voucher đang chờ</Text>
+            
+            {/* Status Text */}
+            <View style={styles.lockedStatusBadge}>
+              <Text style={styles.lockedStatusText}>Chưa kích hoạt</Text>
+            </View>
+            
+            {/* Progress Bar */}
+            <View style={styles.progressBarContainer}>
+              <View style={styles.progressBarBackground}>
+                <View style={[styles.progressBarFill, { width: `${progress}%` }]} />
+              </View>
+              <Text style={styles.progressText}>{progress}%</Text>
+            </View>
+            
+            {/* Unlock Button */}
+            <TouchableOpacity 
+              style={styles.unlockButton}
+              disabled={true}
+            >
+              <Ionicons name="lock-closed" size={16} color="rgba(255, 255, 255, 0.95)" />
+              <Text style={styles.unlockButtonText}>Mở khóa</Text>
+            </TouchableOpacity>
+          </View>
+        </BlurView>
+      </View>
+    );
+  };
+
   const renderVoucherCard = (voucher: UIVoucher, isAvailable: boolean = false) => {
     const isRedeeming = redeemingId === voucher.voucherId;
+    const isActive = voucher.status === 'active' || (voucher.isActive !== false && !voucher.status);
+    const isInactive = voucher.status === 'inactive';
+    const isExpired = voucher.status === 'expired';
+    const canRedeem = isAvailable && isActive && !voucher.isUsed;
+    
+    const getStatusText = () => {
+      if (isExpired) return 'Hết hạn';
+      if (isInactive) return 'Chưa kích hoạt';
+      if (voucher.isUsed) return 'Đã sử dụng';
+      return null;
+    };
+
+    const getStatusColor = () => {
+      if (isExpired) return '#EF4444';
+      if (isInactive) return '#F59E0B';
+      return '#10B981';
+    };
     
     const handleCardPress = () => {
       // Navigate to voucher detail screen
@@ -311,72 +402,92 @@ export default function Rewards() {
     return (
       <TouchableOpacity 
         key={voucher.id} 
-        style={[styles.voucherCard, voucher.isUsed && styles.usedVoucherCard]}
+        style={[styles.voucherCard, (voucher.isUsed || !isActive) && styles.usedVoucherCard]}
         disabled={isRedeeming}
         onPress={handleCardPress}
       >
-        <View style={[
-          styles.voucherGradient, 
-          { backgroundColor: voucher.gradient[0] },
-          voucher.isUsed && styles.usedVoucherGradient
+      <View style={[
+        styles.voucherGradient, 
+        { backgroundColor: voucher.gradient[0] },
+          (voucher.isUsed || !isActive) && styles.usedVoucherGradient
         ]}>
-          {/* Watermark Graphics */}
-          <View style={styles.watermarkContainer}>
-            <View style={styles.watermark}>
-              <Text style={styles.watermarkText}>%</Text>
-              <View style={styles.watermarkDots}>
-                <View style={styles.watermarkDot} />
-                <View style={styles.watermarkDot} />
-              </View>
+          {/* Status Badge */}
+          {getStatusText() && (
+            <View style={[styles.statusBadge, { backgroundColor: getStatusColor() + '20' }]}>
+              <View style={[styles.statusDot, { backgroundColor: getStatusColor() }]} />
+              <Text style={[styles.statusText, { color: getStatusColor() }]}>
+                {getStatusText()}
+              </Text>
+            </View>
+          )}
+          
+        {/* Watermark Graphics */}
+        <View style={styles.watermarkContainer}>
+          <View style={styles.watermark}>
+            <Text style={styles.watermarkText}>%</Text>
+            <View style={styles.watermarkDots}>
+              <View style={styles.watermarkDot} />
+              <View style={styles.watermarkDot} />
             </View>
           </View>
-          
-          <View style={styles.voucherContent}>
-            <View style={styles.voucherHeader}>
-              <Text style={[styles.voucherTitle, voucher.isUsed && styles.usedVoucherText]}>
-                {voucher.title}
-              </Text>
-            </View>
-            <Text style={[styles.voucherDiscount, voucher.isUsed && styles.usedVoucherText]}>
-              {voucher.discount}
+        </View>
+        
+        <View style={styles.voucherContent}>
+          <View style={styles.voucherHeader}>
+              <Text style={[styles.voucherTitle, (voucher.isUsed || !isActive) && styles.usedVoucherText]}>
+              {voucher.title}
             </Text>
-            <Text style={[styles.voucherDescription, voucher.isUsed && styles.usedVoucherText]}>
-              {voucher.description}
-            </Text>
-            <View style={styles.voucherCodeContainer}>
-              <Text style={styles.voucherCode}>{voucher.code}</Text>
-            </View>
-            <View style={styles.voucherFooter}>
-              <Text style={[styles.validUntil, voucher.isUsed && styles.usedVoucherText]}>
+          </View>
+            <Text style={[styles.voucherDiscount, (voucher.isUsed || !isActive) && styles.usedVoucherText]}>
+            {voucher.discount}
+          </Text>
+            <Text style={[styles.voucherDescription, (voucher.isUsed || !isActive) && styles.usedVoucherText]}>
+            {voucher.description}
+          </Text>
+          <View style={styles.voucherCodeContainer}>
+            <Text style={styles.voucherCode}>{voucher.code}</Text>
+          </View>
+          <View style={styles.voucherFooter}>
+              <Text style={[styles.validUntil, (voucher.isUsed || !isActive) && styles.usedVoucherText]}>
                 HSD: {voucher.validUntil}
-              </Text>
-              {voucher.isUsed ? (
-                <Text style={styles.usedLabel}>{t('rewards').used}</Text>
+            </Text>
+            {voucher.isUsed ? (
+              <Text style={styles.usedLabel}>{t('rewards').used}</Text>
               ) : isAvailable ? (
                 <TouchableOpacity 
-                  style={[styles.useButton, isRedeeming && styles.useButtonDisabled]}
+                  style={[
+                    styles.useButton, 
+                    (!canRedeem || isRedeeming) && styles.useButtonDisabled
+                  ]}
                   onPress={(e) => {
                     e.stopPropagation();
-                    if (voucher.voucherId) {
+                    if (canRedeem && voucher.voucherId) {
                       handleRedeemVoucher(voucher.voucherId);
+                    } else if (!isActive) {
+                      Alert.alert(
+                        'Thông báo',
+                        isInactive 
+                          ? 'Voucher này chưa được kích hoạt. Vui lòng thử lại sau.' 
+                          : 'Voucher này đã hết hạn.'
+                      );
                     }
                   }}
-                  disabled={isRedeeming}
+                  disabled={!canRedeem || isRedeeming}
                 >
                   {isRedeeming ? (
                     <ActivityIndicator size="small" color="#0F4D3A" />
                   ) : (
                     <Text style={styles.useButtonText}>Nhận ngay</Text>
                   )}
-                </TouchableOpacity>
+              </TouchableOpacity>
               ) : (
                 <Text style={styles.ownedLabel}>Đã sở hữu</Text>
-              )}
-            </View>
+            )}
           </View>
         </View>
-      </TouchableOpacity>
-    );
+      </View>
+    </TouchableOpacity>
+  );
   };
 
   if (loading) {
@@ -479,10 +590,14 @@ export default function Rewards() {
           </View>
         ) : (
           <>
-            {activeTab === 'vouchers' && (
-              <View style={styles.voucherList}>
+        {activeTab === 'vouchers' && (
+          <View style={styles.voucherList}>
                 {availableVouchers.length > 0 ? (
-                  availableVouchers.map(v => renderVoucherCard(v, true))
+                  <>
+                    {availableVouchers.map(v => renderVoucherCard(v, true))}
+                    {/* Locked Voucher Slot - Ghost Style */}
+                    {renderLockedVoucherSlot()}
+                  </>
                 ) : (
                   <View style={styles.emptyState}>
                     <Ionicons name="ticket-outline" size={48} color="#9CA3AF" />
@@ -490,11 +605,11 @@ export default function Rewards() {
                     <Text style={styles.emptyStateSubtext}>Vui lòng thử lại sau</Text>
                   </View>
                 )}
-              </View>
-            )}
-            
-            {activeTab === 'my-vouchers' && (
-              <View style={styles.voucherList}>
+          </View>
+        )}
+        
+        {activeTab === 'my-vouchers' && (
+          <View style={styles.voucherList}>
                 {myVouchers.length > 0 ? (
                   myVouchers.map(v => renderVoucherCard(v, false))
                 ) : (
@@ -504,30 +619,30 @@ export default function Rewards() {
                     <Text style={styles.emptyStateSubtext}>Nhận voucher từ tab "Vouchers"</Text>
                   </View>
                 )}
-              </View>
-            )}
-            
-            {activeTab === 'history' && (
-              <View style={styles.historyList}>
+          </View>
+        )}
+        
+        {activeTab === 'history' && (
+          <View style={styles.historyList}>
                 {usedVouchers.length > 0 ? (
                   usedVouchers.map((voucher) => (
-                    <View key={voucher.id} style={styles.historyItem}>
-                      <View style={styles.historyIcon}>
-                        <Ionicons name="checkmark-circle" size={24} color="#10B981" />
-                      </View>
-                      <View style={styles.historyContent}>
-                        <Text style={styles.historyTitle}>{voucher.title} - {voucher.discount}</Text>
-                        <Text style={styles.historyDescription}>{voucher.description}</Text>
-                        <Text style={styles.historyDate}>Mã: {voucher.code}</Text>
-                      </View>
+              <View key={voucher.id} style={styles.historyItem}>
+                <View style={styles.historyIcon}>
+                  <Ionicons name="checkmark-circle" size={24} color="#10B981" />
                     </View>
+                <View style={styles.historyContent}>
+                  <Text style={styles.historyTitle}>{voucher.title} - {voucher.discount}</Text>
+                  <Text style={styles.historyDescription}>{voucher.description}</Text>
+                        <Text style={styles.historyDate}>Mã: {voucher.code}</Text>
+                </View>
+              </View>
                   ))
                 ) : (
                   <View style={styles.emptyState}>
                     <Ionicons name="time-outline" size={48} color="#9CA3AF" />
                     <Text style={styles.emptyStateText}>Chưa có lịch sử</Text>
                     <Text style={styles.emptyStateSubtext}>Các voucher đã sử dụng sẽ hiển thị ở đây</Text>
-                  </View>
+          </View>
                 )}
               </View>
             )}
@@ -876,4 +991,171 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9CA3AF',
   },
+  statusBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    zIndex: 10,
+    gap: 4,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  // Locked Voucher Slot Styles (Glassmorphism)
+  lockedVoucherCard: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+    position: 'relative',
+    minHeight: 200,
+  },
+  lockedGradientContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+  },
+  lockedGradientStart: {
+    flex: 1,
+    backgroundColor: '#FF6B35',
+  },
+  lockedGradientEnd: {
+    flex: 1,
+    backgroundColor: '#F7931E',
+    opacity: 0.8,
+  },
+  lockedGlassOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 20,
+    justifyContent: 'center',
+  },
+  lockedVoucherContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockedIconContainer: {
+    marginBottom: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockedTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    marginBottom: 4,
+  },
+  lockedDiscount: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    marginBottom: 12,
+  },
+  lockedDescription: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.9)',
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  lockedStatusBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  lockedStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  progressBarContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  progressBarBackground: {
+    width: '100%',
+    height: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 4,
+    shadowColor: '#FFFFFF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  progressText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  unlockButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.6)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    gap: 8,
+    opacity: 0.8,
+  },
+  unlockButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
 });
+

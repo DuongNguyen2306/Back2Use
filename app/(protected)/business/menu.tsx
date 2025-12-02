@@ -264,6 +264,13 @@ export default function BusinessMenu() {
       onPress: () => router.push('/(protected)/business/wallet'),
     },
     {
+      id: 'vouchers',
+      icon: 'ticket-outline',
+      label: 'Vouchers',
+      color: '#EC4899',
+      onPress: () => router.push('/(protected)/business/vouchers'),
+    },
+    {
       id: 'analytics',
       icon: 'analytics-outline',
       label: 'Reports & Analytics',

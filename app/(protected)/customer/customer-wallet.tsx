@@ -9,6 +9,7 @@ import {
   Alert,
   AppState,
   Dimensions,
+  Linking,
   Modal,
   RefreshControl,
   SafeAreaView,
@@ -81,6 +82,7 @@ export default function CustomerWallet() {
   // VNPay WebView states
   const [showPaymentWebView, setShowPaymentWebView] = useState(false);
   const [paymentUrl, setPaymentUrl] = useState('');
+  const [callbackUrl, setCallbackUrl] = useState<string | null>(null); // Lưu URL callback khi detect
   
   // Payment result states
   const [showPaymentResult, setShowPaymentResult] = useState(false);
@@ -96,6 +98,14 @@ export default function CustomerWallet() {
   // Ref to track polling state and cleanup
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const isPollingRef = useRef(false);
+
+  // Payment verification state
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
+  const verifyPaymentIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const paymentVerifyAttemptsRef = useRef(0);
+  
+  // Ref để tránh xử lý callback nhiều lần
+  const callbackProcessedRef = useRef(false);
 
   // Debug: Log state changes
   useEffect(() => {
@@ -138,6 +148,16 @@ export default function CustomerWallet() {
         console.warn('⚠️ No wallet data in user profile');
         }
         } catch (error: any) {
+        // Silently handle 502 server errors and SERVER_UNAVAILABLE errors
+        const is502Error = error?.response?.status === 502 || 
+                          error?.status === 502 ||
+                          error?.message === 'SERVER_UNAVAILABLE';
+        
+        if (is502Error) {
+          // Silently handle - don't log or show
+          return;
+        }
+        
         // Don't log network errors as errors - they're expected when offline
         const isNetworkError = error?.message?.toLowerCase().includes('network') ||
                                error?.message?.toLowerCase().includes('timeout') ||
@@ -198,6 +218,18 @@ export default function CustomerWallet() {
     return () => subscription?.remove();
   }, [wallet?._id, isPaymentProcessing, showPaymentWebView]);
 
+  // Cleanup payment URL when modal is closed - chỉ cleanup khi modal thực sự đóng
+  useEffect(() => {
+    if (!showPaymentWebView && paymentUrl) {
+      // Chỉ cleanup sau khi modal đã đóng hoàn toàn
+      const timer = setTimeout(() => {
+        console.log('🧹 Cleaning up paymentUrl after modal closed');
+        setPaymentUrl('');
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [showPaymentWebView]);
+
   const handleAddFunds = async () => {
     console.log('🚀 Starting add funds process...');
     console.log('💰 Amount:', amount);
@@ -246,20 +278,35 @@ export default function CustomerWallet() {
       // Response can be: 
       // - { url: "...", transactionId: "...", paymentResponse: { payUrl: "..." } }
       // - { url: "...", payUrl: "..." }
+      // - { data: { url: "..." } }
+      // - { data: { paymentResponse: { payUrl: "..." } } }
       let paymentUrl = response.url || response.payUrl;
+      
+      // Check nested structures
       if (!paymentUrl && response.paymentResponse) {
         paymentUrl = response.paymentResponse.payUrl || response.paymentResponse.url || response.paymentResponse.shortLink;
       }
       
+      // Check data object
+      if (!paymentUrl && response.data) {
+        paymentUrl = response.data.url || response.data.payUrl;
+        if (!paymentUrl && response.data.paymentResponse) {
+          paymentUrl = response.data.paymentResponse.payUrl || response.data.paymentResponse.url || response.data.paymentResponse.shortLink;
+        }
+      }
+      
       console.log('🔗 Payment URL extracted:', paymentUrl);
+      console.log('🔗 Full response:', JSON.stringify(response, null, 2));
       console.log('🔗 Response structure:', {
         hasUrl: !!response.url,
         hasPayUrl: !!response.payUrl,
         hasPaymentResponse: !!response.paymentResponse,
-        transactionId: response.transactionId
+        hasData: !!response.data,
+        transactionId: response.transactionId,
+        extractedUrl: paymentUrl
       });
       
-      if (paymentUrl) {
+      if (paymentUrl && paymentUrl.trim() !== '') {
         // Save transaction ID for retry if needed
         if (response.transactionId) {
           console.log('💾 Saving transaction ID:', response.transactionId);
@@ -270,18 +317,31 @@ export default function CustomerWallet() {
         setSavedPaymentAmount(Number(amount));
         setPaymentAmount(Number(amount));
         
-        // Show Payment WebView
+        // Show Payment WebView - đảm bảo URL được set trước khi mở modal
+        console.log('🔗 Setting payment URL:', paymentUrl);
+        console.log('🔗 URL length:', paymentUrl?.length);
+        console.log('🔗 URL type:', typeof paymentUrl);
+        
+        // Clear callback URL cũ nếu có và reset flag
+        setCallbackUrl(null);
+        callbackProcessedRef.current = false; // Reset flag khi bắt đầu payment mới
+        
+        // Set URL trước, sau đó mới mở modal
         setPaymentUrl(paymentUrl);
-        setShowPaymentWebView(true);
+        
+        // Dùng setTimeout để đảm bảo state được update
+        setTimeout(() => {
+          console.log('✅ Opening Payment WebView modal');
+          console.log('✅ Current paymentUrl state:', paymentUrl);
+          setShowPaymentWebView(true);
+        }, 150);
+        
         setShowAddFunds(false);
       } else {
-        console.log('✅ Direct deposit successful');
-        Alert.alert('Success', 'Deposit successful');
-        // Reload wallet data and transactions
-        await loadUserData();
-        await loadTransactions();
-      setShowAddFunds(false);
-      setAmount('');
+        console.error('❌ No payment URL found in response!');
+        console.error('❌ Response:', JSON.stringify(response, null, 2));
+        Alert.alert('Error', 'Không thể lấy URL thanh toán. Vui lòng thử lại.');
+        setShowAddFunds(false);
       }
     } catch (error: any) {
       console.error('❌ Add funds error:', error);
@@ -682,11 +742,150 @@ export default function CustomerWallet() {
     }
   }, [wallet?._id, loadTransactions]);
 
+  // Xử lý deep link khi app được mở từ URL callback
+  useEffect(() => {
+    const handleDeepLink = (event: { url: string }) => {
+      const url = event.url;
+      console.log('🔗 Deep link received:', url);
+
+      if (url.includes('/vnpay/return') || url.includes('vnp_ResponseCode')) {
+        const params = new URLSearchParams(url.split('?')[1]);
+        const responseCode = params.get('vnp_ResponseCode');
+        const transactionStatus = params.get('vnp_TransactionStatus');
+
+        if (responseCode === '00' && transactionStatus === '00') {
+          setPaymentResult('success');
+          setShowPaymentResult(true);
+          loadUserData();
+          loadTransactions();
+        } else {
+          setPaymentResult('failed');
+          setShowPaymentResult(true);
+        }
+      }
+    };
+
+    // Listen for deep links (nếu app được mở từ browser)
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    // Kiểm tra nếu app được mở từ deep link
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleDeepLink({ url });
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [loadUserData, loadTransactions]);
+
   const forceRefresh = async () => {
     console.log('🔄 Force refreshing all data...');
     setTransactionPage(1);
     await loadUserData();
     await loadTransactions(1, false);
+  };
+
+  // Function verify payment status
+  const verifyPaymentStatus = async (expectedAmount: number): Promise<boolean> => {
+    try {
+      console.log('🔍 Verifying payment status...', { expectedAmount });
+      
+      // Reload transactions để lấy status mới nhất
+      await loadTransactions(1, false);
+      
+      // Kiểm tra có transaction nào vừa completed không
+      // Kiểm tra cả deposit và top_up (wallet top up)
+      const recentCompletedTransaction = realTransactions.find(
+        t => Math.abs(t.amount - expectedAmount) < 100 && // Cho phép sai số nhỏ
+             t.status === 'completed' &&
+             (t.transactionType === 'deposit' || 
+              t.transactionType === 'top_up' ||
+              (t as any).type === 'deposit')
+      );
+      
+      if (recentCompletedTransaction) {
+        console.log('✅ Payment verified as completed!', {
+          id: recentCompletedTransaction._id,
+          amount: recentCompletedTransaction.amount,
+          type: recentCompletedTransaction.transactionType,
+          status: recentCompletedTransaction.status
+        });
+        return true;
+      }
+      
+      console.log('⏳ Payment still processing...', {
+        expectedAmount,
+        transactionsChecked: realTransactions.length,
+        completedTransactions: realTransactions.filter(t => t.status === 'completed').length
+      });
+      return false;
+    } catch (error) {
+      console.error('❌ Error verifying payment:', error);
+      return false;
+    }
+  };
+
+  // Function start polling để verify
+  const startPaymentVerification = (amount: number) => {
+    console.log('🔄 Starting payment verification polling...');
+    setIsVerifyingPayment(true);
+    paymentVerifyAttemptsRef.current = 0;
+    
+    // Clear existing interval nếu có
+    if (verifyPaymentIntervalRef.current) {
+      clearInterval(verifyPaymentIntervalRef.current);
+    }
+    
+    verifyPaymentIntervalRef.current = setInterval(async () => {
+      paymentVerifyAttemptsRef.current++;
+      console.log(`🔄 Verification attempt ${paymentVerifyAttemptsRef.current}/15`);
+      
+      const isCompleted = await verifyPaymentStatus(amount);
+      
+      if (isCompleted) {
+        // ✅ THÀNH CÔNG
+        console.log('✅ Payment verified successfully!');
+        
+        if (verifyPaymentIntervalRef.current) {
+          clearInterval(verifyPaymentIntervalRef.current);
+        }
+        
+        setIsVerifyingPayment(false);
+        setPaymentResult('success');
+        setShowPaymentResult(true);
+        
+        // Refresh data
+        await loadUserData();
+        await loadTransactions();
+        
+      } else if (paymentVerifyAttemptsRef.current >= 15) {
+        // ❌ HẾT ATTEMPTS (45 giây)
+        console.log('⏰ Payment verification timeout');
+        
+        if (verifyPaymentIntervalRef.current) {
+          clearInterval(verifyPaymentIntervalRef.current);
+        }
+        
+        setIsVerifyingPayment(false);
+        
+        // Show alert để user tự check
+        Alert.alert(
+          'Đang xử lý',
+          'Thanh toán của bạn đang được xử lý. Vui lòng kiểm tra lại sau vài phút.',
+          [
+            {
+              text: 'OK',
+              onPress: async () => {
+                await loadUserData();
+                await loadTransactions();
+              }
+            }
+          ]
+        );
+      }
+    }, 3000); // Check mỗi 3 giây
   };
 
   const loadMoreTransactions = async () => {
@@ -1103,481 +1302,366 @@ export default function CustomerWallet() {
             </View>
       </Modal>
 
-      {/* VNPay WebView Modal */}
+      {/* Payment WebView Modal - FINAL FIX */}
       <Modal
         visible={showPaymentWebView}
         animationType="slide"
         presentationStyle="fullScreen"
-      >
-        <View style={styles.webViewContainer}>
-          <View style={styles.webViewHeader}>
-            <TouchableOpacity onPress={() => setShowPaymentWebView(false)}>
-              <Text style={styles.cancelButton}>Cancel</Text>
-              </TouchableOpacity>
-            <Text style={styles.webViewTitle}>
-              {paymentMethod === 'momo' ? 'MoMo Payment' : 'VNPay Payment'}
-            </Text>
-            <View style={{ width: 60 }} />
-            </View>
-          
-          <WebView
-            source={{ uri: paymentUrl }}
-            style={styles.webView}
-            onNavigationStateChange={(navState) => {
-              const url = navState.url;
-              console.log('🔍 WebView URL:', url);
-
-              // Chỉ xử lý callback từ backend, không xử lý khi đang ở payment gateway
-              const isBackendCallback = url.includes('backend.back2use.vn') || 
-                                       url.includes('back-2-use.up.railway.app') ||
-                                       url.includes('/api/payments/');
-
-              // Phát hiện redirect về payment-success (có thể từ localhost/web frontend)
-              // Đây là dấu hiệu backend đã xác nhận thanh toán thành công
-              if (url.includes('payment-success')) {
-                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
-                const txnRef = urlParams.get('txnRef') || urlParams.get('status');
-                const paymentAmountValue = Number(amount);
+        onRequestClose={() => {
+          // Không cho đóng nếu đang verify
+          if (!isVerifyingPayment) {
+            // Xử lý tương tự như nút Back
+            if (callbackUrl && !callbackProcessedRef.current) {
+              const urlLower = callbackUrl.toLowerCase();
+              
+              if (urlLower.includes('/vnpay/return') || urlLower.includes('vnp_responsecode')) {
+                // Đánh dấu đã xử lý
+                callbackProcessedRef.current = true;
                 
-                console.log('✅ Payment success detected from redirect:', { url, txnRef, amount: paymentAmountValue });
+                const urlParts = callbackUrl.split('?');
+                const params = urlParts.length > 1 ? new URLSearchParams(urlParts[1]) : new URLSearchParams();
+                const responseCode = params.get('vnp_ResponseCode');
+                const transactionStatus = params.get('vnp_TransactionStatus');
                 
-                // Đóng WebView ngay
+                setCallbackUrl(null);
                 setShowPaymentWebView(false);
                 setPaymentUrl('');
                 
-                // Navigate to payment-success screen
-                router.push({
-                  pathname: '/(protected)/customer/payment-success',
-                  params: {
-                    txnRef: txnRef || '',
-                    amount: paymentAmountValue.toString(),
-                  },
-                });
-                return;
-              }
-
-              // Phát hiện redirect về payment-failed
-              if (url.includes('payment-failed')) {
-                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
-                const reason = urlParams.get('reason') || '';
-                const paymentAmountValue = Number(amount);
-                
-                console.log('❌ Payment failed detected from redirect:', url);
-                
-                // Đóng WebView ngay
-                setShowPaymentWebView(false);
-                setPaymentUrl('');
-                
-                // Navigate to payment-success screen (it will show failed status)
-                router.push({
-                  pathname: '/(protected)/customer/payment-success',
-                  params: {
-                    txnRef: '',
-                    amount: paymentAmountValue.toString(),
-                    failed: 'true',
-                    reason: reason,
-                  },
-                });
-                return;
-              }
-
-              // Kiểm tra VNPay callback từ backend
-              if (isBackendCallback && url.includes('vnp_ResponseCode=')) {
-                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
-                const responseCode = urlParams.get('vnp_ResponseCode');
-                
-                console.log('💳 VNPay Response Code:', responseCode);
-                
-                // Đóng WebView ngay
-                setShowPaymentWebView(false);
-                setPaymentUrl('');
-                setSavedPaymentAmount(Number(amount));
-                setPaymentAmount(Number(amount));
-
-                // VNPay: ResponseCode = 00 là thành công
-                if (responseCode === '00') {
-                  console.log('✅ VNPay payment successful');
-                  setPaymentStatus('success');
-                  setPaymentResult('success');
-                  setShowPaymentResult(true);
-                  
-                  // Refresh wallet 1 lần sau 1 giây
-                  setTimeout(async () => {
-                    await loadUserData();
-                    await loadTransactions(1, false);
-                  }, 1000);
+                if (responseCode === '00' && transactionStatus === '00') {
+                  startPaymentVerification(Number(savedPaymentAmount));
                 } else {
-                  console.log('❌ VNPay payment failed');
-                  setPaymentStatus('failed');
                   setPaymentResult('failed');
                   setShowPaymentResult(true);
                 }
-                return;
-              }
-
-              // Kiểm tra MoMo callback từ backend (không phải từ MoMo gateway)
-              if (isBackendCallback && (url.includes('momo/redirect') || url.includes('momo/return'))) {
-                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
-                const resultCode = urlParams.get('resultCode');
-                
-                console.log('💳 MoMo Result Code:', resultCode);
-                
-                // Đóng WebView ngay
+              } else {
+                setCallbackUrl(null);
+                callbackProcessedRef.current = false;
                 setShowPaymentWebView(false);
                 setPaymentUrl('');
-                setSavedPaymentAmount(Number(amount));
-                setPaymentAmount(Number(amount));
-
-                // MoMo: resultCode = 0 là thành công
-                if (resultCode === '0' || resultCode === null) {
-                  console.log('✅ MoMo payment successful');
-                  setPaymentStatus('success');
-                  setPaymentResult('success');
-                  setShowPaymentResult(true);
-                  
-                  // Refresh wallet 1 lần sau 1 giây
-                  setTimeout(async () => {
-                    await loadUserData();
-                    await loadTransactions(1, false);
-                  }, 1000);
-                } else {
-                  console.log('❌ MoMo payment failed');
-                  setPaymentStatus('failed');
-                  setPaymentResult('failed');
-                  setShowPaymentResult(true);
-                }
-                return;
               }
-
-              // Các callback khác từ backend đã được xử lý ở trên
-
-              // Cho phép WebView tiếp tục load các URL khác (như MoMo gateway, OTP page, etc.)
-            }}
-            onError={(error) => {
-              // Silently handle WebView errors - don't show logs on screen
-              // Payment gateway may have temporary issues, but user can still complete payment
-              if (__DEV__) {
-                console.warn('WebView error (silent):', error?.nativeEvent || error);
-              }
-            }}
-          />
-              </View>
-        </Modal>
-
-      {/* Payment Result Modal */}
-      <Modal
-        visible={showPaymentResult}
-        animationType="slide"
-        transparent={true}
+            } else {
+              callbackProcessedRef.current = false;
+              setShowPaymentWebView(false);
+              setPaymentUrl('');
+            }
+          }
+        }}
       >
-        <View style={styles.resultModalContainer}>
-          <View style={styles.resultModalContent}>
-            {paymentStatus === 'pending' && (
-              <>
-                <ActivityIndicator size="large" color="#0F4D3A" />
-                <Text style={styles.resultTitle}>Đang xử lý giao dịch...</Text>
-                <Text style={styles.resultMessage}>
-                  Vui lòng đợi một chút, chúng tôi đang cập nhật số dư cho bạn
-                </Text>
-              </>
-            )}
-
-            {paymentStatus === 'success' && (
-              <>
-                <Ionicons name="checkmark-circle" size={64} color="#10B981" />
-                <Text style={styles.resultTitle}>Nạp tiền thành công!</Text>
-                <Text style={styles.resultMessage}>
-                  Đã cộng {savedPaymentAmount.toLocaleString('vi-VN')} VNĐ vào ví của bạn
-                </Text>
-              </>
-            )}
-
-            {paymentStatus === 'failed' && (
-              <>
-                <Ionicons name="close-circle" size={64} color="#EF4444" />
-                <Text style={styles.resultTitle}>Nạp tiền thất bại</Text>
-                <Text style={styles.resultMessage}>
-                  Giao dịch không thành công. Vui lòng thử lại.
-                </Text>
-              </>
-            )}
-
-            {paymentStatus !== 'pending' && (
-              <TouchableOpacity
-                style={[styles.resultButton, paymentStatus === 'success' ? styles.successButton : styles.failureButton]}
-                onPress={() => {
-                  setShowPaymentResult(false);
-                  setPaymentStatus('idle');
-                  setAmount('');
-                  setSavedPaymentAmount(0);
-                }}
-              >
-                <Text style={styles.resultButtonText}>Đóng</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-
-
-      {/* VNPay WebView Modal */}
-      <Modal
-        visible={showPaymentWebView}
-        animationType="slide"
-        presentationStyle="fullScreen"
-      >
-        <View style={styles.webViewContainer}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+          {/* Header */}
           <View style={styles.webViewHeader}>
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => {
-                setShowPaymentWebView(false);
-                setPaymentUrl('');
-                // Reload wallet data after payment
-                loadUserData();
+                if (!isVerifyingPayment) {
+                  // Kiểm tra nếu có callback URL đã được lưu
+                  if (callbackUrl && !callbackProcessedRef.current) {
+                    const urlLower = callbackUrl.toLowerCase();
+                    
+                    if (urlLower.includes('/vnpay/return') || urlLower.includes('vnp_responsecode')) {
+                      // Đánh dấu đã xử lý để tránh xử lý lại
+                      callbackProcessedRef.current = true;
+                      
+                      // Parse params từ callback URL
+                      const urlParts = callbackUrl.split('?');
+                      const params = urlParts.length > 1 ? new URLSearchParams(urlParts[1]) : new URLSearchParams();
+                      const responseCode = params.get('vnp_ResponseCode');
+                      const transactionStatus = params.get('vnp_TransactionStatus');
+                      
+                      console.log('🔙 User pressed Back - processing payment result');
+                      console.log('📊 Callback URL:', callbackUrl);
+                      console.log('📊 Response code:', responseCode);
+                      console.log('📊 Transaction status:', transactionStatus);
+                      
+                      // Clear callback URL
+                      setCallbackUrl(null);
+                      
+                      // Đóng WebView
+                      setShowPaymentWebView(false);
+                      setPaymentUrl('');
+                      
+                      // Xử lý kết quả
+                      if (responseCode === '00' && transactionStatus === '00') {
+                        // Bắt đầu verify payment
+                        startPaymentVerification(Number(savedPaymentAmount));
+                      } else {
+                        // Failed
+                        setPaymentResult('failed');
+                        setShowPaymentResult(true);
+                      }
+                      return;
+                    }
+                  }
+                  
+                  // Không phải callback URL, chỉ đóng bình thường
+                  setCallbackUrl(null);
+                  callbackProcessedRef.current = false; // Reset flag
+                  setShowPaymentWebView(false);
+                  setPaymentUrl('');
+                  loadUserData();
+                }
               }}
+              disabled={isVerifyingPayment}
             >
-              <Text style={styles.webViewCloseButton}>← Back</Text>
+              <Text style={[styles.webViewCloseButton, isVerifyingPayment && { opacity: 0.5 }]}>
+                ← Back
+              </Text>
             </TouchableOpacity>
             <Text style={styles.webViewTitle}>
-              {paymentMethod === 'momo' ? 'MoMo Payment' : 'VNPay Payment'}
+              {paymentMethod === 'momo' ? 'Thanh toán MoMo' : 'Thanh toán VNPAY'}
             </Text>
             <View style={{ width: 60 }} />
-            </View>
-            
+          </View>
+
+          {/* WebView */}
+          {paymentUrl ? (
             <WebView
-            source={{ uri: paymentUrl }}
-            style={styles.webView}
-            onShouldStartLoadWithRequest={(request) => {
-              const url = request.url;
-              console.log('🔍 WebView should load URL:', url);
+              key={paymentUrl}
+              source={{ uri: paymentUrl }}
+              style={{ flex: 1, backgroundColor: '#fff' }}
+              startInLoadingState={true}
+              renderLoading={() => (
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+                  <ActivityIndicator size="large" color="#00704A" />
+                  <Text style={{ marginTop: 16, color: '#666' }}>Đang tải...</Text>
+                </View>
+              )}
+              onLoadStart={() => {
+                console.log('🔄 WebView started loading:', paymentUrl);
+              }}
+              onLoadProgress={({ nativeEvent }) => {
+                console.log('📊 WebView loading progress:', Math.round(nativeEvent.progress * 100) + '%');
+              }}
 
-              // Check if this is a redirect from backend (back-2-use.up.railway.app or backend domain)
-              const isBackendDomain = url.includes('back-2-use.up.railway.app') || 
-                                     url.includes('backend.back2use.vn') ||
-                                     url.includes('/api/payments/') ||
-                                     url.includes('/momo/redirect') ||
-                                     url.includes('/vnpay/return');
+              // ===== XỬ LÝ URL =====
+              onShouldStartLoadWithRequest={(request) => {
+                const url = request.url.toLowerCase();
+                const originalUrl = request.url;
+                console.log('🔍 URL detected:', originalUrl);
+                console.log('🔍 Current paymentUrl:', paymentUrl);
 
-              // Phát hiện redirect về payment-success (từ backend hoặc web frontend)
-              // Backend có thể redirect về: https://back-2-use.up.railway.app/payment-success?txnRef=...
-              if (url.includes('payment-success')) {
-                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
-                const txnRef = urlParams.get('txnRef') || urlParams.get('status');
-                const paymentAmountValue = Number(amount);
+                // QUAN TRỌNG: Cho phép URL ban đầu (paymentUrl) load trước
+                // URL ban đầu thường là từ VNPay gateway, không phải callback
+                // So sánh base URL (không có query params) để tránh vấn đề với redirect
+                const paymentBaseUrl = paymentUrl ? paymentUrl.split('?')[0] : '';
+                const requestBaseUrl = originalUrl.split('?')[0];
                 
-                console.log('✅ Payment success detected (onShouldStartLoadWithRequest):', { url, txnRef, amount: paymentAmountValue, isBackendDomain });
-                
-                // Đóng WebView ngay
-                setShowPaymentWebView(false);
-                setPaymentUrl('');
-                
-                // Navigate to payment-success screen
-                router.push({
-                  pathname: '/(protected)/customer/payment-success',
-                  params: {
-                    txnRef: txnRef || '',
-                    amount: paymentAmountValue.toString(),
-                  },
-                });
-                return false; // Prevent WebView from loading this URL
-              }
+                if (originalUrl === paymentUrl || 
+                    originalUrl.startsWith(paymentUrl) ||
+                    (paymentBaseUrl && requestBaseUrl.startsWith(paymentBaseUrl))) {
+                  console.log('✅ Allowing initial payment URL to load');
+                  return true;
+                }
 
-              // Phát hiện redirect về payment-failed
-              if (url.includes('payment-failed')) {
-                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
-                const reason = urlParams.get('reason') || '';
-                const paymentAmountValue = Number(amount);
-                
-                console.log('❌ Payment failed detected (onShouldStartLoadWithRequest):', url);
-                
-                // Đóng WebView ngay
-                setShowPaymentWebView(false);
-                setPaymentUrl('');
-                
-                // Navigate to payment-success screen (it will show failed status)
-                router.push({
-                  pathname: '/(protected)/customer/payment-success',
-                  params: {
-                    txnRef: '',
-                    amount: paymentAmountValue.toString(),
-                    failed: 'true',
-                    reason: reason,
-                  },
-                });
-                return false; // Prevent WebView from loading this URL
-              }
-
-              // Nếu backend redirect về root domain với query params chứa txnRef
-              // Ví dụ: https://back-2-use.up.railway.app/?txnRef=...&status=success
-              if (isBackendDomain && url.includes('txnRef=')) {
-                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
-                const txnRef = urlParams.get('txnRef');
-                const status = urlParams.get('status');
-                
-                if (txnRef && (status === 'success' || status === 'already-done')) {
-                  const paymentAmountValue = Number(amount);
+                // MOMO - vẫn đóng ngay như cũ
+                if (url.includes('momo/return') || url.includes('resultcode=')) {
+                  const params = new URLSearchParams(originalUrl.split('?')[1]);
+                  const resultCode = params.get('resultCode');
                   
-                  console.log('✅ Payment success detected from backend root redirect:', { url, txnRef, status, amount: paymentAmountValue });
+                  console.log('💳 MoMo result:', resultCode);
                   
                   // Đóng WebView ngay
                   setShowPaymentWebView(false);
                   setPaymentUrl('');
                   
-                  // Navigate to payment-success screen
-                  router.push({
-                    pathname: '/(protected)/customer/payment-success',
-                    params: {
-                      txnRef: txnRef || '',
-                      amount: paymentAmountValue.toString(),
-                    },
-                  });
-                  return false; // Prevent WebView from loading this URL
-                }
-              }
-
-              // Allow other URLs to load normally
-              return true;
-            }}
-            onNavigationStateChange={(navState) => {
-              const url = navState.url;
-              console.log('🔍 WebView URL (onNavigationStateChange):', url);
-
-              // Chỉ xử lý callback từ backend, không xử lý khi đang ở payment gateway
-              const isBackendCallback = url.includes('backend.back2use.vn') || 
-                                       url.includes('back-2-use.up.railway.app') ||
-                                       url.includes('/api/payments/');
-
-              // Phát hiện redirect về payment-success (có thể từ localhost/web frontend)
-              // Đây là dấu hiệu backend đã xác nhận thanh toán thành công
-              if (url.includes('payment-success')) {
-                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
-                const txnRef = urlParams.get('txnRef') || urlParams.get('status');
-                const paymentAmountValue = Number(amount);
-                
-                console.log('✅ Payment success detected from redirect:', { url, txnRef, amount: paymentAmountValue });
-                
-                // Đóng WebView ngay
-                setShowPaymentWebView(false);
-                setPaymentUrl('');
-                
-                // Navigate to payment-success screen
-                router.push({
-                  pathname: '/(protected)/customer/payment-success',
-                  params: {
-                    txnRef: txnRef || '',
-                    amount: paymentAmountValue.toString(),
-                  },
-                });
-                return;
-              }
-
-              // Phát hiện redirect về payment-failed
-              if (url.includes('payment-failed')) {
-                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
-                const reason = urlParams.get('reason') || '';
-                const paymentAmountValue = Number(amount);
-                
-                console.log('❌ Payment failed detected from redirect:', url);
-                
-                // Đóng WebView ngay
-                setShowPaymentWebView(false);
-                setPaymentUrl('');
-                
-                // Navigate to payment-success screen (it will show failed status)
-                router.push({
-                  pathname: '/(protected)/customer/payment-success',
-                  params: {
-                    txnRef: '',
-                    amount: paymentAmountValue.toString(),
-                    failed: 'true',
-                    reason: reason,
-                  },
-                });
-                return;
-              }
-
-              // Kiểm tra VNPay callback từ backend
-              if (isBackendCallback && url.includes('vnp_ResponseCode=')) {
-                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
-                const responseCode = urlParams.get('vnp_ResponseCode');
-                
-                console.log('💳 VNPay Response Code:', responseCode);
-                
-                // Đóng WebView ngay
-                setShowPaymentWebView(false);
-                setPaymentUrl('');
-                setSavedPaymentAmount(Number(amount));
-                setPaymentAmount(Number(amount));
-
-                // VNPay: ResponseCode = 00 là thành công
-                if (responseCode === '00') {
-                  console.log('✅ VNPay payment successful');
-                  setPaymentStatus('success');
-                  setPaymentResult('success');
-                  setShowPaymentResult(true);
+                  if (resultCode === '0') {
+                    // Bắt đầu verify
+                    startPaymentVerification(Number(savedPaymentAmount));
+                  } else {
+                    setPaymentResult('failed');
+                    setShowPaymentResult(true);
+                  }
                   
-                  // Refresh wallet 1 lần sau 1 giây
-                  setTimeout(async () => {
-                    await loadUserData();
-                    await loadTransactions(1, false);
-                  }, 1000);
-                } else {
-                  console.log('❌ VNPay payment failed');
-                  setPaymentStatus('failed');
-                  setPaymentResult('failed');
-                  setShowPaymentResult(true);
+                  return false; // Chặn load
                 }
-                return;
-              }
 
-              // Kiểm tra MoMo callback từ backend (không phải từ MoMo gateway)
-              if (isBackendCallback && (url.includes('momo/redirect') || url.includes('momo/return'))) {
-                const urlParams = new URLSearchParams(url.split('?')[1] || url.split('#')[1] || '');
-                const resultCode = urlParams.get('resultCode');
-                
-                console.log('💳 MoMo Result Code:', resultCode);
-                
-                // Đóng WebView ngay
-                setShowPaymentWebView(false);
-                setPaymentUrl('');
-                setSavedPaymentAmount(Number(amount));
-                setPaymentAmount(Number(amount));
+                // VNPAY CALLBACK - CHO PHÉP LOAD VÀ HIỂN THỊ, USER TỰ ĐÓNG
+                if (url.includes('/vnpay/return') || url.includes('vnp_responsecode')) {
+                  // Chỉ cho phép URL từ backend domain
+                  if (originalUrl.includes('back-2-use.up.railway.app') || 
+                      originalUrl.includes('backend.back2use.vn')) {
+                    // Chỉ xử lý 1 lần - tránh reload loop
+                    if (!callbackProcessedRef.current) {
+                      console.log('💳 VNPay callback detected - allowing load and display...');
+                      console.log('📊 Full callback URL:', originalUrl);
+                      // Lưu URL callback để xử lý khi user ấn Back
+                      setCallbackUrl(originalUrl);
+                      callbackProcessedRef.current = true; // Đánh dấu đã xử lý
+                    } else {
+                      console.log('⚠️ VNPay callback already processed, preventing reload');
+                    }
+                    // Cho phép load để hiển thị cho user xem (chỉ lần đầu)
+                    return true;
+                  } else {
+                    console.log('⚠️ VNPay callback URL không phải từ backend, chặn:', originalUrl);
+                    return false; // Chặn các URL không hợp lệ
+                  }
+                }
 
-                // MoMo: resultCode = 0 là thành công
-                if (resultCode === '0' || resultCode === null) {
-                  console.log('✅ MoMo payment successful');
-                  setPaymentStatus('success');
-                  setPaymentResult('success');
-                  setShowPaymentResult(true);
+                // XỬ LÝ payment-success từ backend hoặc localhost
+                // Nếu là localhost payment-success, xử lý ngay (không cần load)
+                if (url.includes('payment-success')) {
+                  if (originalUrl.includes('localhost') || originalUrl.includes('127.0.0.1')) {
+                    console.log('✅ Localhost payment-success detected - processing immediately');
+                    console.log('📊 URL:', originalUrl);
+                    
+                    const params = new URLSearchParams(originalUrl.split('?')[1]);
+                    const txnRef = params.get('txnRef');
+                    console.log('📊 Transaction ref:', txnRef);
+                    
+                    // Set payment result TRƯỚC khi đóng WebView
+                    setPaymentResult('success');
+                    setPaymentAmount(savedPaymentAmount || Number(amount) || 0);
+                    
+                    // Đợi một chút để state được set xong rồi mới hiển thị modal
+                    setTimeout(() => {
+                      setShowPaymentResult(true);
+                    }, 100);
+                    
+                    // Đóng WebView sau khi đã set state
+                    setTimeout(() => {
+                      setShowPaymentWebView(false);
+                      setPaymentUrl('');
+                      setCallbackUrl(null);
+                      callbackProcessedRef.current = false;
+                      
+                      // Refresh ví ngay lập tức
+                      loadUserData();
+                      loadTransactions(1, false);
+                    }, 200);
+                    
+                    return false; // Chặn load localhost
+                  } else {
+                    // Backend payment-success - cho phép load, xử lý trong onLoadEnd
+                    console.log('✅ Payment success page detected - allowing load first');
+                    console.log('📊 URL:', originalUrl);
+                    return true;
+                  }
+                }
+
+                // CHẶN localhost khác (không phải payment-success) - không thể load trong mobile app
+                if ((originalUrl.includes('localhost') || originalUrl.includes('127.0.0.1')) && 
+                    !originalUrl.includes('payment-success')) {
+                  console.log('⚠️ Chặn localhost URL:', originalUrl);
+                  return false;
+                }
+
+                // Cho phép tất cả các URL khác (VNPay gateway, ngân hàng, OTP, etc.)
+                console.log('✅ Allowing URL to load:', originalUrl);
+                return true;
+              }}
+
+              // ===== LOG URL KHI LOAD XONG (KHÔNG TỰ ĐỘNG ĐÓNG) =====
+              onLoadEnd={(syntheticEvent) => {
+                const url = syntheticEvent.nativeEvent.url;
+                const urlLower = url.toLowerCase();
+                console.log('✅ Load end:', url);
+
+                // XỬ LÝ payment-success - tự động đóng và hiển thị màn hình thành công
+                if (urlLower.includes('payment-success')) {
+                  const params = new URLSearchParams(url.split('?')[1]);
+                  const txnRef = params.get('txnRef');
                   
-                  // Refresh wallet 1 lần sau 1 giây
-                  setTimeout(async () => {
-                    await loadUserData();
-                    await loadTransactions(1, false);
+                  console.log('✅ Payment success page loaded - closing WebView and showing success');
+                  console.log('📊 Transaction ref:', txnRef);
+                  
+                  // Đợi 1 giây để WebView hiển thị xong rồi mới đóng
+                  setTimeout(() => {
+                    setShowPaymentWebView(false);
+                    setPaymentUrl('');
+                    setCallbackUrl(null);
+                    callbackProcessedRef.current = false;
+                    
+                    // Hiển thị màn hình thành công
+                    setPaymentResult('success');
+                    setPaymentAmount(savedPaymentAmount || Number(amount) || 0);
+                    setShowPaymentResult(true);
+                    
+                    // Refresh ví ngay lập tức
+                    loadUserData();
+                    loadTransactions(1, false);
                   }, 1000);
-                } else {
-                  console.log('❌ MoMo payment failed');
-                  setPaymentStatus('failed');
-                  setPaymentResult('failed');
-                  setShowPaymentResult(true);
+                  return;
                 }
-                return;
-              }
 
-              // Các callback khác từ backend đã được xử lý ở trên
+                // Chỉ log, không tự động đóng - để user tự đóng bằng nút Back
+                // Chỉ xử lý 1 lần để tránh reload loop
+                if ((urlLower.includes('/vnpay/return') || urlLower.includes('vnp_responsecode')) && !callbackProcessedRef.current) {
+                  // Đảm bảo callbackUrl được set (nếu chưa có từ onShouldStartLoadWithRequest)
+                  if (!callbackUrl) {
+                    setCallbackUrl(url);
+                    console.log('💾 Saved callback URL for later processing');
+                  }
+                  
+                  const params = new URLSearchParams(url.split('?')[1]);
+                  const responseCode = params.get('vnp_ResponseCode');
+                  const transactionStatus = params.get('vnp_TransactionStatus');
+                  
+                  console.log('📊 VNPay callback loaded - waiting for user to close WebView');
+                  console.log('📊 Response code:', responseCode);
+                  console.log('📊 Transaction status:', transactionStatus);
+                  console.log('📊 User can now see the result and press Back button');
+                } else if (callbackProcessedRef.current) {
+                  console.log('⚠️ Callback already processed, ignoring reload');
+                }
+              }}
 
-              // Cho phép WebView tiếp tục load các URL khác (như MoMo gateway, OTP page, etc.)
-            }}
-            onError={(error) => {
-              // Silently handle WebView errors - don't show alerts or logs on screen
-              // Payment gateway may have temporary issues, but user can still complete payment
-              if (__DEV__) {
-                console.warn('WebView error (silent):', error?.nativeEvent || error);
-              }
-            }}
-          />
-        </View>
+              onError={(syntheticEvent) => {
+                const { nativeEvent } = syntheticEvent;
+                const errorUrl = nativeEvent.url;
+                
+                // Nếu lỗi ở sandbox.vnpayment.vn (trang OTP) - chỉ log warning, không log error
+                if (errorUrl && errorUrl.includes('sandbox.vnpayment.vn')) {
+                  console.log('⚠️ VNPay OTP page connection issue - this is normal, user can retry');
+                  // Không log error chi tiết cho OTP page
+                  return;
+                }
+                
+                // Nếu lỗi xảy ra ở URL callback, vẫn xử lý payment
+                if (errorUrl && (errorUrl.includes('/vnpay/return') || errorUrl.includes('vnp_responsecode'))) {
+                  console.log('⚠️ Error loading callback URL, but will try to process payment result');
+                  // Lưu URL để xử lý khi user ấn Back
+                  if (!callbackUrl) {
+                    setCallbackUrl(errorUrl);
+                  }
+                  // Không log error chi tiết cho callback URL
+                  return;
+                }
+                
+                // Chỉ log error cho các URL khác (không phải OTP hoặc callback)
+                console.warn('⚠️ WebView error:', {
+                  code: nativeEvent.code,
+                  description: nativeEvent.description,
+                  url: errorUrl
+                });
+              }}
+
+              cacheEnabled={false}
+              domStorageEnabled={true}
+              javaScriptEnabled={true}
+            />
+          ) : (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <ActivityIndicator size="large" color="#00704A" />
+              <Text style={{ marginTop: 16, color: '#666' }}>Đang chuẩn bị...</Text>
+            </View>
+          )}
+
+          {/* Verification Overlay */}
+          {isVerifyingPayment && (
+            <View style={styles.verificationOverlay}>
+              <View style={styles.verificationCard}>
+                <ActivityIndicator size="large" color="#00704A" />
+                <Text style={styles.verificationText}>Đang xác nhận thanh toán...</Text>
+                <Text style={styles.verificationSubtext}>
+                  Kiểm tra {paymentVerifyAttemptsRef.current}/15
+                </Text>
+                <Text style={styles.verificationNote}>
+                  Vui lòng không tắt màn hình
+                </Text>
+              </View>
+            </View>
+          )}
+        </SafeAreaView>
       </Modal>
 
       {/* Payment Result Modal */}
@@ -2507,5 +2591,48 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#6B7280',
+  },
+  verificationOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  verificationCard: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    minWidth: 280,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  verificationText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginTop: 20,
+    textAlign: 'center',
+  },
+  verificationSubtext: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  verificationNote: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 16,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });

@@ -14,7 +14,7 @@ export interface ProductGroup {
   category?: string;
 }
 
-export interface Business {
+export interface ProductBusiness {
   _id: string;
   businessName: string;
   businessLogoUrl?: string;
@@ -25,7 +25,7 @@ export interface Product {
   serialNumber: string;
   productGroupId: ProductGroup;
   productSizeId: ProductSize;
-  businessId: Business | string;
+  businessId: ProductBusiness | string;
   status: 'available' | 'borrowed' | 'maintenance' | 'retired';
   condition?: string;
   images?: string[];
@@ -52,7 +52,7 @@ export interface CreateBorrowTransactionRequest {
 export interface BorrowTransaction {
   _id: string;
   productId: Product | string;
-  businessId: Business | string;
+  businessId: ProductBusiness | string;
   userId: string;
   depositValue: number;
   durationInDays: number;

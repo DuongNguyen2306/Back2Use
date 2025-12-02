@@ -13,7 +13,6 @@ export default function BusinessLayout() {
   const allNavigationItems = [
     { id: "dashboard", label: "Home", icon: "home-button", route: "/(protected)/business" },
     { id: "wallet", label: "Wallet", icon: "wallet", route: "/(protected)/business/wallet" },
-    { id: "vouchers", label: "Vouchers", icon: "ticket", route: "/(protected)/business/vouchers" },
     { id: "materials", label: "Inventory", icon: "cube", route: "/(protected)/business/materials" },
     { id: "transaction", label: "Transaction", icon: "receipt", route: "/(protected)/business/transaction-processing" },
     { id: "menu", label: "Menu", icon: "reorder-three", route: "/(protected)/business/menu" },
@@ -34,7 +33,6 @@ export default function BusinessLayout() {
   const getActiveTab = (path: string) => {
     if (path.includes("menu")) return "menu";
     if (path.includes("wallet")) return "wallet";
-    if (path.includes("vouchers")) return "vouchers";
     if (path.includes("materials")) return "materials";
     if (path.includes("transaction") || path.includes("transaction-processing")) return "transaction";
     if (path.includes("business") || path === "/(protected)/business") return "dashboard";

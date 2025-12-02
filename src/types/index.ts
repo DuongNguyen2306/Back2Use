@@ -2,7 +2,6 @@
 export * from './auth.types';
 export * from './business.types';
 export * from './product.types';
-export * from './rewards';
 export * from './wallet';
 
 

@@ -75,7 +75,34 @@ export default function BusinessVouchersScreen() {
     loadVouchers(false);
   };
 
+  // Helper function to format date to YYYY-MM-DD
+  const formatDateForInput = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Helper function to create date at start of day (00:00:00) in local timezone
+  const createDateAtStartOfDay = (dateString: string): Date => {
+    const date = new Date(dateString);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  };
+
+  // Helper function to get tomorrow at start of day
+  const getTomorrowAtStartOfDay = (): Date => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    return tomorrow;
+  };
+
   const handleCreateVoucher = () => {
+    const tomorrow = getTomorrowAtStartOfDay();
+    const tenDaysLater = new Date(tomorrow);
+    tenDaysLater.setDate(tomorrow.getDate() + 10);
+    
     setFormData({
       customName: '',
       customDescription: '',
@@ -83,8 +110,8 @@ export default function BusinessVouchersScreen() {
       baseCode: '',
       rewardPointCost: '',
       maxUsage: '',
-      startDate: '',
-      endDate: '',
+      startDate: formatDateForInput(tomorrow),
+      endDate: formatDateForInput(tenDaysLater),
     });
     setShowCreateModal(true);
   };
@@ -138,20 +165,40 @@ export default function BusinessVouchersScreen() {
       Alert.alert('Error', 'Please enter base code');
       return;
     }
-    if (!formData.startDate || !formData.endDate) {
-      Alert.alert('Error', 'Please select start and end dates');
-      return;
-    }
 
     try {
       setSubmitting(true);
+      
+      // Auto-set dates if not provided
+      let startDate = formData.startDate;
+      let endDate = formData.endDate;
+      
+      if (!startDate) {
+        const tomorrow = getTomorrowAtStartOfDay();
+        startDate = formatDateForInput(tomorrow);
+      }
+      
+      if (!endDate) {
+        const startDateObj = createDateAtStartOfDay(startDate);
+        const tenDaysLater = new Date(startDateObj);
+        tenDaysLater.setDate(startDateObj.getDate() + 10);
+        endDate = formatDateForInput(tenDaysLater);
+      }
+
+      // Create dates at start of day to avoid timezone issues
+      const startDateObj = createDateAtStartOfDay(startDate);
+      const endDateObj = createDateAtStartOfDay(endDate);
+      
+      // Set end date to end of day (23:59:59) to include the full day
+      endDateObj.setHours(23, 59, 59, 999);
+
       const payload: any = {
         customName: formData.customName.trim(),
         customDescription: formData.customDescription.trim(),
         discountPercent: Number(formData.discountPercent),
         baseCode: formData.baseCode.trim(),
-        startDate: new Date(formData.startDate).toISOString(),
-        endDate: new Date(formData.endDate).toISOString(),
+        startDate: startDateObj.toISOString(),
+        endDate: endDateObj.toISOString(),
       };
 
       if (formData.rewardPointCost) {
@@ -461,20 +508,37 @@ export default function BusinessVouchersScreen() {
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Start Date *</Text>
+                <Text style={styles.label}>Start Date * (auto: tomorrow if empty)</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="YYYY-MM-DD"
+                  placeholder={`YYYY-MM-DD (default: ${formatDateForInput(getTomorrowAtStartOfDay())})`}
                   value={formData.startDate}
-                  onChangeText={(text) => setFormData({ ...formData, startDate: text })}
+                  onChangeText={(text) => {
+                    const newFormData = { ...formData, startDate: text };
+                    // Auto-update endDate if startDate changes
+                    if (text) {
+                      const startDateObj = new Date(text);
+                      if (!isNaN(startDateObj.getTime())) {
+                        const tenDaysLater = new Date(startDateObj);
+                        tenDaysLater.setDate(startDateObj.getDate() + 10);
+                        newFormData.endDate = formatDateForInput(tenDaysLater);
+                      }
+                    }
+                    setFormData(newFormData);
+                  }}
                 />
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>End Date *</Text>
+                <Text style={styles.label}>End Date * (auto: start date + 10 days if empty)</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="YYYY-MM-DD"
+                  placeholder={`YYYY-MM-DD (default: ${(() => {
+                    const startDate = formData.startDate ? new Date(formData.startDate) : getTomorrowAtStartOfDay();
+                    const tenDaysLater = new Date(startDate);
+                    tenDaysLater.setDate(startDate.getDate() + 10);
+                    return formatDateForInput(tenDaysLater);
+                  })()})`}
                   value={formData.endDate}
                   onChangeText={(text) => setFormData({ ...formData, endDate: text })}
                 />

@@ -153,6 +153,16 @@ export default function MyProfile() {
         setHasBusinessRole(true);
       }
       } catch (error: any) {
+        // Silently handle 502 server errors and SERVER_UNAVAILABLE errors
+        const is502Error = error?.response?.status === 502 || 
+                          error?.status === 502 ||
+                          error?.message === 'SERVER_UNAVAILABLE';
+        
+        if (is502Error) {
+          // Silently handle - don't log or show toast
+          return;
+        }
+        
         // Don't show toast for network errors - they're expected when offline
         const isNetworkError = error?.message?.toLowerCase().includes('network') ||
                                error?.message?.toLowerCase().includes('timeout') ||

@@ -1,10 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack, usePathname } from "expo-router";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Image, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../../../context/AuthProvider";
 import { useI18n } from "../../../hooks/useI18n";
 import { useBusinessRoleCheck } from "../../../src/hooks/useBusinessRoleCheck";
-import { useAuth } from "../../../context/AuthProvider";
 import { getCurrentUserProfileWithAutoRefresh } from "../../../src/services/api/userService";
 
 export default function CustomerLayout() {
@@ -83,6 +83,17 @@ export default function CustomerLayout() {
             isRedirectingRef.current = true;
             router.replace('/(protected)/business');
           }
+          hasCheckedRoleRef.current = false;
+          return;
+        }
+        
+        // Silently handle 502 server errors and SERVER_UNAVAILABLE errors
+        const is502Error = error?.response?.status === 502 || 
+                          error?.status === 502 ||
+                          error?.message === 'SERVER_UNAVAILABLE';
+        
+        if (is502Error) {
+          // Silently handle - don't log or show
           hasCheckedRoleRef.current = false;
           return;
         }
