@@ -1314,6 +1314,7 @@ export default function CustomerWallet() {
             if (callbackUrl && !callbackProcessedRef.current) {
               const urlLower = callbackUrl.toLowerCase();
               
+              // VNPay callback
               if (urlLower.includes('/vnpay/return') || urlLower.includes('vnp_responsecode')) {
                 // Đánh dấu đã xử lý
                 callbackProcessedRef.current = true;
@@ -1328,6 +1329,26 @@ export default function CustomerWallet() {
                 setPaymentUrl('');
                 
                 if (responseCode === '00' && transactionStatus === '00') {
+                  startPaymentVerification(Number(savedPaymentAmount));
+                } else {
+                  setPaymentResult('failed');
+                  setShowPaymentResult(true);
+                }
+              }
+              // MoMo callback
+              else if (urlLower.includes('momo/redirect') || urlLower.includes('momo/return') || urlLower.includes('resultcode=')) {
+                // Đánh dấu đã xử lý
+                callbackProcessedRef.current = true;
+                
+                const urlParts = callbackUrl.split('?');
+                const params = urlParts.length > 1 ? new URLSearchParams(urlParts[1]) : new URLSearchParams();
+                const resultCode = params.get('resultCode');
+                
+                setCallbackUrl(null);
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                
+                if (resultCode === '0') {
                   startPaymentVerification(Number(savedPaymentAmount));
                 } else {
                   setPaymentResult('failed');
@@ -1357,6 +1378,7 @@ export default function CustomerWallet() {
                   if (callbackUrl && !callbackProcessedRef.current) {
                     const urlLower = callbackUrl.toLowerCase();
                     
+                    // VNPay callback
                     if (urlLower.includes('/vnpay/return') || urlLower.includes('vnp_responsecode')) {
                       // Đánh dấu đã xử lý để tránh xử lý lại
                       callbackProcessedRef.current = true;
@@ -1367,7 +1389,7 @@ export default function CustomerWallet() {
                       const responseCode = params.get('vnp_ResponseCode');
                       const transactionStatus = params.get('vnp_TransactionStatus');
                       
-                      console.log('🔙 User pressed Back - processing payment result');
+                      console.log('🔙 User pressed Back - processing VNPay payment result');
                       console.log('📊 Callback URL:', callbackUrl);
                       console.log('📊 Response code:', responseCode);
                       console.log('📊 Transaction status:', transactionStatus);
@@ -1381,6 +1403,38 @@ export default function CustomerWallet() {
                       
                       // Xử lý kết quả
                       if (responseCode === '00' && transactionStatus === '00') {
+                        // Bắt đầu verify payment
+                        startPaymentVerification(Number(savedPaymentAmount));
+                      } else {
+                        // Failed
+                        setPaymentResult('failed');
+                        setShowPaymentResult(true);
+                      }
+                      return;
+                    }
+                    // MoMo callback
+                    else if (urlLower.includes('momo/redirect') || urlLower.includes('momo/return') || urlLower.includes('resultcode=')) {
+                      // Đánh dấu đã xử lý để tránh xử lý lại
+                      callbackProcessedRef.current = true;
+                      
+                      // Parse params từ callback URL
+                      const urlParts = callbackUrl.split('?');
+                      const params = urlParts.length > 1 ? new URLSearchParams(urlParts[1]) : new URLSearchParams();
+                      const resultCode = params.get('resultCode');
+                      
+                      console.log('🔙 User pressed Back - processing MoMo payment result');
+                      console.log('📊 Callback URL:', callbackUrl);
+                      console.log('📊 Result code:', resultCode);
+                      
+                      // Clear callback URL
+                      setCallbackUrl(null);
+                      
+                      // Đóng WebView
+                      setShowPaymentWebView(false);
+                      setPaymentUrl('');
+                      
+                      // Xử lý kết quả
+                      if (resultCode === '0') {
                         // Bắt đầu verify payment
                         startPaymentVerification(Number(savedPaymentAmount));
                       } else {
@@ -1452,26 +1506,27 @@ export default function CustomerWallet() {
                   return true;
                 }
 
-                // MOMO - vẫn đóng ngay như cũ
-                if (url.includes('momo/return') || url.includes('resultcode=')) {
-                  const params = new URLSearchParams(originalUrl.split('?')[1]);
-                  const resultCode = params.get('resultCode');
-                  
-                  console.log('💳 MoMo result:', resultCode);
-                  
-                  // Đóng WebView ngay
-                  setShowPaymentWebView(false);
-                  setPaymentUrl('');
-                  
-                  if (resultCode === '0') {
-                    // Bắt đầu verify
-                    startPaymentVerification(Number(savedPaymentAmount));
+                // MOMO CALLBACK - CHO PHÉP LOAD VÀ HIỂN THỊ, USER TỰ ĐÓNG (giống VNPay)
+                if (url.includes('momo/redirect') || url.includes('momo/return') || url.includes('resultcode=')) {
+                  // Chỉ cho phép URL từ backend domain
+                  if (originalUrl.includes('back-2-use.up.railway.app') || 
+                      originalUrl.includes('backend.back2use.vn')) {
+                    // Chỉ xử lý 1 lần - tránh reload loop
+                    if (!callbackProcessedRef.current) {
+                      console.log('💳 MoMo callback detected - allowing load and display...');
+                      console.log('📊 Full callback URL:', originalUrl);
+                      // Lưu URL callback để xử lý khi user ấn Back
+                      setCallbackUrl(originalUrl);
+                      callbackProcessedRef.current = true; // Đánh dấu đã xử lý
+                    } else {
+                      console.log('⚠️ MoMo callback already processed, preventing reload');
+                    }
+                    // Cho phép load để hiển thị cho user xem (chỉ lần đầu)
+                    return true;
                   } else {
-                    setPaymentResult('failed');
-                    setShowPaymentResult(true);
+                    console.log('⚠️ MoMo callback URL không phải từ backend, chặn:', originalUrl);
+                    return false; // Chặn các URL không hợp lệ
                   }
-                  
-                  return false; // Chặn load
                 }
 
                 // VNPAY CALLBACK - CHO PHÉP LOAD VÀ HIỂN THỊ, USER TỰ ĐÓNG
@@ -1585,11 +1640,13 @@ export default function CustomerWallet() {
 
                 // Chỉ log, không tự động đóng - để user tự đóng bằng nút Back
                 // Chỉ xử lý 1 lần để tránh reload loop
+                
+                // VNPay callback
                 if ((urlLower.includes('/vnpay/return') || urlLower.includes('vnp_responsecode')) && !callbackProcessedRef.current) {
                   // Đảm bảo callbackUrl được set (nếu chưa có từ onShouldStartLoadWithRequest)
                   if (!callbackUrl) {
                     setCallbackUrl(url);
-                    console.log('💾 Saved callback URL for later processing');
+                    console.log('💾 Saved VNPay callback URL for later processing');
                   }
                   
                   const params = new URLSearchParams(url.split('?')[1]);
@@ -1600,7 +1657,23 @@ export default function CustomerWallet() {
                   console.log('📊 Response code:', responseCode);
                   console.log('📊 Transaction status:', transactionStatus);
                   console.log('📊 User can now see the result and press Back button');
-                } else if (callbackProcessedRef.current) {
+                }
+                // MoMo callback
+                else if ((urlLower.includes('momo/redirect') || urlLower.includes('momo/return') || urlLower.includes('resultcode=')) && !callbackProcessedRef.current) {
+                  // Đảm bảo callbackUrl được set (nếu chưa có từ onShouldStartLoadWithRequest)
+                  if (!callbackUrl) {
+                    setCallbackUrl(url);
+                    console.log('💾 Saved MoMo callback URL for later processing');
+                  }
+                  
+                  const params = new URLSearchParams(url.split('?')[1]);
+                  const resultCode = params.get('resultCode');
+                  
+                  console.log('📊 MoMo callback loaded - waiting for user to close WebView');
+                  console.log('📊 Result code:', resultCode);
+                  console.log('📊 User can now see the result and press Back button');
+                }
+                else if (callbackProcessedRef.current) {
                   console.log('⚠️ Callback already processed, ignoring reload');
                 }
               }}
