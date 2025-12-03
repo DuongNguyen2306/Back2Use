@@ -17,7 +17,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../../context/AuthProvider';
 import { useToast } from '../../../hooks/use-toast';
-import { authApi, SubscriptionPackage, subscriptionsApi } from '../../../lib/api';
+import { authApi, SubscriptionPackage } from '../../../lib/api';
+import { subscriptionsApi } from '../../../src/services/api/businessService';
 import { businessesApi } from '../../../src/services/api/businessService';
 import { BusinessProfile } from '../../../src/types/business.types';
 
@@ -37,6 +38,8 @@ export default function BusinessMenu() {
   const [buyingSubscription, setBuyingSubscription] = useState(false);
   const [buyingSubscriptionId, setBuyingSubscriptionId] = useState<string | null>(null);
   const [activeSubscription, setActiveSubscription] = useState<any[]>([]);
+  const [autoRenewStates, setAutoRenewStates] = useState<Record<string, boolean>>({});
+  const [activatingTrial, setActivatingTrial] = useState(false);
 
   useEffect(() => {
     const loadBusinessData = async () => {
@@ -83,7 +86,7 @@ export default function BusinessMenu() {
     try {
       console.log(`🔄 Switching role to: customer`);
       
-      const response = await authApi.switchRole({ role: 'customer' });
+                const response = await authApi.switchRole({ role: 'customer' });
       
       if (response.data?.accessToken && response.data?.refreshToken) {
         const newRole = response.data.user?.role as 'customer' | 'business' | 'admin';
@@ -118,7 +121,7 @@ export default function BusinessMenu() {
         });
         
         // Redirect to customer dashboard
-        router.replace('/(protected)/customer');
+                  router.replace('/(protected)/customer');
       } else {
         throw new Error('No token received from server');
       }
@@ -138,10 +141,27 @@ export default function BusinessMenu() {
       const response = await subscriptionsApi.getAll();
       console.log('✅ Subscriptions loaded:', response);
       
-      if (response.data && response.data.subscriptions) {
-        setSubscriptions(response.data.subscriptions);
-                }
-              } catch (error: any) {
+      // API returns: { statusCode: 200, message: "OK", data: [...] }
+      // data is an array directly, not data.subscriptions
+      let subscriptionsList: any[] = [];
+      
+      if (Array.isArray(response.data)) {
+        // New format: data is array directly
+        subscriptionsList = response.data;
+      } else if (response.data?.subscriptions && Array.isArray(response.data.subscriptions)) {
+        // Old format: data.subscriptions is array
+        subscriptionsList = response.data.subscriptions;
+      } else if (response.data && typeof response.data === 'object') {
+        // Fallback: try to extract array from response.data
+        subscriptionsList = [];
+      }
+      
+      // Filter only active subscriptions
+      subscriptionsList = subscriptionsList.filter((sub: any) => sub.isActive !== false);
+      
+      setSubscriptions(subscriptionsList);
+      console.log('✅ Set subscriptions:', subscriptionsList.length);
+    } catch (error: any) {
       console.error('❌ Error loading subscriptions:', error);
       toast({
         title: "Error",
@@ -200,8 +220,11 @@ export default function BusinessMenu() {
       setBuyingSubscriptionId(packageItem._id);
       console.log('🛒 Buying subscription:', packageItem);
       
+      const autoRenew = autoRenewStates[packageItem._id] || false;
+      
       const response = await subscriptionsApi.buy({
         subscriptionId: packageItem._id,
+        autoRenew: autoRenew,
       });
       
       console.log('✅ Buy subscription response:', response);
@@ -230,6 +253,42 @@ export default function BusinessMenu() {
     } finally {
       setBuyingSubscription(false);
       setBuyingSubscriptionId(null);
+    }
+  };
+
+  const handleActivateTrial = async () => {
+    try {
+      setActivatingTrial(true);
+      console.log('🎁 Activating trial subscription...');
+      
+      const response = await subscriptionsApi.activateTrial();
+      
+      console.log('✅ Activate trial response:', response);
+      
+      toast({
+        title: "Success",
+        description: response.message || "Trial subscription activated successfully",
+      });
+      
+      // Reload business profile to get updated activeSubscription
+      const profileResponse = await businessesApi.getProfileWithAutoRefresh();
+      if (profileResponse.data?.activeSubscription) {
+        const subscriptions = Array.isArray(profileResponse.data.activeSubscription) 
+          ? profileResponse.data.activeSubscription 
+          : [profileResponse.data.activeSubscription];
+        setActiveSubscription(subscriptions);
+      }
+      
+      setShowSubscriptionModal(false);
+    } catch (error: any) {
+      console.error('❌ Error activating trial:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || "Failed to activate trial subscription. Please try again.";
+      toast({
+        title: "Error",
+        description: errorMessage,
+      });
+    } finally {
+      setActivatingTrial(false);
     }
   };
 
@@ -496,8 +555,37 @@ export default function BusinessMenu() {
                 <View style={styles.subscriptionLoadingContainer}>
                   <Text style={styles.subscriptionLoadingText}>Loading subscriptions...</Text>
                 </View>
-              ) : subscriptions.length > 0 ? (
-                subscriptions.map((packageItem) => (
+              ) : (
+                <>
+                  {/* Activate Trial Button - Only show if no active subscription */}
+                  {activeSubscription.length === 0 && !hasActiveSubscription() && (
+                    <View style={styles.subscriptionPackageCard}>
+                      <View style={styles.subscriptionPackageHeader}>
+                        <View style={styles.subscriptionPackageIcon}>
+                          <Ionicons name="gift" size={24} color="#00704A" />
+                        </View>
+                        <View style={styles.subscriptionPackageInfo}>
+                          <Text style={styles.subscriptionPackageName}>Free Trial</Text>
+                          <Text style={styles.subscriptionPackageDuration}>Try our service for free</Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={[
+                          styles.subscriptionBuyButton,
+                          activatingTrial && styles.subscriptionBuyButtonDisabled
+                        ]}
+                        onPress={handleActivateTrial}
+                        disabled={activatingTrial}
+                      >
+                        <Text style={styles.subscriptionBuyButtonText}>
+                          {activatingTrial ? 'Activating...' : 'Activate Trial'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  
+                  {/* Subscription Packages */}
+                  {subscriptions.length > 0 && subscriptions.map((packageItem) => (
                   <View
                     key={packageItem._id}
                     style={styles.subscriptionPackageCard}
@@ -545,6 +633,30 @@ export default function BusinessMenu() {
                       </View>
                     </View>
                     
+                    {/* Auto Renew Toggle - Only show if not active and not trial */}
+                    {!isSubscriptionActive(packageItem._id) && !hasActiveSubscription() && !packageItem.isTrial && (
+                      <View style={styles.autoRenewContainer}>
+                        <Text style={styles.autoRenewLabel}>Auto Renew</Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.toggleSwitch,
+                            autoRenewStates[packageItem._id] && styles.toggleSwitchActive
+                          ]}
+                          onPress={() => {
+                            setAutoRenewStates(prev => ({
+                              ...prev,
+                              [packageItem._id]: !prev[packageItem._id]
+                            }));
+                          }}
+                        >
+                          <View style={[
+                            styles.toggleThumb,
+                            autoRenewStates[packageItem._id] && styles.toggleThumbActive
+                          ]} />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    
                     {isSubscriptionActive(packageItem._id) ? (
                       <View style={[styles.subscriptionBuyButton, styles.subscriptionBuyButtonActive]}>
                         <Text style={styles.subscriptionBuyButtonText}>Currently Active</Text>
@@ -572,11 +684,14 @@ export default function BusinessMenu() {
                       </TouchableOpacity>
                     )}
                   </View>
-                ))
-              ) : (
-                <View style={styles.subscriptionLoadingContainer}>
-                  <Text style={styles.subscriptionLoadingText}>No subscriptions available</Text>
-                </View>
+                  ))}
+                  
+                  {subscriptions.length === 0 && (
+                    <View style={styles.subscriptionLoadingContainer}>
+                      <Text style={styles.subscriptionLoadingText}>No subscriptions available</Text>
+                    </View>
+                  )}
+                </>
               )}
             </ScrollView>
           </View>
@@ -894,6 +1009,46 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  autoRenewContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+  },
+  autoRenewLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  toggleSwitch: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#D1D5DB',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  toggleSwitchActive: {
+    backgroundColor: '#00704A',
+  },
+  toggleThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  toggleThumbActive: {
+    transform: [{ translateX: 20 }],
   },
 });
 

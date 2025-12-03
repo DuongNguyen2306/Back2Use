@@ -96,77 +96,29 @@ export default function BusinessSettings() {
       setLoadingPackages(true);
       console.log('📡 Loading subscription packages...');
       
-      try {
-        const response = await subscriptionsApi.getAll();
-        console.log('📊 Subscription packages response:', response);
-        
-        if (response.data?.subscriptions) {
-          setPackages(response.data.subscriptions);
-        } else {
-          setPackages([]);
-        }
-      } catch (apiError) {
-        console.log('❌ API not available, using mock data:', apiError);
-        
-        // Fallback to mock data
-        const mockResponse = {
-          statusCode: 200,
-          message: "Subscriptions retrieved successfully",
-          data: {
-            subscriptions: [
-              {
-                _id: "68f339856f15498ff08285cb",
-                name: "Free Trial",
-                price: 0,
-                durationInDays: 7,
-                isActive: true,
-                isTrial: true,
-                isDeleted: false,
-                createdAt: "2025-10-18T06:53:57.379Z",
-                updatedAt: "2025-10-18T06:53:57.379Z",
-              },
-              {
-                _id: "68f34726cda34044d972f332",
-                name: "1 Month",
-                price: 299000,
-                durationInDays: 30,
-                isActive: true,
-                isTrial: false,
-                isDeleted: false,
-                createdAt: "2025-10-18T07:52:06.020Z",
-                updatedAt: "2025-10-19T13:49:38.632Z",
-              },
-              {
-                _id: "68f34726cda34044d972f333",
-                name: "3 Months",
-                price: 799000,
-                durationInDays: 90,
-                isActive: true,
-                isTrial: false,
-                isDeleted: false,
-                createdAt: "2025-10-18T07:52:06.020Z",
-                updatedAt: "2025-10-19T13:49:38.632Z",
-              },
-              {
-                _id: "68f34726cda34044d972f334",
-                name: "1 Year",
-                price: 2999000,
-                durationInDays: 365,
-                isActive: true,
-                isTrial: false,
-                isDeleted: false,
-                createdAt: "2025-10-18T07:52:06.020Z",
-                updatedAt: "2025-10-19T13:49:38.632Z",
-              }
-            ]
-          }
-        };
-        
-        setPackages(mockResponse.data.subscriptions);
+      const response = await subscriptionsApi.getAll();
+      console.log('📊 Subscription packages response:', response);
+      
+      // API returns: { statusCode: 200, message: "OK", data: [...] }
+      // data is an array directly, not data.subscriptions
+      let subscriptionsList: any[] = [];
+      
+      if (Array.isArray(response.data)) {
+        // New format: data is array directly
+        subscriptionsList = response.data;
+      } else if (response.data?.subscriptions && Array.isArray(response.data.subscriptions)) {
+        // Old format: data.subscriptions is array
+        subscriptionsList = response.data.subscriptions;
       }
+      
+      // Filter only active subscriptions
+      subscriptionsList = subscriptionsList.filter((sub: any) => sub.isActive !== false);
+      
+      setPackages(subscriptionsList);
+      console.log('✅ Set packages:', subscriptionsList.length);
     } catch (error) {
       console.error('❌ Error loading subscription packages:', error);
-      alert('Failed to load subscription packages');
+      Alert.alert('Error', 'Failed to load subscription packages');
     } finally {
       setLoadingPackages(false);
     }

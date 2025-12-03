@@ -333,7 +333,7 @@ export default function CustomerWallet() {
         setTimeout(() => {
           console.log('✅ Opening Payment WebView modal');
           console.log('✅ Current paymentUrl state:', paymentUrl);
-          setShowPaymentWebView(true);
+        setShowPaymentWebView(true);
         }, 150);
         
         setShowAddFunds(false);
@@ -341,7 +341,7 @@ export default function CustomerWallet() {
         console.error('❌ No payment URL found in response!');
         console.error('❌ Response:', JSON.stringify(response, null, 2));
         Alert.alert('Error', 'Không thể lấy URL thanh toán. Vui lòng thử lại.');
-        setShowAddFunds(false);
+      setShowAddFunds(false);
       }
     } catch (error: any) {
       console.error('❌ Add funds error:', error);
@@ -1313,7 +1313,7 @@ export default function CustomerWallet() {
             // Xử lý tương tự như nút Back
             if (callbackUrl && !callbackProcessedRef.current) {
               const urlLower = callbackUrl.toLowerCase();
-              
+
               // VNPay callback
               if (urlLower.includes('/vnpay/return') || urlLower.includes('vnp_responsecode')) {
                 // Đánh dấu đã xử lý
@@ -1388,7 +1388,7 @@ export default function CustomerWallet() {
                       const params = urlParts.length > 1 ? new URLSearchParams(urlParts[1]) : new URLSearchParams();
                       const responseCode = params.get('vnp_ResponseCode');
                       const transactionStatus = params.get('vnp_TransactionStatus');
-                      
+                
                       console.log('🔙 User pressed Back - processing VNPay payment result');
                       console.log('📊 Callback URL:', callbackUrl);
                       console.log('📊 Response code:', responseCode);
@@ -1396,22 +1396,22 @@ export default function CustomerWallet() {
                       
                       // Clear callback URL
                       setCallbackUrl(null);
-                      
+                
                       // Đóng WebView
-                      setShowPaymentWebView(false);
-                      setPaymentUrl('');
-                      
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+
                       // Xử lý kết quả
                       if (responseCode === '00' && transactionStatus === '00') {
                         // Bắt đầu verify payment
                         startPaymentVerification(Number(savedPaymentAmount));
-                      } else {
+                } else {
                         // Failed
-                        setPaymentResult('failed');
-                        setShowPaymentResult(true);
-                      }
-                      return;
-                    }
+                  setPaymentResult('failed');
+                  setShowPaymentResult(true);
+                }
+                return;
+              }
                     // MoMo callback
                     else if (urlLower.includes('momo/redirect') || urlLower.includes('momo/return') || urlLower.includes('resultcode=')) {
                       // Đánh dấu đã xử lý để tránh xử lý lại
@@ -1421,7 +1421,7 @@ export default function CustomerWallet() {
                       const urlParts = callbackUrl.split('?');
                       const params = urlParts.length > 1 ? new URLSearchParams(urlParts[1]) : new URLSearchParams();
                       const resultCode = params.get('resultCode');
-                      
+                
                       console.log('🔙 User pressed Back - processing MoMo payment result');
                       console.log('📊 Callback URL:', callbackUrl);
                       console.log('📊 Result code:', resultCode);
@@ -1430,28 +1430,28 @@ export default function CustomerWallet() {
                       setCallbackUrl(null);
                       
                       // Đóng WebView
-                      setShowPaymentWebView(false);
-                      setPaymentUrl('');
-                      
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+
                       // Xử lý kết quả
                       if (resultCode === '0') {
                         // Bắt đầu verify payment
                         startPaymentVerification(Number(savedPaymentAmount));
-                      } else {
+                } else {
                         // Failed
-                        setPaymentResult('failed');
-                        setShowPaymentResult(true);
-                      }
-                      return;
-                    }
+                  setPaymentResult('failed');
+                  setShowPaymentResult(true);
+                }
+                return;
+              }
                   }
                   
                   // Không phải callback URL, chỉ đóng bình thường
                   setCallbackUrl(null);
                   callbackProcessedRef.current = false; // Reset flag
-                  setShowPaymentWebView(false);
-                  setPaymentUrl('');
-                  loadUserData();
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                loadUserData();
                 }
               }}
               disabled={isVerifyingPayment}
@@ -1464,13 +1464,13 @@ export default function CustomerWallet() {
               {paymentMethod === 'momo' ? 'Thanh toán MoMo' : 'Thanh toán VNPAY'}
             </Text>
             <View style={{ width: 60 }} />
-          </View>
-
+            </View>
+            
           {/* WebView */}
           {paymentUrl ? (
             <WebView
               key={paymentUrl}
-              source={{ uri: paymentUrl }}
+            source={{ uri: paymentUrl }}
               style={{ flex: 1, backgroundColor: '#fff' }}
               startInLoadingState={true}
               renderLoading={() => (
@@ -1487,7 +1487,7 @@ export default function CustomerWallet() {
               }}
 
               // ===== XỬ LÝ URL =====
-              onShouldStartLoadWithRequest={(request) => {
+            onShouldStartLoadWithRequest={(request) => {
                 const url = request.url.toLowerCase();
                 const originalUrl = request.url;
                 console.log('🔍 URL detected:', originalUrl);
@@ -1527,7 +1527,7 @@ export default function CustomerWallet() {
                     console.log('⚠️ MoMo callback URL không phải từ backend, chặn:', originalUrl);
                     return false; // Chặn các URL không hợp lệ
                   }
-                }
+              }
 
                 // VNPAY CALLBACK - CHO PHÉP LOAD VÀ HIỂN THỊ, USER TỰ ĐÓNG
                 if (url.includes('/vnpay/return') || url.includes('vnp_responsecode')) {
@@ -1550,7 +1550,7 @@ export default function CustomerWallet() {
                     console.log('⚠️ VNPay callback URL không phải từ backend, chặn:', originalUrl);
                     return false; // Chặn các URL không hợp lệ
                   }
-                }
+              }
 
                 // XỬ LÝ payment-success từ backend hoặc localhost
                 // Nếu là localhost payment-success, xử lý ngay (không cần load)
@@ -1571,11 +1571,11 @@ export default function CustomerWallet() {
                     setTimeout(() => {
                       setShowPaymentResult(true);
                     }, 100);
-                    
+                  
                     // Đóng WebView sau khi đã set state
                     setTimeout(() => {
-                      setShowPaymentWebView(false);
-                      setPaymentUrl('');
+                  setShowPaymentWebView(false);
+                  setPaymentUrl('');
                       setCallbackUrl(null);
                       callbackProcessedRef.current = false;
                       
@@ -1602,8 +1602,8 @@ export default function CustomerWallet() {
 
                 // Cho phép tất cả các URL khác (VNPay gateway, ngân hàng, OTP, etc.)
                 console.log('✅ Allowing URL to load:', originalUrl);
-                return true;
-              }}
+              return true;
+            }}
 
               // ===== LOG URL KHI LOAD XONG (KHÔNG TỰ ĐỘNG ĐÓNG) =====
               onLoadEnd={(syntheticEvent) => {
@@ -1618,11 +1618,11 @@ export default function CustomerWallet() {
                   
                   console.log('✅ Payment success page loaded - closing WebView and showing success');
                   console.log('📊 Transaction ref:', txnRef);
-                  
+                
                   // Đợi 1 giây để WebView hiển thị xong rồi mới đóng
                   setTimeout(() => {
-                    setShowPaymentWebView(false);
-                    setPaymentUrl('');
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
                     setCallbackUrl(null);
                     callbackProcessedRef.current = false;
                     
@@ -1635,8 +1635,8 @@ export default function CustomerWallet() {
                     loadUserData();
                     loadTransactions(1, false);
                   }, 1000);
-                  return;
-                }
+                return;
+              }
 
                 // Chỉ log, không tự động đóng - để user tự đóng bằng nút Back
                 // Chỉ xử lý 1 lần để tránh reload loop
@@ -1652,7 +1652,7 @@ export default function CustomerWallet() {
                   const params = new URLSearchParams(url.split('?')[1]);
                   const responseCode = params.get('vnp_ResponseCode');
                   const transactionStatus = params.get('vnp_TransactionStatus');
-                  
+                
                   console.log('📊 VNPay callback loaded - waiting for user to close WebView');
                   console.log('📊 Response code:', responseCode);
                   console.log('📊 Transaction status:', transactionStatus);
@@ -1668,7 +1668,7 @@ export default function CustomerWallet() {
                   
                   const params = new URLSearchParams(url.split('?')[1]);
                   const resultCode = params.get('resultCode');
-                  
+                
                   console.log('📊 MoMo callback loaded - waiting for user to close WebView');
                   console.log('📊 Result code:', resultCode);
                   console.log('📊 User can now see the result and press Back button');
@@ -1681,14 +1681,14 @@ export default function CustomerWallet() {
               onError={(syntheticEvent) => {
                 const { nativeEvent } = syntheticEvent;
                 const errorUrl = nativeEvent.url;
-                
+                  
                 // Nếu lỗi ở sandbox.vnpayment.vn (trang OTP) - chỉ log warning, không log error
                 if (errorUrl && errorUrl.includes('sandbox.vnpayment.vn')) {
                   console.log('⚠️ VNPay OTP page connection issue - this is normal, user can retry');
                   // Không log error chi tiết cho OTP page
-                  return;
-                }
-                
+                return;
+              }
+
                 // Nếu lỗi xảy ra ở URL callback, vẫn xử lý payment
                 if (errorUrl && (errorUrl.includes('/vnpay/return') || errorUrl.includes('vnp_responsecode'))) {
                   console.log('⚠️ Error loading callback URL, but will try to process payment result');
@@ -1697,9 +1697,9 @@ export default function CustomerWallet() {
                     setCallbackUrl(errorUrl);
                   }
                   // Không log error chi tiết cho callback URL
-                  return;
-                }
-                
+                return;
+              }
+
                 // Chỉ log error cho các URL khác (không phải OTP hoặc callback)
                 console.warn('⚠️ WebView error:', {
                   code: nativeEvent.code,
@@ -1716,7 +1716,7 @@ export default function CustomerWallet() {
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
               <ActivityIndicator size="large" color="#00704A" />
               <Text style={{ marginTop: 16, color: '#666' }}>Đang chuẩn bị...</Text>
-            </View>
+        </View>
           )}
 
           {/* Verification Overlay */}

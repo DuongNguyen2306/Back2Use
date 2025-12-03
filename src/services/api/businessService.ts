@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_ENDPOINTS } from '../../constants/api';
+import { API_ENDPOINTS, REQUEST_TIMEOUT } from '../../constants/api';
 import {
   BusinessFormHistoryResponse,
   BusinessProfileResponse,
@@ -342,11 +342,17 @@ export interface SubscriptionPackage {
 export interface SubscriptionsResponse {
   statusCode: number;
   message: string;
-  data: { subscriptions: SubscriptionPackage[] };
+  data: SubscriptionPackage[] | {
+    subscriptions?: SubscriptionPackage[];
+  };
 }
 
-export interface BuySubscriptionRequest { subscriptionId: string; }
+export interface BuySubscriptionRequest { 
+  subscriptionId: string;
+  autoRenew?: boolean;
+}
 export interface BuySubscriptionResponse { statusCode: number; message: string; data?: any; }
+export interface ActivateTrialResponse { statusCode: number; message: string; data?: any; }
 
 export const subscriptionsApi = {
   getAll: async (): Promise<SubscriptionsResponse> => {
@@ -356,6 +362,11 @@ export const subscriptionsApi = {
     return apiCall<BuySubscriptionResponse>(API_ENDPOINTS.SUBSCRIPTIONS.BUY, {
       method: 'POST',
       data: payload,
+    });
+  },
+  activateTrial: async (): Promise<ActivateTrialResponse> => {
+    return apiCall<ActivateTrialResponse>(API_ENDPOINTS.SUBSCRIPTIONS.ACTIVATE_TRIAL, {
+      method: 'POST',
     });
   },
 };
@@ -444,15 +455,15 @@ export const businessesApi = {
       
       // Only log non-403 errors
       if (error?.response?.status !== 403) {
-        console.error('Error fetching business profile:', error);
-        console.error('Error details:', {
-          message: error.message,
-          code: error.code,
-          response: error.response?.data,
-          status: error.response?.status,
-          url: error.config?.url,
-          retriesLeft: retries
-        });
+      console.error('Error fetching business profile:', error);
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url,
+        retriesLeft: retries
+      });
       }
       
       // Retry logic for timeout or network errors
@@ -500,6 +511,71 @@ export const businessesApi = {
     }
 
     return businessesApi.getProfileWithToken(token);
+  },
+  updateProfile: async (updates: UpdateBusinessProfileRequest): Promise<BusinessProfileResponse> => {
+    let token: string | null = null;
+    
+    // Try to get token from token provider first (supports auto refresh)
+    if (getCurrentAccessToken) {
+      try {
+        token = await getCurrentAccessToken();
+      } catch (error) {
+        console.warn('Error getting token from provider:', error);
+      }
+    }
+    
+    // Fallback: Get token directly from AsyncStorage if provider not available
+    if (!token) {
+      try {
+        token = await AsyncStorage.getItem('ACCESS_TOKEN');
+      } catch (error) {
+        console.warn('Error getting token from AsyncStorage:', error);
+      }
+    }
+    
+    if (!token) {
+      throw new Error('No valid access token available');
+    }
+
+    try {
+      console.log('🔄 Updating business profile with:', updates);
+      console.log('🔗 Endpoint:', API_ENDPOINTS.BUSINESSES.UPDATE_PROFILE);
+      
+      if (!API_ENDPOINTS.BUSINESSES.UPDATE_PROFILE) {
+        throw new Error('UPDATE_PROFILE endpoint is not defined');
+      }
+      
+      const endpoint = API_ENDPOINTS.BUSINESSES.UPDATE_PROFILE;
+      console.log('🔗 Full endpoint URL:', endpoint);
+      
+      const response = await apiClient({
+        method: 'PATCH',
+        url: endpoint,
+        data: updates,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        timeout: REQUEST_TIMEOUT,
+      });
+
+      console.log('📥 Update profile response status:', response.status);
+      console.log('📥 Update profile response data:', response.data);
+
+      const result = response.data;
+      
+      if (result.statusCode === 200 && result.data) {
+        console.log('✅ Business profile updated successfully');
+        return result;
+      } else {
+        throw new Error(result.message || 'Failed to update business profile');
+      }
+    } catch (error: any) {
+      console.error('Error updating business profile:', error);
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('Request timeout. Please check your connection and try again.');
+      }
+      throw new Error(`Failed to update business profile: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+    }
   },
 };
 

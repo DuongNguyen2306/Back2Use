@@ -646,16 +646,23 @@ export interface SubscriptionPackage {
 export interface SubscriptionsResponse {
   statusCode: number;
   message: string;
-  data: {
-    subscriptions: SubscriptionPackage[];
+  data: SubscriptionPackage[] | {
+    subscriptions?: SubscriptionPackage[];
   };
 }
 
 export interface BuySubscriptionRequest {
   subscriptionId: string;
+  autoRenew?: boolean;
 }
 
 export interface BuySubscriptionResponse {
+  statusCode: number;
+  message: string;
+  data?: any;
+}
+
+export interface ActivateTrialResponse {
   statusCode: number;
   message: string;
   data?: any;
@@ -671,6 +678,11 @@ export const subscriptionsApi = {
     return apiCall<BuySubscriptionResponse>(API_ENDPOINTS.SUBSCRIPTIONS.BUY, {
       method: 'POST',
       data: payload,
+    });
+  },
+  activateTrial: async (): Promise<ActivateTrialResponse> => {
+    return apiCall<ActivateTrialResponse>(API_ENDPOINTS.SUBSCRIPTIONS.ACTIVATE_TRIAL, {
+      method: 'POST',
     });
   },
 };

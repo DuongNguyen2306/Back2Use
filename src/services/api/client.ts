@@ -99,8 +99,15 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
     
+    // Check for specific errors that should be handled silently
+    const errorMessage = error.response?.data?.message || '';
+    const isProductGroupLimitError = errorMessage.toLowerCase().includes('product group limit') || 
+                                    errorMessage.toLowerCase().includes('allows 0 product groups') ||
+                                    errorMessage.toLowerCase().includes('upgrade your subscription');
+    
     // Only log errors that are not user-facing (avoid logging expected errors like validation)
-    if (error.response?.status && error.response.status >= 500) {
+    // Don't log product group limit errors - they're handled in UI with proper messages
+    if (error.response?.status && error.response.status >= 500 && !isProductGroupLimitError) {
       console.log('❌ API Error:', error.response?.status, error.config?.url);
       console.log('Error details:', error.response?.data);
     }
@@ -171,9 +178,16 @@ async function apiCall<T>(
       throw new Error('SERVER_UNAVAILABLE');
     }
     
+    // Check for specific errors that should be handled silently
+    const errorMessage = error.response?.data?.message || '';
+    const isProductGroupLimitError = errorMessage.toLowerCase().includes('product group limit') || 
+                                    errorMessage.toLowerCase().includes('allows 0 product groups') ||
+                                    errorMessage.toLowerCase().includes('upgrade your subscription');
+    
     // Only log server errors (500+), not validation errors (400)
     // This prevents error toasts from showing for expected validation errors
-    if (error.response?.status && error.response.status >= 500) {
+    // Don't log product group limit errors - they're handled in UI with proper messages
+    if (error.response?.status && error.response.status >= 500 && !isProductGroupLimitError) {
       console.error('API call failed (server error):', error);
     } else if (!error.response) {
       // Network errors - log but don't show toast

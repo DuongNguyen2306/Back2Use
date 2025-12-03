@@ -484,8 +484,8 @@ export default function Stores() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.mainScrollContent}
       >
-        {/* Map View - Large (40% of screen) */}
-        <View style={styles.mapSection}>
+      {/* Map View - Large (40% of screen) */}
+      <View style={styles.mapSection}>
           <View style={styles.mapContainer}>
             {businessesLoading ? (
               <View style={styles.mapLoadingContainer}>

@@ -350,6 +350,17 @@ export default function TransactionProcessingScreen() {
     }
   }, [params?.openQRScanner]);
 
+  // Auto open transaction details modal when navigated with transactionId
+  useEffect(() => {
+    if (params?.transactionId && transactions.length > 0) {
+      const transaction = transactions.find(t => t._id === params.transactionId);
+      if (transaction) {
+        setSelectedTransaction(transaction);
+        setShowDetailsModal(true);
+      }
+    }
+  }, [params?.transactionId, transactions]);
+
   const loadBusinessData = async () => {
     // Wait for auth state to be hydrated before making API calls
     if (!auth.state.isHydrated) {
@@ -480,7 +491,7 @@ export default function TransactionProcessingScreen() {
           console.log('✅ Found serialNumber from transaction:', finalSerialNumber);
         } else {
           console.log('⚠️ Transaction not found in business history');
-          Alert.alert('Lỗi', 'Không tìm thấy serialNumber từ transaction. Vui lòng quét QR code của sản phẩm.');
+          Alert.alert('Error', 'Serial number not found from transaction. Please scan the product QR code.');
           scanLock.current = false;
           return;
         }
@@ -488,8 +499,8 @@ export default function TransactionProcessingScreen() {
         // If error, don't use transaction ID as serialNumber
         console.log('⚠️ Error getting transaction:', error?.response?.status || error?.message);
         Alert.alert(
-          'Lỗi', 
-          'Không thể lấy serialNumber từ transaction. Vui lòng quét QR code của sản phẩm (không phải QR code transaction).'
+          'Error', 
+          'Cannot get serial number from transaction. Please scan the product QR code (not the transaction QR code).'
         );
         scanLock.current = false;
         return;
@@ -502,7 +513,7 @@ export default function TransactionProcessingScreen() {
     // Verify we have a valid serialNumber (not a transaction ID)
     if (/^[0-9a-fA-F]{24}$/.test(finalSerialNumber)) {
       console.log('❌ Error: finalSerialNumber is still a transaction ID, aborting');
-      Alert.alert('Lỗi', 'Không thể lấy serialNumber. Vui lòng quét QR code của sản phẩm.');
+      Alert.alert('Error', 'Cannot get serial number. Please scan the product QR code.');
       scanLock.current = false;
       return;
     }
@@ -658,35 +669,35 @@ export default function TransactionProcessingScreen() {
   const TransactionCard = ({ transaction }: { transaction: BusinessTransaction }) => {
     const overdueInfo = calculateOverdueInfo(transaction);
     const returnCategory = categorizeReturnTransaction(transaction);
-    const productName = transaction.productId?.productGroupId?.name || 'Sản phẩm không xác định';
+    const productName = transaction.productId?.productGroupId?.name || 'Unknown Product';
     const customerName = typeof transaction.customerId === 'object' 
       ? transaction.customerId.fullName 
-      : 'Không xác định';
+      : 'Unknown';
 
     const getTransactionStatus = () => {
       if (transaction.borrowTransactionType === 'borrow') {
         if (transaction.status === 'borrowing') {
           if (overdueInfo && overdueInfo.overdueDays > 0) {
-            return { text: 'Quá hạn', color: '#EF4444', bgColor: '#FEE2E2' };
+            return { text: 'Overdue', color: '#EF4444', bgColor: '#FEE2E2' };
           }
-          return { text: 'Đang mượn', color: '#F59E0B', bgColor: '#FEF3C7' };
+          return { text: 'Borrowing', color: '#F59E0B', bgColor: '#FEF3C7' };
         }
         if (transaction.status === 'completed') {
-          return { text: 'Hoàn tất', color: '#10B981', bgColor: '#D1FAE5' };
+          return { text: 'Completed', color: '#10B981', bgColor: '#D1FAE5' };
         }
       } else {
         // Return transaction
         if (returnCategory === 'success') {
-          return { text: 'Hoàn tất', color: '#10B981', bgColor: '#D1FAE5' };
+          return { text: 'Completed', color: '#10B981', bgColor: '#D1FAE5' };
         } else if (returnCategory === 'failed-other') {
-          return { text: 'Thất bại', color: '#EF4444', bgColor: '#FEE2E2' };
+          return { text: 'Failed', color: '#EF4444', bgColor: '#FEE2E2' };
         } else {
-          // Nếu có returnedAt nhưng returnCategory là null, vẫn coi là thành công
+          // If returnedAt exists but returnCategory is null, still consider it successful
           if (transaction.returnedAt) {
-            return { text: 'Hoàn tất', color: '#10B981', bgColor: '#D1FAE5' };
+            return { text: 'Completed', color: '#10B981', bgColor: '#D1FAE5' };
           }
-          // Nếu không có returnedAt và status không rõ, hiển thị status gốc
-          return { text: transaction.status || 'Đang xử lý', color: '#6B7280', bgColor: '#F3F4F6' };
+          // If no returnedAt and status is unclear, show original status
+          return { text: transaction.status || 'Processing', color: '#6B7280', bgColor: '#F3F4F6' };
         }
       }
       return { text: transaction.status, color: '#6B7280', bgColor: '#F3F4F6' };
@@ -722,13 +733,13 @@ export default function TransactionProcessingScreen() {
         {/* Middle - Main Info */}
         <View style={styles.cardMiddle}>
           <Text style={styles.productName}>{productName}</Text>
-          <Text style={styles.userName}>Người mượn: {customerName}</Text>
+          <Text style={styles.userName}>Borrower: {customerName}</Text>
         </View>
 
         {/* Right Side - Status & Date */}
         <View style={styles.cardRight}>
           <Text style={styles.transactionDate}>
-            {transactionDate.toLocaleDateString('vi-VN')}
+            {transactionDate.toLocaleDateString('en-US')}
           </Text>
           <View style={[styles.statusBadge, { backgroundColor: status.bgColor }]}>
             <Text style={[styles.statusText, { color: status.color }]}>
@@ -749,14 +760,14 @@ export default function TransactionProcessingScreen() {
       />
       <Text style={styles.emptyTitle}>
         {type === 'borrow' 
-          ? 'Không có giao dịch mượn'
+          ? 'No borrow transactions'
           : type === 'return-success'
-            ? 'Không có giao dịch trả thành công'
+            ? 'No successful return transactions'
             : type === 'overdue'
-              ? 'Không có giao dịch quá hạn'
-              : 'Không có giao dịch nào'}
+              ? 'No overdue transactions'
+              : 'No transactions found'}
       </Text>
-      <Text style={styles.emptySubtitle}>Thử điều chỉnh tìm kiếm hoặc bộ lọc</Text>
+      <Text style={styles.emptySubtitle}>Try adjusting search or filters</Text>
     </View>
   );
 
@@ -764,7 +775,7 @@ export default function TransactionProcessingScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#0F4D3A" />
-        <Text style={styles.loadingText}>Đang tải giao dịch...</Text>
+        <Text style={styles.loadingText}>Loading transactions...</Text>
       </View>
     );
   }
@@ -795,7 +806,7 @@ export default function TransactionProcessingScreen() {
           <Ionicons name="search" size={20} color="#6B7280" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Tìm theo ID, mã QR, hoặc tên..."
+            placeholder="Search by ID, QR code, or name..."
             value={searchTerm}
             onChangeText={setSearchTerm}
             placeholderTextColor="#9CA3AF"
@@ -806,10 +817,10 @@ export default function TransactionProcessingScreen() {
       {/* Tabs */}
       <View style={styles.tabContainer}>
         {[
-          { key: 'all', label: 'Tất cả' },
-          { key: 'borrow', label: 'Đang mượn' },
-          { key: 'return-success', label: 'Đã trả' },
-          { key: 'overdue', label: 'Quá hạn' }
+          { key: 'all', label: 'All' },
+          { key: 'borrow', label: 'Borrowing' },
+          { key: 'return-success', label: 'Returned' },
+          { key: 'overdue', label: 'Overdue' }
         ].map((tab) => (
           <TouchableOpacity
             key={tab.key}
@@ -857,7 +868,7 @@ export default function TransactionProcessingScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chi tiết giao dịch</Text>
+              <Text style={styles.modalTitle}>Transaction Details</Text>
               <TouchableOpacity onPress={() => setShowDetailsModal(false)}>
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
@@ -866,24 +877,24 @@ export default function TransactionProcessingScreen() {
             {selectedTransaction && (
               <ScrollView style={styles.modalBody}>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Mã giao dịch</Text>
+                  <Text style={styles.detailLabel}>Transaction ID</Text>
                   <Text style={styles.detailValue}>{selectedTransaction._id}</Text>
                 </View>
                 
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Loại</Text>
+                  <Text style={styles.detailLabel}>Type</Text>
                   <View style={[
                     styles.typeBadge,
                     selectedTransaction.borrowTransactionType === 'borrow' ? styles.borrowBadge : styles.returnBadge
                   ]}>
                     <Text style={styles.typeText}>
-                      {selectedTransaction.borrowTransactionType === 'borrow' ? 'MƯỢN' : 'TRẢ'}
+                      {selectedTransaction.borrowTransactionType === 'borrow' ? 'BORROW' : 'RETURN'}
                     </Text>
                   </View>
                 </View>
                 
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Sản phẩm</Text>
+                  <Text style={styles.detailLabel}>Product</Text>
                   <Text style={styles.detailValue}>
                     {selectedTransaction.productId?.productGroupId?.name || 'N/A'} - {selectedTransaction.productId?.productSizeId?.sizeName || 'N/A'}
                   </Text>
@@ -897,28 +908,28 @@ export default function TransactionProcessingScreen() {
                 </View>
                 
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Ngày mượn</Text>
+                  <Text style={styles.detailLabel}>Borrow Date</Text>
                   <Text style={styles.detailValue}>
-                    {new Date(selectedTransaction.borrowDate).toLocaleDateString('vi-VN')}
+                    {new Date(selectedTransaction.borrowDate).toLocaleDateString('en-US')}
                   </Text>
                 </View>
                 
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Ngày hết hạn</Text>
+                  <Text style={styles.detailLabel}>Due Date</Text>
                   <Text style={styles.detailValue}>
-                    {new Date(selectedTransaction.dueDate).toLocaleDateString('vi-VN')}
+                    {new Date(selectedTransaction.dueDate).toLocaleDateString('en-US')}
                   </Text>
                 </View>
                 
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Số tiền cọc</Text>
+                  <Text style={styles.detailLabel}>Deposit Amount</Text>
                   <Text style={styles.detailValue}>
-                    {selectedTransaction.depositAmount.toLocaleString('vi-VN')} VNĐ
+                    {selectedTransaction.depositAmount.toLocaleString('en-US')} VND
                   </Text>
                 </View>
                 
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Khách hàng</Text>
+                  <Text style={styles.detailLabel}>Customer</Text>
                   <Text style={styles.detailValue}>
                     {typeof selectedTransaction.customerId === 'object' 
                       ? selectedTransaction.customerId.fullName 
@@ -927,7 +938,7 @@ export default function TransactionProcessingScreen() {
                 </View>
 
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Số điện thoại</Text>
+                  <Text style={styles.detailLabel}>Phone Number</Text>
                   <Text style={styles.detailValue}>
                     {typeof selectedTransaction.customerId === 'object' 
                       ? selectedTransaction.customerId.phone || 'N/A'
@@ -936,7 +947,7 @@ export default function TransactionProcessingScreen() {
                 </View>
 
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Trạng thái</Text>
+                  <Text style={styles.detailLabel}>Status</Text>
                   <Text style={styles.detailValue}>
                     {selectedTransaction.status}
                   </Text>
@@ -944,9 +955,9 @@ export default function TransactionProcessingScreen() {
 
                 {selectedTransaction.returnedAt && (
                   <View style={styles.returnInfo}>
-                    <Text style={styles.returnInfoTitle}>Thông tin trả</Text>
+                    <Text style={styles.returnInfoTitle}>Return Information</Text>
                     <Text style={styles.returnInfoText}>
-                      Ngày trả: {new Date(selectedTransaction.returnedAt).toLocaleString('vi-VN')}
+                      Return Date: {new Date(selectedTransaction.returnedAt).toLocaleString('en-US')}
                     </Text>
                   </View>
                 )}
@@ -1009,7 +1020,7 @@ export default function TransactionProcessingScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chi tiết mượn của người dùng</Text>
+              <Text style={styles.modalTitle}>User Borrowing Details</Text>
               <TouchableOpacity onPress={() => setShowUserModal(false)}>
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
@@ -1033,7 +1044,7 @@ export default function TransactionProcessingScreen() {
                     <View style={styles.borrowedItemInfo}>
                       <Text style={styles.borrowedItemName}>{productName}</Text>
                       <Text style={styles.borrowedItemDue}>
-                        Hạn: {new Date(transaction.dueDate).toLocaleDateString('vi-VN')}
+                        Due: {new Date(transaction.dueDate).toLocaleDateString('en-US')}
                       </Text>
                       <Text style={styles.borrowedItemMaterial}>
                         Size: {transaction.productId?.productSizeId?.sizeName || 'N/A'}
@@ -1331,8 +1342,8 @@ export default function TransactionProcessingScreen() {
                   // Check if user is staff (only staff can confirm return)
                   if (auth.state.role !== 'staff' as any) {
                     Alert.alert(
-                      'Không thể xác nhận trả hàng',
-                      'Chỉ nhân viên (staff) mới có thể xác nhận trả hàng. Vui lòng đăng nhập bằng tài khoản staff để thực hiện chức năng này.',
+                      'Cannot Confirm Return',
+                      'Only staff members can confirm returns. Please log in with a staff account to perform this action.',
                       [{ text: 'OK' }]
                     );
                     return;
@@ -1392,8 +1403,8 @@ export default function TransactionProcessingScreen() {
 
                     // Show success alert
                     Alert.alert(
-                      'Thành công', 
-                      'Xác nhận trả hàng thành công!',
+                      'Success', 
+                      'Return confirmed successfully!',
                       [{ text: 'OK' }]
                     );
                   } catch (error: any) {

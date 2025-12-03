@@ -104,14 +104,13 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#00704A',
     paddingHorizontal: 24,
-    paddingTop: 5,
-    paddingBottom: 40, // Increased to accommodate floating card
+    paddingTop: 8,
+    paddingBottom: 16,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
-    minHeight: screenHeight * 0.25, // 25% of screen height
-    maxHeight: screenHeight * 0.30, // 30% of screen height
     overflow: 'hidden',
     position: 'relative',
+    minHeight: 80,
   },
   backgroundDecoration: {
     position: 'absolute',

@@ -7,9 +7,9 @@ import { useEffect, useState } from "react"
 import { Image, SafeAreaView, StatusBar, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import BusinessWelcomeModal from "../../../components/BusinessWelcomeModal"
 import { useAuth } from "../../../context/AuthProvider"
-import { businessesApi } from "../../../src/services/api/businessService"
+import { businessesApi, productsApi } from "../../../src/services/api/businessService"
+import { borrowTransactionsApi } from "../../../src/services/api/borrowTransactionService"
 import { BusinessProfile } from "../../../src/types/business.types"
-import { mockPackagingItems, mockStores, mockTransactions } from "../../../src/utils/mockData"
 
 const STORAGE_KEYS = {
   BUSINESS_WELCOME_SHOWN: 'BUSINESS_WELCOME_SHOWN',
@@ -21,6 +21,14 @@ export default function BusinessDashboard() {
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [showWelcomeModal, setShowWelcomeModal] = useState(false)
+  const [transactions, setTransactions] = useState<any[]>([])
+  const [products, setProducts] = useState<any[]>([])
+  const [stats, setStats] = useState({
+    availableItems: 0,
+    borrowedItems: 0,
+    overdueItems: 0,
+    damagedItems: 0,
+  })
 
   // Load business profile data
   useEffect(() => {
@@ -83,10 +91,100 @@ export default function BusinessDashboard() {
     }
   }, [authState.role, loading])
 
-  // Mock data for current store (assuming staff belongs to first store)
-  const currentStore = mockStores[0]
-  const storeItems = mockPackagingItems.filter((item) => item.storeId === currentStore.id)
-  const storeTransactions = mockTransactions.filter((t) => t.storeId === currentStore.id)
+  // Load real transactions and products data
+  useEffect(() => {
+    const loadRealData = async () => {
+      if (!authState.isHydrated || !authState.accessToken || !authState.isAuthenticated) {
+        return;
+      }
+
+      if (authState.role !== 'business' && authState.role !== 'staff') {
+        return;
+      }
+
+      try {
+        // Load transactions
+        console.log('📊 Loading business transactions...');
+        const transactionsResponse = await borrowTransactionsApi.getBusinessHistory({
+          page: 1,
+          limit: 100,
+        });
+
+        if (transactionsResponse.statusCode === 200) {
+          const items = transactionsResponse.data?.items || transactionsResponse.data || [];
+          
+          // Sort transactions by most recent first (using updatedAt or createdAt)
+          const sortedItems = items.sort((a: any, b: any) => {
+            const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+            const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+            return dateB - dateA; // Most recent first
+          });
+          
+          setTransactions(sortedItems);
+          console.log('✅ Loaded transactions:', sortedItems.length);
+
+          // Calculate overdue items from transactions
+          const overdue = items.filter((t: any) => {
+            if (t.status !== 'borrowing') return false;
+            if (!t.expectedReturnDate) return false;
+            return new Date(t.expectedReturnDate) < new Date();
+          }).length;
+
+          // Calculate borrowed items
+          const borrowed = items.filter((t: any) => t.status === 'borrowing').length;
+
+          setStats(prev => ({
+            ...prev,
+            overdueItems: overdue,
+            borrowedItems: borrowed,
+          }));
+        }
+
+        // Load products from all product groups
+        if (businessProfile && businessProfile.productGroups && businessProfile.productGroups.length > 0) {
+          console.log('📦 Loading products from product groups...');
+          const allProducts: any[] = [];
+          
+          for (const group of businessProfile.productGroups) {
+            try {
+              const productsResponse = await productsApi.getAll(group._id, {
+                page: 1,
+                limit: 1000,
+              });
+              
+              if (productsResponse.data?.items) {
+                allProducts.push(...productsResponse.data.items);
+              } else if (Array.isArray(productsResponse.data)) {
+                allProducts.push(...productsResponse.data);
+              }
+            } catch (error) {
+              console.error(`Error loading products for group ${group._id}:`, error);
+            }
+          }
+
+          setProducts(allProducts);
+          console.log('✅ Loaded products:', allProducts.length);
+
+          // Calculate stats from products
+          const available = allProducts.filter((p: any) => p.status === 'available').length;
+          const damaged = allProducts.filter((p: any) => p.condition === 'damaged' || p.status === 'damaged').length;
+
+          setStats(prev => ({
+            ...prev,
+            availableItems: available,
+            damagedItems: damaged,
+          }));
+        }
+      } catch (error: any) {
+        console.error('❌ Error loading real data:', error);
+        // Silently fail - will show default values
+      }
+    };
+
+    if (!loading && businessProfile) {
+      loadRealData();
+    }
+  }, [authState.isHydrated, authState.accessToken, authState.isAuthenticated, authState.role, loading, businessProfile]);
   
   // Get business name from profile
   const businessName = businessProfile?.businessName || "Business Owner";
@@ -100,18 +198,11 @@ export default function BusinessDashboard() {
     ? "Staff Dashboard"
     : (businessProfile ? `${businessName} - Business Management` : "Business Management");
 
-  // Calculate stats with updated logic
-  const totalItems = storeItems.length
-  const availableItems = storeItems.filter((item) => item.status === "available").length
-  const borrowedItems = storeItems.filter((item) => item.status === "borrowed").length
-  const overdueItems = storeItems.filter((item) => item.status === "overdue").length
-  const damagedItems = storeItems.filter((item) => item.condition === "damaged").length
-
   const businessAlerts =
-    overdueItems > 0
+    stats.overdueItems > 0
       ? [
           {
-            message: `You have ${overdueItems} items overdue that need attention.`,
+            message: `You have ${stats.overdueItems} items overdue that need attention.`,
           },
         ]
       : []
@@ -198,7 +289,7 @@ export default function BusinessDashboard() {
                   <View style={[styles.kpiIconContainer, { backgroundColor: "#C8E6C9" }]}>
                     <Ionicons name="checkmark-circle" size={28} color="#00704A" />
                   </View>
-                  <Text style={[styles.kpiValue, { color: "#00704A" }]}>{availableItems}</Text>
+                  <Text style={[styles.kpiValue, { color: "#00704A" }]}>{stats.availableItems}</Text>
                   <Text style={styles.kpiLabel}>Available</Text>
                 </View>
               </View>
@@ -208,7 +299,7 @@ export default function BusinessDashboard() {
                   <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
                     <Ionicons name="people" size={28} color="#F57C00" />
                   </View>
-                  <Text style={[styles.kpiValue, { color: "#F57C00" }]}>{borrowedItems}</Text>
+                  <Text style={[styles.kpiValue, { color: "#F57C00" }]}>{stats.borrowedItems}</Text>
                   <Text style={styles.kpiLabel}>Borrowed</Text>
                 </View>
               </View>
@@ -218,7 +309,7 @@ export default function BusinessDashboard() {
                   <View style={[styles.kpiIconContainer, { backgroundColor: "#FFCDD2" }]}>
                     <Ionicons name="time" size={28} color="#D32F2F" />
                   </View>
-                  <Text style={[styles.kpiValue, { color: "#D32F2F" }]}>{overdueItems}</Text>
+                  <Text style={[styles.kpiValue, { color: "#D32F2F" }]}>{stats.overdueItems}</Text>
                   <Text style={styles.kpiLabel}>Overdue</Text>
                 </View>
               </View>
@@ -228,7 +319,7 @@ export default function BusinessDashboard() {
                   <View style={[styles.kpiIconContainer, { backgroundColor: "#E0E0E0" }]}>
                     <Ionicons name="close-circle" size={28} color="#666666" />
                   </View>
-                  <Text style={[styles.kpiValue, { color: "#666666" }]}>{damagedItems}</Text>
+                  <Text style={[styles.kpiValue, { color: "#666666" }]}>{stats.damagedItems}</Text>
                   <Text style={styles.kpiLabel}>Damaged</Text>
                 </View>
               </View>
@@ -241,7 +332,11 @@ export default function BusinessDashboard() {
                   <Text style={styles.quickActionsTitle}>Quick Actions</Text>
                 </View>
                 <View style={styles.quickActionsGrid}>
-                  <TouchableOpacity style={styles.quickActionButton} activeOpacity={0.7}>
+                  <TouchableOpacity 
+                    style={styles.quickActionButton} 
+                    activeOpacity={0.7}
+                    onPress={() => router.push('/(protected)/business/materials')}
+                  >
                     <View style={styles.quickActionContent}>
                       <View style={styles.quickActionIconContainer}>
                         <Ionicons name="cube" size={32} color="#00704A" />
@@ -250,25 +345,37 @@ export default function BusinessDashboard() {
                     </View>
                   </TouchableOpacity>
 
-                  <TouchableOpacity style={styles.quickActionButton} activeOpacity={0.7}>
+                  <TouchableOpacity 
+                    style={styles.quickActionButton} 
+                    activeOpacity={0.7}
+                    onPress={() => router.push('/(protected)/business/vouchers')}
+                  >
                     <View style={styles.quickActionContent}>
                       <View style={styles.quickActionIconContainer}>
-                        <Ionicons name="settings" size={32} color="#00704A" />
+                        <Ionicons name="ticket" size={32} color="#00704A" />
                       </View>
-                      <Text style={styles.quickActionText}>Pricing</Text>
+                      <Text style={styles.quickActionText}>Vouchers</Text>
                     </View>
                   </TouchableOpacity>
 
-                  <TouchableOpacity style={styles.quickActionButton} activeOpacity={0.7}>
+                  <TouchableOpacity 
+                    style={styles.quickActionButton} 
+                    activeOpacity={0.7}
+                    onPress={() => router.push('/(protected)/business/transaction-processing')}
+                  >
                     <View style={styles.quickActionContent}>
                       <View style={styles.quickActionIconContainer}>
-                        <Ionicons name="bar-chart" size={32} color="#00704A" />
+                        <Ionicons name="receipt" size={32} color="#00704A" />
                       </View>
-                      <Text style={styles.quickActionText}>Reports</Text>
+                      <Text style={styles.quickActionText}>Transactions</Text>
                     </View>
                   </TouchableOpacity>
 
-                  <TouchableOpacity style={styles.quickActionButton} activeOpacity={0.7}>
+                  <TouchableOpacity 
+                    style={styles.quickActionButton} 
+                    activeOpacity={0.7}
+                    onPress={() => router.push('/(protected)/business/menu')}
+                  >
                     <View style={styles.quickActionContent}>
                       <View style={styles.quickActionIconContainer}>
                         <Ionicons name="card" size={32} color="#00704A" />
@@ -328,76 +435,152 @@ export default function BusinessDashboard() {
               </View>
 
               <View style={styles.activityContent}>
-                {storeTransactions.slice(0, 5).map((transaction, index) => {
-                  const item = mockPackagingItems.find((p) => p.id === transaction.packagingItemId)
-                  return (
-                    <View
-                      key={transaction.id}
-                      style={[
-                        styles.activityItem,
-                        index === storeTransactions.slice(0, 5).length - 1 && styles.activityItemLast,
-                      ]}
-                    >
-                      <View style={styles.activityItemLeft}>
-                        <View
-                          style={[
-                            styles.activityItemIconContainer,
-                            transaction.type === "borrow"
-                              ? { backgroundColor: "#FFF8E1" }
-                              : { backgroundColor: "#E8F5E9" },
-                          ]}
-                        >
-                          {transaction.type === "borrow" ? (
-                            <Ionicons name="arrow-up-circle" size={24} color="#F57C00" />
-                          ) : (
-                            <Ionicons name="arrow-down-circle" size={24} color="#00704A" />
-                          )}
-                        </View>
-                        <View style={styles.activityItemInfo}>
-                          <Text style={styles.activityItemTitle}>
-                            {transaction.type === "borrow" ? "Item Borrowed" : "Item Returned"}
-                          </Text>
-                          <Text style={styles.activityItemSubtitle}>
-                            {item?.qrCode} •{" "}
-                            {new Date(transaction.borrowedAt).toLocaleTimeString("vi-VN", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.activityItemRight}>
-                        <View
-                          style={[
-                            styles.statusBadge,
-                            transaction.status === "complete"
-                              ? styles.completeBadge
-                              : transaction.status === "reject"
-                                ? styles.rejectBadge
-                                : styles.pendingBadge,
-                          ]}
-                        >
-                          <Text
+                {transactions.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyStateText}>No recent transactions</Text>
+                  </View>
+                ) : (
+                  transactions.slice(0, 5).map((transaction: any, index: number) => {
+                    // Determine if it's a borrow or return transaction
+                    const isBorrow = transaction.borrowTransactionType === 'borrow';
+                    
+                    // Get product name from nested structure (same as transaction-processing)
+                    const productName = transaction.productId?.productGroupId?.name || 'Unknown Product';
+                    
+                    // Get customer name (same as transaction-processing)
+                    const customerName = typeof transaction.customerId === 'object' 
+                      ? transaction.customerId.fullName 
+                      : 'Unknown';
+                    
+                    // Calculate overdue info (same logic as transaction-processing)
+                    const calculateOverdueInfo = (t: any) => {
+                      if (t.borrowTransactionType !== 'borrow' || t.status !== 'borrowing' || !t.expectedReturnDate) {
+                        return null;
+                      }
+                      const now = new Date();
+                      const expectedReturn = new Date(t.expectedReturnDate);
+                      const overdueDays = Math.max(0, Math.floor((now.getTime() - expectedReturn.getTime()) / (1000 * 60 * 60 * 24)));
+                      return overdueDays > 0 ? { overdueDays } : null;
+                    };
+                    
+                    // Categorize return transaction (same logic as transaction-processing)
+                    const categorizeReturnTransaction = (t: any) => {
+                      if (t.borrowTransactionType !== 'return') return null;
+                      if (t.status === 'failed' || t.status === 'cancelled') {
+                        return 'failed-other';
+                      }
+                      if (t.returnedAt) {
+                        return 'success';
+                      }
+                      return null;
+                    };
+                    
+                    // Get transaction status (same logic as transaction-processing)
+                    const getTransactionStatus = () => {
+                      if (transaction.borrowTransactionType === 'borrow') {
+                        if (transaction.status === 'borrowing') {
+                          const overdueInfo = calculateOverdueInfo(transaction);
+                          if (overdueInfo && overdueInfo.overdueDays > 0) {
+                            return { text: 'Overdue', color: '#EF4444', bgColor: '#FEE2E2' };
+                          }
+                          return { text: 'Borrowing', color: '#F59E0B', bgColor: '#FEF3C7' };
+                        }
+                        if (transaction.status === 'completed') {
+                          return { text: 'Completed', color: '#10B981', bgColor: '#D1FAE5' };
+                        }
+                        if (transaction.status === 'cancelled' || transaction.status === 'rejected') {
+                          return { text: 'Cancelled', color: '#EF4444', bgColor: '#FEE2E2' };
+                        }
+                      } else {
+                        // Return transaction
+                        const returnCategory = categorizeReturnTransaction(transaction);
+                        if (returnCategory === 'success') {
+                          return { text: 'Completed', color: '#10B981', bgColor: '#D1FAE5' };
+                        } else if (returnCategory === 'failed-other') {
+                          return { text: 'Failed', color: '#EF4444', bgColor: '#FEE2E2' };
+                        } else {
+                          // If returnedAt exists but returnCategory is null, still consider it successful
+                          if (transaction.returnedAt) {
+                            return { text: 'Completed', color: '#10B981', bgColor: '#D1FAE5' };
+                          }
+                          // If no returnedAt and status is unclear, show original status
+                          return { text: transaction.status || 'Processing', color: '#6B7280', bgColor: '#F3F4F6' };
+                        }
+                      }
+                      return { text: transaction.status || 'Processing', color: '#6B7280', bgColor: '#F3F4F6' };
+                    };
+                    
+                    const status = getTransactionStatus();
+                    
+                    // Get transaction date - use returnedAt for return transactions, otherwise borrowDate
+                    const transactionDate = transaction.returnedAt 
+                      ? new Date(transaction.returnedAt) 
+                      : (transaction.borrowDate ? new Date(transaction.borrowDate) : new Date());
+                    
+                    return (
+                      <TouchableOpacity
+                        key={transaction._id || transaction.id || index}
+                        style={[
+                          styles.activityItem,
+                          index === Math.min(transactions.length, 5) - 1 && styles.activityItemLast,
+                        ]}
+                        onPress={() => {
+                          // Navigate to transaction processing screen with transaction ID
+                          router.push({
+                            pathname: '/(protected)/business/transaction-processing',
+                            params: { transactionId: transaction._id || transaction.id }
+                          });
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.activityItemLeft}>
+                          <View
                             style={[
-                              styles.statusText,
-                              transaction.status === "complete"
-                                ? styles.completeText
-                                : transaction.status === "reject"
-                                  ? styles.rejectText
-                                  : styles.pendingText,
+                              styles.activityItemIconContainer,
+                              isBorrow
+                                ? { backgroundColor: "#FFF8E1" }
+                                : { backgroundColor: "#E8F5E9" },
                             ]}
                           >
-                            {transaction.status === "complete"
-                              ? "Completed"
-                              : transaction.status === "reject"
-                                ? "Rejected"
-                                : "Processing"}
-                          </Text>
+                            {isBorrow ? (
+                              <Ionicons name="arrow-down" size={20} color="#F59E0B" />
+                            ) : (
+                              <Ionicons name="arrow-up" size={20} color="#10B981" />
+                            )}
+                          </View>
+                          <View style={styles.activityItemInfo}>
+                            <Text style={styles.activityItemTitle}>
+                              {productName}
+                            </Text>
+                            <Text style={styles.activityItemSubtitle}>
+                              Borrower: {customerName}
+                            </Text>
+                          </View>
                         </View>
-                      </View>
-                    </View>
-                  )
-                })}
+                        <View style={styles.activityItemRight}>
+                          <Text style={styles.activityItemDate}>
+                            {transactionDate.toLocaleDateString('en-US')}
+                          </Text>
+                          <View
+                            style={[
+                              styles.statusBadge,
+                              { backgroundColor: status.bgColor }
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.statusText,
+                                { color: status.color }
+                              ]}
+                            >
+                              {status.text}
+                            </Text>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    )
+                  })
+                )}
               </View>
             </View>
           </View>
@@ -486,9 +669,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop: 8,
+    paddingBottom: 16,
     backgroundColor: '#00704A',
     borderBottomLeftRadius: 20,
+    minHeight: 80,
   },
   headerLeft: {
     width: 40,
@@ -772,6 +957,11 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     marginLeft: 12,
   },
+  activityItemDate: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginBottom: 8,
+  },
   statusBadge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -814,6 +1004,16 @@ const styles = StyleSheet.create({
   tabDescription: {
     fontSize: 16,
     color: "#666666",
+    textAlign: "center",
+  },
+  emptyState: {
+    padding: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: "#999999",
     textAlign: "center",
   },
 })

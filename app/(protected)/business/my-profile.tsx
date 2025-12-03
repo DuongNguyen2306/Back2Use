@@ -18,7 +18,7 @@ import {
 import { useAuth } from '../../../context/AuthProvider';
 import { useToast } from '../../../hooks/use-toast';
 import { useI18n } from '../../../hooks/useI18n';
-import { authApi, SubscriptionPackage, updateUserProfileWithAutoRefresh } from '../../../lib/api';
+import { authApi, SubscriptionPackage } from '../../../lib/api';
 import { businessesApi } from '../../../src/services/api/businessService';
 import { BusinessProfile } from '../../../src/types/business.types';
 
@@ -169,20 +169,20 @@ export default function BusinessProfileScreen() {
             console.log('⚠️ Access denied (403) - silently handled');
             // Don't show toast, just continue
           } else {
-            // Don't show toast for network errors - they're expected when offline
-            const isNetworkError = error?.message?.toLowerCase().includes('network') ||
-                                   error?.message?.toLowerCase().includes('timeout') ||
-                                   error?.message?.toLowerCase().includes('connection');
-            
-            if (!isNetworkError) {
-              console.error('Error loading business profile:', error);
-              toast({
-                title: "Lỗi",
-                description: "Không thể tải dữ liệu hồ sơ. Vui lòng thử lại.",
-              });
-            } else {
-              console.warn('⚠️ Network error loading business profile (will retry later):', error.message);
-              // Don't show toast for network errors - user can still use the form
+          // Don't show toast for network errors - they're expected when offline
+          const isNetworkError = error?.message?.toLowerCase().includes('network') ||
+                                 error?.message?.toLowerCase().includes('timeout') ||
+                                 error?.message?.toLowerCase().includes('connection');
+          
+          if (!isNetworkError) {
+            console.error('Error loading business profile:', error);
+            toast({
+              title: "Error",
+              description: "Failed to load profile data. Please try again.",
+            });
+          } else {
+            console.warn('⚠️ Network error loading business profile (will retry later):', error.message);
+            // Don't show toast for network errors - user can still use the form
             }
           }
         } finally {
@@ -198,10 +198,10 @@ export default function BusinessProfileScreen() {
 
 
   const achievements = [
-    { id: 'business', icon: 'business', color: '#3B82F6', title: 'Chủ doanh nghiệp' },
-    { id: 'eco', icon: 'leaf', color: '#10B981', title: 'Đối tác xanh' },
-    { id: 'customers', icon: 'people', color: '#F59E0B', title: '100+ Khách hàng' },
-    { id: 'revenue', icon: 'trending-up', color: '#8B5CF6', title: 'Top Doanh thu' },
+    { id: 'business', icon: 'business', color: '#3B82F6', title: 'Business Owner' },
+    { id: 'eco', icon: 'leaf', color: '#10B981', title: 'Green Partner' },
+    { id: 'customers', icon: 'people', color: '#F59E0B', title: '100+ Customers' },
+    { id: 'revenue', icon: 'trending-up', color: '#8B5CF6', title: 'Top Revenue' },
   ];
 
   const menuSections: MenuSection[] = [
@@ -210,7 +210,7 @@ export default function BusinessProfileScreen() {
       items: [
         {
           id: 'switch-to-customer',
-          title: 'Chuyển sang tài khoản khách hàng',
+          title: 'Switch to Customer Account',
           icon: 'swap-horizontal-outline',
           color: '#10B981',
           onPress: () => handleSwitchRole('customer'),
@@ -229,13 +229,13 @@ export default function BusinessProfileScreen() {
       const errors: ValidationError[] = [];
       
       if (!formData.name.trim()) {
-        errors.push({ field: 'name', message: 'Tên không được để trống' });
+        errors.push({ field: 'name', message: 'Name cannot be empty' });
       }
       
       if (!formData.email.trim()) {
-        errors.push({ field: 'email', message: 'Email không được để trống' });
+        errors.push({ field: 'email', message: 'Email cannot be empty' });
       } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-        errors.push({ field: 'email', message: 'Email không hợp lệ' });
+        errors.push({ field: 'email', message: 'Invalid email format' });
       }
 
       if (errors.length > 0) {
@@ -243,13 +243,8 @@ export default function BusinessProfileScreen() {
         return;
       }
 
-      // Prepare update data
+      // Prepare update data for business profile (only business-specific fields)
       const updateData = {
-        name: formData.name,
-        fullName: formData.name,
-        phone: formData.phone,
-        address: formData.address,
-        // Business specific fields
         businessName: formData.businessName,
         businessAddress: formData.businessAddress,
         businessPhone: formData.businessPhone,
@@ -258,15 +253,31 @@ export default function BusinessProfileScreen() {
         closeTime: formData.closeTime,
       };
 
-      // Note: Business profile update might need a separate API endpoint
-      // For now, we'll use the user profile update API if it supports business fields
-      // TODO: Check if there's a specific business profile update API
-      await updateUserProfileWithAutoRefresh(updateData);
+      // Update business profile using dedicated API endpoint
+      await businessesApi.updateProfile(updateData);
       
-      // Reload business profile data
-      const profileResponse = await businessesApi.getProfileWithAutoRefresh();
-      if (profileResponse.data && profileResponse.data.business) {
-        setBusinessProfile(profileResponse.data.business);
+      // Reload business profile data to get the latest information
+      const refreshedProfile = await businessesApi.getProfileWithAutoRefresh();
+      if (refreshedProfile.data && refreshedProfile.data.business) {
+        const updatedProfile = refreshedProfile.data.business;
+        setBusinessProfile(updatedProfile);
+        
+        // Update form data with refreshed values
+        setFormData({
+          name: updatedProfile.businessName || updatedProfile.userId.username || "",
+          email: updatedProfile.userId.email || updatedProfile.businessMail || "",
+          phone: updatedProfile.businessPhone || "",
+          address: updatedProfile.businessAddress || "",
+          businessName: updatedProfile.businessName || "",
+          businessAddress: updatedProfile.businessAddress || "",
+          businessPhone: updatedProfile.businessPhone || "",
+          businessType: updatedProfile.businessType || "",
+          openTime: updatedProfile.openTime || "",
+          closeTime: updatedProfile.closeTime || "",
+          notifications: true,
+          emailUpdates: true,
+          smsAlerts: false,
+        });
       }
       
       setIsEditing(false);
@@ -288,27 +299,27 @@ export default function BusinessProfileScreen() {
   const handleChangePassword = async () => {
     // Validation
     if (!passwordData.oldPassword.trim()) {
-      Alert.alert("Lỗi", "Vui lòng nhập mật khẩu cũ");
+      Alert.alert("Error", "Please enter your old password");
       return;
     }
 
     if (!passwordData.newPassword.trim()) {
-      Alert.alert("Lỗi", "Vui lòng nhập mật khẩu mới");
+      Alert.alert("Error", "Please enter your new password");
       return;
     }
 
     if (passwordData.newPassword.length < 6) {
-      Alert.alert("Lỗi", "Mật khẩu mới phải có ít nhất 6 ký tự");
+      Alert.alert("Error", "New password must be at least 6 characters");
       return;
     }
 
     if (passwordData.newPassword !== passwordData.confirmNewPassword) {
-      Alert.alert("Lỗi", "Mật khẩu xác nhận không khớp");
+      Alert.alert("Error", "Password confirmation does not match");
       return;
     }
 
     if (passwordData.oldPassword === passwordData.newPassword) {
-      Alert.alert("Lỗi", "Mật khẩu mới phải khác mật khẩu cũ");
+      Alert.alert("Error", "New password must be different from old password");
       return;
     }
 
@@ -322,8 +333,8 @@ export default function BusinessProfileScreen() {
       });
       
       Alert.alert(
-        "Thành công",
-        "Mật khẩu đã được thay đổi thành công!",
+        "Success",
+        "Password changed successfully!",
         [
           {
             text: "OK",
@@ -340,7 +351,7 @@ export default function BusinessProfileScreen() {
       );
     } catch (error: any) {
       console.error('Change password error:', error);
-      Alert.alert("Lỗi", error.message || "Có lỗi xảy ra khi thay đổi mật khẩu");
+      Alert.alert("Error", error.message || "Failed to change password");
     } finally {
       setChangingPassword(false);
     }
@@ -348,12 +359,12 @@ export default function BusinessProfileScreen() {
 
   const handleLogout = () => {
     Alert.alert(
-      "Đăng xuất",
-      "Bạn có chắc chắn muốn đăng xuất?",
+      "Logout",
+      "Are you sure you want to logout?",
       [
-        { text: "Hủy", style: "cancel" },
+        { text: "Cancel", style: "cancel" },
         { 
-          text: "Đăng xuất", 
+          text: "Logout", 
           style: "destructive",
           onPress: () => auth.actions.logout()
         }
@@ -390,14 +401,14 @@ export default function BusinessProfileScreen() {
         const savedToken = await AsyncStorage.getItem('ACCESS_TOKEN');
         if (savedToken !== response.data.accessToken) {
           console.error('❌ Token mismatch after switch!');
-          throw new Error('Token không được lưu đúng cách');
+          throw new Error('Token was not saved correctly');
         }
         
         console.log(`✅ Token verified, redirecting...`);
         
         toast({
-          title: "Thành công",
-          description: `Đã chuyển sang tài khoản ${targetRole === 'business' ? 'doanh nghiệp' : 'khách hàng'}`,
+          title: "Success",
+          description: `Switched to ${targetRole === 'business' ? 'business' : 'customer'} account`,
         });
         
         // Redirect to appropriate dashboard
@@ -407,13 +418,13 @@ export default function BusinessProfileScreen() {
           router.replace('/(protected)/customer');
         }
       } else {
-        throw new Error('Không nhận được token từ server');
+        throw new Error('No token received from server');
       }
     } catch (error: any) {
       console.error('❌ Switch role error:', error);
       toast({
-        title: "Lỗi",
-        description: error.message || "Không thể chuyển đổi tài khoản. Vui lòng thử lại.",
+        title: "Error",
+        description: error.message || "Failed to switch account. Please try again.",
       });
     }
   };
@@ -435,7 +446,7 @@ export default function BusinessProfileScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Hồ sơ doanh nghiệp</Text>
+        <Text style={styles.headerTitle}>Business Profile</Text>
         <TouchableOpacity 
           style={styles.settingsButton}
           onPress={() => router.push('/(protected)/business/settings')}
@@ -463,23 +474,23 @@ export default function BusinessProfileScreen() {
           </View>
           
            <Text style={styles.name}>
-             {businessProfile?.businessName || businessProfile?.userId?.username || 'Tên Doanh Nghiệp'}
+             {businessProfile?.businessName || businessProfile?.userId?.username || 'Business Name'}
            </Text>
            <Text style={styles.email}>{businessProfile?.userId?.email || businessProfile?.businessMail || ''}</Text>
-           <Text style={styles.role}>Doanh nghiệp</Text>
+           <Text style={styles.role}>Business</Text>
            
            <TouchableOpacity 
              style={styles.editProfileButton}
              onPress={() => setIsEditing(true)}
            >
              <Ionicons name="create-outline" size={16} color="#0F4D3A" />
-             <Text style={styles.editProfileButtonText}>Chỉnh sửa</Text>
+             <Text style={styles.editProfileButtonText}>Edit</Text>
            </TouchableOpacity>
         </View>
 
         {/* Achievements Section */}
          <View style={styles.achievementsSection}>
-          <Text style={styles.sectionTitle}>Thành tựu</Text>
+          <Text style={styles.sectionTitle}>Achievements</Text>
           <View style={styles.achievementsGrid}>
             {achievements.map((achievement) => (
               <View key={achievement.id} style={styles.achievementItem}>
@@ -495,50 +506,50 @@ export default function BusinessProfileScreen() {
         {/* Business Information Card */}
         {businessProfile && (
           <View style={styles.businessInfoCard}>
-            <Text style={styles.businessInfoTitle}>Thông tin doanh nghiệp</Text>
+            <Text style={styles.businessInfoTitle}>Business Information</Text>
             <View style={styles.businessInfoRow}>
               <Ionicons name="business" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
               <View style={styles.businessInfoContent}>
-                <Text style={styles.businessInfoLabel}>Tên doanh nghiệp</Text>
-                <Text style={styles.businessInfoValue}>{businessProfile.businessName || 'Chưa có'}</Text>
+                <Text style={styles.businessInfoLabel}>Business Name</Text>
+                <Text style={styles.businessInfoValue}>{businessProfile.businessName || 'Not set'}</Text>
               </View>
             </View>
             <View style={styles.businessInfoRow}>
               <Ionicons name="mail" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
               <View style={styles.businessInfoContent}>
-                <Text style={styles.businessInfoLabel}>Email doanh nghiệp</Text>
-                <Text style={styles.businessInfoValue}>{businessProfile.businessMail || businessProfile.userId?.email || 'Chưa có'}</Text>
+                <Text style={styles.businessInfoLabel}>Business Email</Text>
+                <Text style={styles.businessInfoValue}>{businessProfile.businessMail || businessProfile.userId?.email || 'Not set'}</Text>
               </View>
             </View>
             <View style={styles.businessInfoRow}>
               <Ionicons name="call" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
               <View style={styles.businessInfoContent}>
-                <Text style={styles.businessInfoLabel}>Số điện thoại</Text>
-                <Text style={styles.businessInfoValue}>{businessProfile.businessPhone || 'Chưa có'}</Text>
+                <Text style={styles.businessInfoLabel}>Phone Number</Text>
+                <Text style={styles.businessInfoValue}>{businessProfile.businessPhone || 'Not set'}</Text>
               </View>
             </View>
             <View style={styles.businessInfoRow}>
               <Ionicons name="location" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
               <View style={styles.businessInfoContent}>
-                <Text style={styles.businessInfoLabel}>Địa chỉ</Text>
-                <Text style={styles.businessInfoValue}>{businessProfile.businessAddress || 'Chưa có'}</Text>
+                <Text style={styles.businessInfoLabel}>Address</Text>
+                <Text style={styles.businessInfoValue}>{businessProfile.businessAddress || 'Not set'}</Text>
               </View>
             </View>
             <View style={styles.businessInfoRow}>
               <Ionicons name="pricetag" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
               <View style={styles.businessInfoContent}>
-                <Text style={styles.businessInfoLabel}>Loại hình doanh nghiệp</Text>
-                <Text style={styles.businessInfoValue}>{businessProfile.businessType || 'Chưa có'}</Text>
+                <Text style={styles.businessInfoLabel}>Business Type</Text>
+                <Text style={styles.businessInfoValue}>{businessProfile.businessType || 'Not set'}</Text>
               </View>
             </View>
             <View style={styles.businessInfoRow}>
               <Ionicons name="time" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
               <View style={styles.businessInfoContent}>
-                <Text style={styles.businessInfoLabel}>Giờ làm việc</Text>
+                <Text style={styles.businessInfoLabel}>Working Hours</Text>
                 <Text style={styles.businessInfoValue}>
                   {businessProfile.openTime && businessProfile.closeTime 
                     ? `${businessProfile.openTime} - ${businessProfile.closeTime}`
-                    : 'Chưa có'}
+                    : 'Not set'}
                 </Text>
               </View>
             </View>
@@ -546,7 +557,7 @@ export default function BusinessProfileScreen() {
               <View style={styles.businessInfoRow}>
                 <Ionicons name="document-text" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
                 <View style={styles.businessInfoContent}>
-                  <Text style={styles.businessInfoLabel}>Mã số thuế</Text>
+                  <Text style={styles.businessInfoLabel}>Tax Code</Text>
                   <Text style={styles.businessInfoValue}>{businessProfile.taxCode}</Text>
                 </View>
               </View>
@@ -575,12 +586,12 @@ export default function BusinessProfileScreen() {
                     <Text style={styles.subscriptionName}>{subscriptionName}</Text>
                     <Text style={styles.subscriptionPrice}>
                       {subscriptionPrice > 0 
-                        ? `${subscriptionPrice.toLocaleString('vi-VN')} VNĐ` 
+                        ? `${subscriptionPrice.toLocaleString('en-US')} VND` 
                         : 'Free'}
                     </Text>
                     {startDate && endDate && (
                       <Text style={styles.subscriptionDate}>
-                        {new Date(startDate).toLocaleDateString('vi-VN')} - {new Date(endDate).toLocaleDateString('vi-VN')}
+                        {new Date(startDate).toLocaleDateString('en-US')} - {new Date(endDate).toLocaleDateString('en-US')}
                       </Text>
                     )}
                     {sub.durationInDays && (
@@ -662,12 +673,12 @@ export default function BusinessProfileScreen() {
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setIsEditing(false)}>
-              <Text style={styles.cancelButton}>Hủy</Text>
+              <Text style={styles.cancelButton}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Chỉnh sửa hồ sơ</Text>
+            <Text style={styles.modalTitle}>Edit Profile</Text>
             <TouchableOpacity onPress={handleSaveProfile} disabled={saving}>
               <Text style={[styles.saveButton, saving && styles.disabledSaveButton]}>
-                {saving ? 'Đang lưu...' : 'Lưu'}
+                {saving ? 'Saving...' : 'Save'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -675,15 +686,15 @@ export default function BusinessProfileScreen() {
           <ScrollView style={styles.modalContent}>
             {/* Personal Info */}
             <View style={styles.formSection}>
-              <Text style={styles.formSectionTitle}>Thông tin cá nhân</Text>
+              <Text style={styles.formSectionTitle}>Personal Information</Text>
               
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Tên đầy đủ *</Text>
+                <Text style={styles.label}>Full Name *</Text>
                 <TextInput
                   style={[styles.input, validationErrors.some(e => e.field === 'name') && styles.inputError]}
                   value={formData.name}
                   onChangeText={(text) => setFormData({ ...formData, name: text })}
-                  placeholder="Nhập tên đầy đủ"
+                  placeholder="Enter full name"
                 />
                 {validationErrors.some(e => e.field === 'name') && (
                   <Text style={styles.errorText}>
@@ -698,7 +709,7 @@ export default function BusinessProfileScreen() {
                   style={[styles.input, validationErrors.some(e => e.field === 'email') && styles.inputError]}
                   value={formData.email}
                   onChangeText={(text) => setFormData({ ...formData, email: text })}
-                  placeholder="Nhập email"
+                  placeholder="Enter email"
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
@@ -710,23 +721,23 @@ export default function BusinessProfileScreen() {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Số điện thoại</Text>
+                <Text style={styles.label}>Phone Number</Text>
                 <TextInput
                   style={styles.input}
                   value={formData.phone}
                   onChangeText={(text) => setFormData({ ...formData, phone: text })}
-                  placeholder="Nhập số điện thoại"
+                  placeholder="Enter phone number"
                   keyboardType="phone-pad"
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Địa chỉ</Text>
+                <Text style={styles.label}>Address</Text>
                 <TextInput
                   style={styles.input}
                   value={formData.address}
                   onChangeText={(text) => setFormData({ ...formData, address: text })}
-                  placeholder="Nhập địa chỉ"
+                  placeholder="Enter address"
                   multiline
                   numberOfLines={2}
                 />
@@ -735,54 +746,54 @@ export default function BusinessProfileScreen() {
 
             {/* Business Info */}
             <View style={styles.formSection}>
-              <Text style={styles.formSectionTitle}>Thông tin doanh nghiệp</Text>
+              <Text style={styles.formSectionTitle}>Business Information</Text>
               
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Tên doanh nghiệp</Text>
+                <Text style={styles.label}>Business Name</Text>
                 <TextInput
                   style={styles.input}
                   value={formData.businessName}
                   onChangeText={(text) => setFormData({ ...formData, businessName: text })}
-                  placeholder="Nhập tên doanh nghiệp"
+                  placeholder="Enter business name"
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Địa chỉ doanh nghiệp</Text>
+                <Text style={styles.label}>Business Address</Text>
                 <TextInput
                   style={styles.input}
                   value={formData.businessAddress}
                   onChangeText={(text) => setFormData({ ...formData, businessAddress: text })}
-                  placeholder="Nhập địa chỉ doanh nghiệp"
+                  placeholder="Enter business address"
                   multiline
                   numberOfLines={2}
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Số điện thoại doanh nghiệp</Text>
+                <Text style={styles.label}>Business Phone</Text>
                 <TextInput
                   style={styles.input}
                   value={formData.businessPhone}
                   onChangeText={(text) => setFormData({ ...formData, businessPhone: text })}
-                  placeholder="Nhập số điện thoại doanh nghiệp"
+                  placeholder="Enter business phone"
                   keyboardType="phone-pad"
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Loại hình doanh nghiệp</Text>
+                <Text style={styles.label}>Business Type</Text>
                 <TextInput
                   style={styles.input}
                   value={formData.businessType}
                   onChangeText={(text) => setFormData({ ...formData, businessType: text })}
-                  placeholder="Nhập loại hình doanh nghiệp"
+                  placeholder="Enter business type"
                 />
               </View>
 
               <View style={styles.timeRow}>
                 <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                  <Text style={styles.label}>Giờ mở cửa</Text>
+                  <Text style={styles.label}>Open Time</Text>
                   <TextInput
                     style={styles.input}
                     value={formData.openTime}
@@ -791,7 +802,7 @@ export default function BusinessProfileScreen() {
                   />
                 </View>
                 <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
-                  <Text style={styles.label}>Giờ đóng cửa</Text>
+                  <Text style={styles.label}>Close Time</Text>
                   <TextInput
                     style={styles.input}
                     value={formData.closeTime}
@@ -814,42 +825,42 @@ export default function BusinessProfileScreen() {
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setShowChangePasswordModal(false)}>
-              <Text style={styles.cancelButton}>Hủy</Text>
+              <Text style={styles.cancelButton}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Đổi mật khẩu</Text>
+            <Text style={styles.modalTitle}>Change Password</Text>
             <View style={{ width: 60 }} />
           </View>
 
           <View style={styles.modalContent}>
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Mật khẩu cũ</Text>
+              <Text style={styles.label}>Old Password</Text>
               <TextInput
                 style={styles.input}
                 value={passwordData.oldPassword}
                 onChangeText={(text) => setPasswordData({ ...passwordData, oldPassword: text })}
-                placeholder="Nhập mật khẩu cũ"
+                placeholder="Enter old password"
                 secureTextEntry
               />
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Mật khẩu mới</Text>
+              <Text style={styles.label}>New Password</Text>
               <TextInput
                 style={styles.input}
                 value={passwordData.newPassword}
                 onChangeText={(text) => setPasswordData({ ...passwordData, newPassword: text })}
-                placeholder="Nhập mật khẩu mới"
+                placeholder="Enter new password"
                 secureTextEntry
               />
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Xác nhận mật khẩu mới</Text>
+              <Text style={styles.label}>Confirm New Password</Text>
               <TextInput
                 style={styles.input}
                 value={passwordData.confirmNewPassword}
                 onChangeText={(text) => setPasswordData({ ...passwordData, confirmNewPassword: text })}
-                placeholder="Nhập lại mật khẩu mới"
+                placeholder="Re-enter new password"
                 secureTextEntry
               />
             </View>
@@ -860,7 +871,7 @@ export default function BusinessProfileScreen() {
               disabled={changingPassword}
             >
               <Text style={styles.confirmButtonText}>
-                {changingPassword ? 'Đang xử lý...' : 'Đổi mật khẩu'}
+                {changingPassword ? 'Processing...' : 'Change Password'}
               </Text>
             </TouchableOpacity>
           </View>

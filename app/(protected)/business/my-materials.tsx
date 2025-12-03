@@ -1,12 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { materialsApi } from "../../../src/services/api/businessService";
 import type { MaterialItem } from "../../../src/services/api/businessService";
 
 type Filter = 'all' | 'pending' | 'approved' | 'rejected';
 
 export default function MyMaterialsPage() {
+  const { top } = useSafeAreaInsets();
   const [items, setItems] = useState<MaterialItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
@@ -37,9 +40,10 @@ export default function MyMaterialsPage() {
         : (container.docs || container.items || container.list || container.data || []);
       
       // Map response to MaterialItem format
+      // API returns: requestedMaterialName, description, status
       const mappedList = list.map((item: any) => ({
         _id: item._id,
-        materialName: item.materialName || item.material?.materialName || 'Unknown',
+        materialName: item.requestedMaterialName || item.materialName || item.material?.materialName || 'Unknown',
         description: item.description || item.material?.description || '',
         status: item.status?.toLowerCase() || 'pending',
         createdAt: item.createdAt || item.created_at || new Date().toISOString(),
@@ -54,7 +58,7 @@ export default function MyMaterialsPage() {
       setPage(nextPage + 1);
     } catch (e: any) {
       console.log('❌ Failed to load my material requests:', e?.message || e);
-      Alert.alert('Lỗi', e?.message || 'Không tải được danh sách yêu cầu vật liệu của bạn');
+      Alert.alert('Error', e?.message || 'Failed to load your material requests');
     } finally {
       setLoading(false);
     }
@@ -92,17 +96,29 @@ export default function MyMaterialsPage() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar backgroundColor="#009900" barStyle="light-content" />
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Vật liệu của tôi</Text>
-      </View>
+    <View style={styles.container}>
+      <StatusBar backgroundColor="#00704A" barStyle="light-content" />
+      <SafeAreaView style={styles.headerSafeArea}>
+        {/* Header */}
+        <View style={[styles.header, { paddingTop: Math.max(top, 8) }]}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>My Materials</Text>
+          </View>
+          <View style={styles.headerSpacer} />
+        </View>
+      </SafeAreaView>
 
       <View style={styles.filterRow}>
-        <FilterButton value="all" label="Tất cả" />
-        <FilterButton value="pending" label="Chờ duyệt" />
-        <FilterButton value="approved" label="Đã duyệt" />
-        <FilterButton value="rejected" label="Bị từ chối" />
+        <FilterButton value="all" label="All" />
+        <FilterButton value="pending" label="Pending" />
+        <FilterButton value="approved" label="Approved" />
+        <FilterButton value="rejected" label="Rejected" />
       </View>
 
       <FlatList
@@ -115,9 +131,9 @@ export default function MyMaterialsPage() {
         refreshing={loading}
         onRefresh={() => loadMy(true)}
         ListFooterComponent={loading ? <ActivityIndicator style={{ marginTop: 8 }} /> : null}
-        ListEmptyComponent={!loading ? <Text style={styles.empty}>Không có dữ liệu</Text> : null}
+        ListEmptyComponent={!loading ? <Text style={styles.empty}>No data available</Text> : null}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -129,8 +145,33 @@ function statusStyle(status?: string) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  header: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#009900' },
-  headerTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  headerSafeArea: {
+    backgroundColor: '#00704A',
+  },
+  header: { 
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: '#00704A',
+  },
+  backButton: {
+    padding: 8,
+    width: 40,
+  },
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerTitle: { 
+    color: '#fff', 
+    fontSize: 18, 
+    fontWeight: '700' 
+  },
+  headerSpacer: {
+    width: 40,
+  },
   filterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
   filterBtn: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB' },
   filterBtnActive: { backgroundColor: '#0F4D3A', borderColor: '#0F4D3A' },

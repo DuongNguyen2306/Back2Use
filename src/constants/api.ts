@@ -37,7 +37,8 @@ export const API_ENDPOINTS = {
     HISTORY: '/businesses/history-business-form',
     GET_ALL: '/businesses',
     GET_BY_ID: '/businesses', // GET /businesses/{id}
-    PROFILE: '/businesses/profile',
+    PROFILE: '/businesses/profile', // GET /businesses/profile
+    UPDATE_PROFILE: '/businesses/profile', // PATCH /businesses/profile
   },
   ADMIN: {
     DASHBOARD: '/admin/dashboard',
@@ -67,6 +68,7 @@ export const API_ENDPOINTS = {
   SUBSCRIPTIONS: {
     GET_ALL: '/subscriptions', // GET
     BUY: '/businesses/buy-subscription', // POST
+    ACTIVATE_TRIAL: '/businesses/activate-trial', // POST
   },
   PRODUCTS: {
     GET_BY_ID: '/products', // GET /products/{id}

@@ -12,6 +12,7 @@ import {
 import BusinessHeader from "../../../components/BusinessHeader";
 import { useAuth } from "../../../context/AuthProvider";
 import { useTokenRefresh } from "../../../hooks/useTokenRefresh";
+import { borrowTransactionsApi } from "../../../src/services/api/borrowTransactionService";
 import { businessesApi } from "../../../src/services/api/businessService";
 import { BusinessProfile } from "../../../src/types/business.types";
 
@@ -21,6 +22,12 @@ export default function BusinessOverview() {
   const { state } = useAuth();
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    revenue: 0,
+    orders: 0,
+    customers: 0,
+    rating: 0,
+  });
 
   useTokenRefresh();
 
@@ -52,7 +59,7 @@ export default function BusinessOverview() {
           if (error?.response?.status === 403 || error?.message === 'ACCESS_DENIED_403') {
             console.log('⚠️ Access denied (403) - silently handled');
           } else {
-            console.error('❌ Error loading business profile:', error);
+          console.error('❌ Error loading business profile:', error);
           }
           // ignore - will show default values
         }
@@ -61,6 +68,67 @@ export default function BusinessOverview() {
     };
     loadBusinessData();
   }, [state.accessToken, state.isAuthenticated, state.isHydrated, state.role]);
+
+  // Load real transaction statistics
+  useEffect(() => {
+    const loadTransactionStats = async () => {
+      if (!state.isHydrated || !state.accessToken || !state.isAuthenticated || state.role !== 'business') {
+        return;
+      }
+
+      try {
+        console.log('📊 Loading transaction statistics...');
+        
+        // Load all transactions to calculate stats
+        const response = await borrowTransactionsApi.getBusinessHistory({
+          page: 1,
+          limit: 1000, // Get a large number to calculate accurate stats
+        });
+
+        console.log('📡 Transaction stats response:', response);
+
+        let transactions: any[] = [];
+        if (response.statusCode === 200) {
+          if (response.data?.items && Array.isArray(response.data.items)) {
+            transactions = response.data.items;
+          } else if (Array.isArray(response.data)) {
+            transactions = response.data;
+          }
+        }
+
+        console.log('📊 Total transactions found:', transactions.length);
+
+        // Calculate revenue from completed transactions (depositAmount)
+        const completedTransactions = transactions.filter(t => t.status === 'completed');
+        const revenue = completedTransactions.reduce((sum, t) => sum + (t.depositAmount || 0), 0);
+
+        // Count total orders
+        const orders = transactions.length;
+
+        // Count unique customers
+        const uniqueCustomers = new Set(
+          transactions
+            .map(t => t.customerId?._id || t.customerId)
+            .filter(id => id)
+        );
+        const customers = uniqueCustomers.size;
+
+        console.log('📊 Calculated stats:', { revenue, orders, customers });
+
+        setStats({
+          revenue,
+          orders,
+          customers,
+          rating: 0, // Rating not available from transactions
+        });
+      } catch (error: any) {
+        console.error('❌ Error loading transaction stats:', error);
+        // Silently fail - will show default values
+      }
+    };
+
+    loadTransactionStats();
+  }, [state.isHydrated, state.accessToken, state.isAuthenticated, state.role]);
 
   // Get user info from business profile
   const businessOwnerName = businessProfile?.userId?.username || businessProfile?.userId?.email || "Business Owner";
@@ -113,22 +181,26 @@ export default function BusinessOverview() {
               <View style={styles.statsGrid}>
                 <View style={styles.statCard}>
                   <Ionicons name="trending-up" size={24} color="#00704A" />
-                  <Text style={styles.statValue}>₫2.5M</Text>
+                  <Text style={styles.statValue}>
+                    {stats.revenue > 0 
+                      ? `₫${(stats.revenue / 1000000).toFixed(1)}M` 
+                      : '₫0'}
+                  </Text>
                   <Text style={styles.statLabel}>Revenue</Text>
                 </View>
                 <View style={styles.statCard}>
                   <Ionicons name="receipt" size={24} color="#00704A" />
-                  <Text style={styles.statValue}>150</Text>
+                  <Text style={styles.statValue}>{stats.orders}</Text>
                   <Text style={styles.statLabel}>Orders</Text>
                 </View>
                 <View style={styles.statCard}>
                   <Ionicons name="people" size={24} color="#00704A" />
-                  <Text style={styles.statValue}>45</Text>
+                  <Text style={styles.statValue}>{stats.customers}</Text>
                   <Text style={styles.statLabel}>Customers</Text>
                 </View>
                 <View style={styles.statCard}>
                   <Ionicons name="star" size={24} color="#00704A" />
-                  <Text style={styles.statValue}>4.8</Text>
+                  <Text style={styles.statValue}>-</Text>
                   <Text style={styles.statLabel}>Rating</Text>
                 </View>
               </View>

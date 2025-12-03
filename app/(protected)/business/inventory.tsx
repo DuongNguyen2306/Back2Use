@@ -79,7 +79,7 @@ export default function InventoryManagement() {
         if (error?.response?.status === 403 || error?.message === 'ACCESS_DENIED_403') {
           console.log('⚠️ Access denied (403) - silently handled');
         } else {
-          console.error('Error loading business profile:', error);
+        console.error('Error loading business profile:', error);
         }
       } finally {
         setLoading(false);

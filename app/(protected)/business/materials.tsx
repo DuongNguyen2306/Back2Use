@@ -275,9 +275,26 @@ export default function InventoryManagementScreen() {
       const newGroups = await loadProductGroups();
       console.log('✅ New groups count:', newGroups.length); // sẽ thấy đúng số lượng
     } catch (error: any) {
-      console.error('❌ Error creating product group:', error);
-      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to create product group';
-      Alert.alert('Error', errorMessage);
+      // Don't log error - it's already handled silently in client.ts
+      const errorMessage = error?.response?.data?.message || error?.message || '';
+      
+      // Check for product group limit error
+      const isLimitReached = errorMessage.toLowerCase().includes('product group limit') || 
+                            errorMessage.toLowerCase().includes('limit reached') ||
+                            errorMessage.toLowerCase().includes('allows 0 product groups') ||
+                            errorMessage.toLowerCase().includes('upgrade your subscription');
+      
+      if (isLimitReached) {
+        Alert.alert(
+          'Subscription Limit Reached',
+          'Your current plan does not allow creating product groups. Please upgrade your subscription to create more product groups.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        // Show generic error message
+        const displayMessage = errorMessage || 'Failed to create product group. Please try again.';
+        Alert.alert('Error', displayMessage);
+      }
     } finally {
       setSubmitting(false);
     }
