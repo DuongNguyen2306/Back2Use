@@ -1,4 +1,4 @@
-import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService';
+import { getCurrentUserProfileWithAutoRefresh, leaderboardApi } from '@/services/api/userService';
 import { voucherApi } from '@/services/api/voucherService';
 import { getRoleFromToken } from '@/services/api/client';
 import { User } from '@/types/auth.types';
@@ -63,6 +63,7 @@ export default function Rewards() {
   const [usedVouchers, setUsedVouchers] = useState<UIVoucher[]>([]);
   const [loadingVouchers, setLoadingVouchers] = useState(false);
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
+  const [userRank, setUserRank] = useState<number | null>(null);
 
   // Convert API voucher to UI format (handle both old and new API formats)
   const convertVoucherToUI = (voucher: any, index: number = 0): UIVoucher => {
@@ -168,12 +169,38 @@ export default function Rewards() {
     };
   };
 
-  // Load user data (silently handle errors)
+  // Load user data and rank (silently handle errors)
   useEffect(() => {
     const loadUserData = async () => {
       try {
         const userData = await getCurrentUserProfileWithAutoRefresh();
         setUser(userData);
+        
+        // Load user rank from leaderboard for current month
+        try {
+          const now = new Date();
+          const leaderboardResponse = await leaderboardApi.getMonthly({
+            month: now.getMonth() + 1,
+            year: now.getFullYear(),
+            page: 1,
+            limit: 100,
+          });
+          
+          // Find current user in leaderboard
+          const currentUserEntry = leaderboardResponse.data.find((entry: any) => 
+            entry.customerId._id === userData._id
+          );
+          
+          if (currentUserEntry) {
+            setUserRank(currentUserEntry.rank);
+          } else {
+            setUserRank(null);
+          }
+        } catch (rankError) {
+          // Silently handle rank errors
+          console.log('Could not load user rank:', rankError);
+          setUserRank(null);
+        }
       } catch (error: any) {
         // Silently handle all errors - don't show to user
         // Don't log "No valid access token" errors - they're expected during auth flow
@@ -454,7 +481,7 @@ export default function Rewards() {
 
   const userStats = {
     points: (user as any)?.rewardPoints || 0,
-    ranking: 8, // Mock ranking for now
+    ranking: userRank !== null ? userRank : '10+', // Real rank from leaderboard or "10+" if not available
   };
 
   const renderLockedVoucherSlot = () => {
@@ -681,7 +708,9 @@ export default function Rewards() {
               <View style={styles.statIcon}>
                 <Text style={styles.statIconText}>🏆</Text>
               </View>
-              <Text style={styles.statValue}>{userStats.ranking}</Text>
+              <Text style={styles.statValue}>
+                {userStats.ranking === '10+' ? '10+' : userStats.ranking}
+              </Text>
               <Text style={styles.statLabel}>{t('rewards').ranking}</Text>
               <View style={styles.viewRankingContainer}>
                 <Text style={styles.viewRankingText}>{t('rewards').viewRankings}</Text>

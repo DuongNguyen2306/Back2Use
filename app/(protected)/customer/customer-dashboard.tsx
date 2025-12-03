@@ -1,6 +1,6 @@
 import { borrowTransactionsApi } from "@/services/api/borrowTransactionService";
 import { productsApi } from "@/services/api/businessService";
-import { getCurrentUserProfileWithAutoRefresh } from "@/services/api/userService";
+import { getCurrentUserProfileWithAutoRefresh, leaderboardApi } from "@/services/api/userService";
 import { mockTransactions } from "@/utils/mockData";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -44,6 +44,7 @@ export default function CustomerDashboard() {
   const [borrowing, setBorrowing] = useState(false);
   const [showBalance, setShowBalance] = useState(false); // Mặc định ẩn số tiền
   const [durationInDays, setDurationInDays] = useState<string>('30'); // Số ngày mượn, mặc định 30
+  const [userRank, setUserRank] = useState<number | null>(null);
   // use layout navigation; no local tab state here
   const scanLock = useRef(false);
 
@@ -65,6 +66,32 @@ export default function CustomerDashboard() {
         console.log('💰 Dashboard - Balance:', user.wallet?.balance);
         console.log('💰 Dashboard - AvailableBalance:', (user.wallet as any)?.availableBalance);
           setUserData(user);
+          
+          // Load user rank from leaderboard for current month
+          try {
+            const now = new Date();
+            const leaderboardResponse = await leaderboardApi.getMonthly({
+              month: now.getMonth() + 1,
+              year: now.getFullYear(),
+              page: 1,
+              limit: 100,
+            });
+            
+            // Find current user in leaderboard
+            const currentUserEntry = leaderboardResponse.data.find((entry: any) => 
+              entry.customerId._id === user._id
+            );
+            
+            if (currentUserEntry) {
+              setUserRank(currentUserEntry.rank);
+            } else {
+              setUserRank(null);
+            }
+          } catch (rankError) {
+            // Silently handle rank errors
+            console.log('Could not load user rank:', rankError);
+            setUserRank(null);
+          }
         } catch (error: any) {
           // Don't log network errors as errors - they're expected when offline
           const isNetworkError = error?.message?.toLowerCase().includes('network') ||
@@ -134,7 +161,7 @@ export default function CustomerDashboard() {
   const user = userData || {
     id: "1",
     name: "User",
-    rank: 8,
+    rank: userRank !== null ? userRank : undefined,
     maxRank: 10,
     level: "Green",
     walletBalance: 125.5,
@@ -537,8 +564,21 @@ export default function CustomerDashboard() {
               setBorrowing(true);
               console.log('📦 Creating borrow transaction...');
 
-              // DÙNG realtimeDeposit để gửi API
-              const finalDepositValue = realtimeDeposit;
+              // LẤY depositValue CỐ ĐỊNH TỪ PRODUCT - KHÔNG TÍNH TOÁN
+              // Chỉ lấy giá trị cố định từ productSizeId.depositValue hoặc productGroupId.depositValue
+              // KHÔNG tính toán từ rentalPrice * days
+              const backendDepositValue = 
+                (product.productSizeId as any)?.depositValue ??
+                (product.productGroupId as any)?.depositValue ??
+                0;
+              
+              console.log('💰 Backend DepositValue (cố định từ product):', {
+                value: backendDepositValue,
+                type: typeof backendDepositValue,
+                source: backendDepositValue === (product.productSizeId as any)?.depositValue 
+                  ? 'productSizeId.depositValue' 
+                  : 'productGroupId.depositValue'
+              });
 
               // FIX CHẮC 100% - businessId đúng trong mọi trường hợp
               let businessId: string | undefined;
@@ -594,10 +634,14 @@ export default function CustomerDashboard() {
               }
 
               // Validate depositValue before sending
-              if (!finalDepositValue || finalDepositValue <= 0 || isNaN(finalDepositValue)) {
+              if (!backendDepositValue || backendDepositValue <= 0 || isNaN(backendDepositValue)) {
+                console.error('❌ Product không có depositValue hợp lệ:', {
+                  productSizeId: product.productSizeId,
+                  productGroupId: product.productGroupId
+                });
                 Alert.alert(
                   'Error',
-                  'Invalid deposit value. Please contact support or try another product.'
+                  'Sản phẩm này chưa có thông tin tiền cọc. Vui lòng liên hệ hỗ trợ hoặc thử sản phẩm khác.'
                 );
                 setBorrowing(false);
                 return;
@@ -606,7 +650,7 @@ export default function CustomerDashboard() {
               const borrowDto = {
                 productId,
                 businessId,
-                depositValue: realtimeDeposit,
+                depositValue: backendDepositValue, // Dùng giá trị cố định từ product, không tính toán
                 durationInDays: realtimeDays,
                 type: "online" as const, // ← CỨ ĐỂ CỨNG THẾ NÀY LÀ CHẮC ĂN NHẤT
               };
@@ -614,9 +658,11 @@ export default function CustomerDashboard() {
               console.log('📦 FINAL borrowDto gửi đi:', {
                 productId,
                 businessId,
-                depositValue: realtimeDeposit,
+                depositValue: backendDepositValue, // Giá trị cố định từ product
+                depositValueType: typeof backendDepositValue,
                 durationInDays: realtimeDays,
-                type: 'online'
+                type: 'online',
+                uiCalculated: realtimeDeposit, // Giá trị tính toán chỉ để hiển thị UI
               });
               console.log('📦 Borrow DTO (full):', JSON.stringify(borrowDto, null, 2));
 
@@ -637,6 +683,8 @@ export default function CustomerDashboard() {
                       if (state.accessToken) {
                         getCurrentUserProfileWithAutoRefresh().then(setUserData).catch(console.error);
                       }
+                      // Redirect đến lịch sử mượn
+                      router.replace('/(protected)/customer/transaction-history');
                     },
                   },
                 ]
@@ -737,7 +785,9 @@ export default function CustomerDashboard() {
       {/* Floating White Card - Hero */}
       <View style={styles.heroCard}>
         <View style={styles.heroCardLeft}>
-          <Text style={styles.heroRankNumber}>{user?.rank || 8}</Text>
+          <Text style={styles.heroRankNumber}>
+            {userRank !== null ? userRank : '10+'}
+          </Text>
           <Text style={styles.heroRankLabel}>Your Rank</Text>
             </View>
         <TouchableOpacity 

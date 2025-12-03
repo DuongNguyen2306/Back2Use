@@ -6,6 +6,7 @@ import {
     Alert,
     Dimensions,
     Image,
+    Modal,
     RefreshControl,
     ScrollView,
     StyleSheet,
@@ -32,11 +33,19 @@ interface LeaderboardUser {
 export default function Leaderboard() {
   const auth = useAuth();
   const router = useRouter();
-  const [activeFilter, setActiveFilter] = useState<'today' | 'week' | 'all'>('today');
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserPoints, setCurrentUserPoints] = useState<number | null>(null);
+  const [currentUserRank, setCurrentUserRank] = useState<number | null>(null);
+  const [currentUserName, setCurrentUserName] = useState<string>('Bạn');
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [showYearPicker, setShowYearPicker] = useState(false);
+  const [hasNoData, setHasNoData] = useState(false);
 
   // Load current user info
   useEffect(() => {
@@ -44,6 +53,8 @@ export default function Leaderboard() {
       try {
         const user = await getCurrentUserProfileWithAutoRefresh();
         setCurrentUserId(user._id || null);
+        setCurrentUserName(user.fullName || user.name || 'Bạn');
+        setCurrentUserAvatar(user.avatar || null);
       } catch (error) {
         console.error('Error loading current user:', error);
       }
@@ -51,54 +62,38 @@ export default function Leaderboard() {
     loadCurrentUser();
   }, []);
 
-  // Load leaderboard data
-  const loadLeaderboard = async (filter: 'today' | 'week' | 'all') => {
+  // Load leaderboard data - theo tháng và năm được chọn
+  const loadLeaderboard = async (month?: number, year?: number) => {
     try {
       setLoading(true);
+      setHasNoData(false);
       
-      const now = new Date();
-      let params: any = {
+      const monthToLoad = month ?? selectedMonth;
+      const yearToLoad = year ?? selectedYear;
+      
+      const params: any = {
         page: 1,
         limit: 100,
+        month: monthToLoad,
+        year: yearToLoad,
       };
 
-      // Map filter to API parameters
-      if (filter === 'today') {
-        // Today = current month
-        params.month = now.getMonth() + 1; // 1-12
-        params.year = now.getFullYear();
-      } else if (filter === 'week') {
-        // Week = current month (API doesn't have week filter, use current month)
-        params.month = now.getMonth() + 1;
-        params.year = now.getFullYear();
-      } else {
-        // All Time = no month/year filter, get all
-        // Or use current month as default
-        params.month = now.getMonth() + 1;
-        params.year = now.getFullYear();
-      }
-
       console.log('📊 Loading leaderboard with params:', params);
-      let response = await leaderboardApi.getMonthly(params);
+      const response = await leaderboardApi.getMonthly(params);
       
       console.log('📊 Leaderboard response:', response);
 
-      // Nếu tháng hiện tại không có dữ liệu, thử query tháng trước
-      if (response.data.length === 0 && (filter === 'today' || filter === 'week')) {
-        console.log('📊 No data for current month, trying previous month...');
-        const prevMonth = params.month === 1 ? 12 : params.month - 1;
-        const prevYear = params.month === 1 ? params.year - 1 : params.year;
-        
-        const prevParams = {
-          ...params,
-          month: prevMonth,
-          year: prevYear,
-        };
-        
-        console.log('📊 Loading previous month with params:', prevParams);
-        response = await leaderboardApi.getMonthly(prevParams);
-        console.log('📊 Previous month leaderboard response:', response);
+      // Kiểm tra nếu không có dữ liệu
+      if (response.data.length === 0) {
+        setHasNoData(true);
+        setLeaderboardData([]);
+        setCurrentUserPoints(0);
+        setCurrentUserRank(null);
+        setLoading(false);
+        return;
       }
+      
+      setHasNoData(false);
 
       // Generate realistic names from fullName or create from phone
       const generateRealisticName = (fullName: string | undefined, phone: string | undefined): string => {
@@ -134,12 +129,18 @@ export default function Leaderboard() {
           ? customer.userId.avatar 
           : generateAvatarUrl(realisticName);
         
+        // Lưu thông tin user hiện tại
+        if (isCurrentUser) {
+          setCurrentUserPoints(entry.rankingPoints);
+          setCurrentUserRank(entry.rank);
+        }
+        
         return {
           id: entry._id,
           name: realisticName,
           username: customer.phone || customer._id.substring(0, 8),
           avatar: avatarUrl, // Use API avatar if available, otherwise generate
-          score: entry.rankingPoints,
+          score: entry.rankingPoints, // Điểm tháng này
           rank: entry.rank,
           trend: 'same' as const, // API doesn't provide trend, default to 'same'
           isCurrentUser: isCurrentUser || false,
@@ -147,6 +148,12 @@ export default function Leaderboard() {
       });
 
       setLeaderboardData(mappedData);
+      
+      // Nếu user hiện tại không có trong leaderboard, set điểm về 0
+      if (currentUserId && !mappedData.find(u => u.isCurrentUser)) {
+        setCurrentUserPoints(0);
+        setCurrentUserRank(null);
+      }
     } catch (error: any) {
       console.error('Error loading leaderboard:', error);
       Alert.alert('Error', error.message || 'Failed to load leaderboard. Please try again.');
@@ -156,25 +163,45 @@ export default function Leaderboard() {
     }
   };
 
-  // Load data when filter changes
+  // Load data when currentUserId or selected month/year changes
   useEffect(() => {
-    loadLeaderboard(activeFilter);
-  }, [activeFilter, currentUserId]);
-
-  // Handle filter change
-  const handleFilterChange = (filter: 'today' | 'week' | 'all') => {
-    setActiveFilter(filter);
-  };
+    if (currentUserId) {
+      loadLeaderboard();
+    }
+  }, [currentUserId, selectedMonth, selectedYear]);
 
   // Handle refresh
   const onRefresh = () => {
     setRefreshing(true);
-    loadLeaderboard(activeFilter);
+    loadLeaderboard();
+  };
+
+  // Month names
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  // Generate years list (current year and 2 years back)
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 3 }, (_, i) => currentYear - i);
+
+  // Handle month selection
+  const handleMonthSelect = (month: number) => {
+    setSelectedMonth(month);
+    setShowMonthPicker(false);
+  };
+
+  // Handle year selection
+  const handleYearSelect = (year: number) => {
+    setSelectedYear(year);
+    setShowYearPicker(false);
   };
 
 
   const top3Users = leaderboardData.slice(0, 3);
-  const remainingUsers = leaderboardData.slice(3);
+  // Lọc ra user hiện tại khỏi danh sách để hiển thị riêng ở cuối
+  const remainingUsers = leaderboardData.slice(3).filter(user => !user.isCurrentUser);
   const currentUser = leaderboardData.find(user => user.isCurrentUser);
 
   const getTrendIcon = (trend: string) => {
@@ -280,38 +307,46 @@ export default function Leaderboard() {
         <View style={styles.headerSpacer} />
         </View>
 
-        {/* Filter Tabs */}
-      <View style={styles.filterTabs}>
-        <TouchableOpacity
-          style={[styles.filterTab, activeFilter === 'today' && styles.activeFilterTab]}
-          onPress={() => handleFilterChange('today')}
-        >
-          <Text style={[styles.filterTabText, activeFilter === 'today' && styles.activeFilterTabText]}>
-            Today
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterTab, activeFilter === 'week' && styles.activeFilterTab]}
-          onPress={() => handleFilterChange('week')}
-        >
-          <Text style={[styles.filterTabText, activeFilter === 'week' && styles.activeFilterTabText]}>
-            Week
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterTab, activeFilter === 'all' && styles.activeFilterTab]}
-          onPress={() => handleFilterChange('all')}
-        >
-          <Text style={[styles.filterTabText, activeFilter === 'all' && styles.activeFilterTabText]}>
-            All Time
-          </Text>
-        </TouchableOpacity>
+        {/* Filter Section - Chọn tháng và năm */}
+      <View style={styles.filterSection}>
+        <Text style={styles.filterTitle}>Select Month & Year</Text>
+        <View style={styles.filterRow}>
+          <TouchableOpacity
+            style={styles.filterButton}
+            onPress={() => setShowMonthPicker(true)}
+          >
+            <Ionicons name="calendar-outline" size={20} color="#00704A" />
+            <Text style={styles.filterButtonText}>
+              {monthNames[selectedMonth - 1]}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color="#6B7280" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.filterButton}
+            onPress={() => setShowYearPicker(true)}
+          >
+            <Ionicons name="calendar-outline" size={20} color="#00704A" />
+            <Text style={styles.filterButtonText}>
+              {selectedYear}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color="#6B7280" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#00704A" />
           <Text style={styles.loadingText}>Loading leaderboard...</Text>
+        </View>
+      ) : hasNoData ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="trophy-outline" size={64} color="#9CA3AF" />
+          <Text style={styles.emptyText}>No data available for this month</Text>
+          <Text style={styles.emptySubtext}>
+            Please select a different month or year
+          </Text>
         </View>
       ) : (
       <ScrollView 
@@ -349,15 +384,140 @@ export default function Leaderboard() {
             <View style={styles.leaderboardList}>
               {remainingUsers.map(user => renderLeaderboardItem(user))}
             </View>
-          ) : (
+          ) : !hasNoData && (
             <View style={styles.emptyContainer}>
               <Ionicons name="trophy-outline" size={64} color="#9CA3AF" />
               <Text style={styles.emptyText}>No leaderboard data available</Text>
             </View>
           )}
         </View>
+
+        {/* Me Section - Hiển thị điểm của user hiện tại */}
+        {currentUserId && (
+          <View style={styles.meSection}>
+            <View style={styles.meDivider}>
+              <View style={styles.meDividerLine} />
+              <Text style={styles.meDividerText}>Bạn</Text>
+              <View style={styles.meDividerLine} />
+            </View>
+            <View style={styles.meCard}>
+              <View style={styles.rankContainer}>
+                <Text style={styles.rankNumber}>
+                  {currentUserRank ? `#${currentUserRank}` : '-'}
+                </Text>
+              </View>
+              
+              <View style={styles.userAvatar}>
+                {(currentUser?.avatar || currentUserAvatar) ? (
+                  <Image 
+                    source={{ uri: currentUser?.avatar || currentUserAvatar || '' }} 
+                    style={styles.avatarImage}
+                    defaultSource={require('../../../assets/images/avatar.jpg')}
+                  />
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <Ionicons name="person" size={24} color="#6B7280" />
+                  </View>
+                )}
+              </View>
+              
+              <View style={styles.userInfo}>
+                <Text style={styles.userName}>{currentUserName}</Text>
+              </View>
+              
+              <View style={styles.scoreContainer}>
+                <Ionicons name="star" size={16} color="#FF8C00" />
+                <Text style={styles.scoreText}>
+                  {(currentUserPoints ?? 0).toLocaleString('vi-VN')} điểm
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
       </ScrollView>
       )}
+
+      {/* Month Picker Modal */}
+      <Modal
+        visible={showMonthPicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowMonthPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Month</Text>
+              <TouchableOpacity onPress={() => setShowMonthPicker(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.pickerList}>
+              {monthNames.map((month, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.pickerItem,
+                    selectedMonth === index + 1 && styles.pickerItemSelected
+                  ]}
+                  onPress={() => handleMonthSelect(index + 1)}
+                >
+                  <Text style={[
+                    styles.pickerItemText,
+                    selectedMonth === index + 1 && styles.pickerItemTextSelected
+                  ]}>
+                    {month}
+                  </Text>
+                  {selectedMonth === index + 1 && (
+                    <Ionicons name="checkmark" size={20} color="#00704A" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Year Picker Modal */}
+      <Modal
+        visible={showYearPicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowYearPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Year</Text>
+              <TouchableOpacity onPress={() => setShowYearPicker(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.pickerList}>
+              {years.map((year) => (
+                <TouchableOpacity
+                  key={year}
+                  style={[
+                    styles.pickerItem,
+                    selectedYear === year && styles.pickerItemSelected
+                  ]}
+                  onPress={() => handleYearSelect(year)}
+                >
+                  <Text style={[
+                    styles.pickerItemText,
+                    selectedYear === year && styles.pickerItemTextSelected
+                  ]}>
+                    {year}
+                  </Text>
+                  {selectedYear === year && (
+                    <Ionicons name="checkmark" size={20} color="#00704A" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -397,31 +557,41 @@ const styles = StyleSheet.create({
   scrollContentContainer: {
     paddingBottom: 120, // Extra padding to prevent items from being hidden behind bottom nav
   },
-  filterTabs: {
-    flexDirection: 'row',
-    backgroundColor: '#F5F7FA',
+  filterSection: {
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    justifyContent: 'center',
-    gap: 32,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
-  filterTab: {
-    paddingVertical: 12,
+  filterTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  filterButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F9FAFB',
     paddingHorizontal: 16,
-    marginRight: 8,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 8,
   },
-  activeFilterTab: {
-    borderBottomWidth: 3,
-    borderBottomColor: '#00704A',
-  },
-  filterTabText: {
+  filterButtonText: {
+    flex: 1,
     fontSize: 14,
     fontWeight: '500',
-    color: '#6B7280',
-  },
-  activeFilterTabText: {
-    color: '#00704A',
-    fontWeight: '700',
+    color: '#111827',
   },
   podiumSection: {
     marginTop: 24,
@@ -624,7 +794,107 @@ const styles = StyleSheet.create({
   emptyText: {
     marginTop: 16,
     fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    marginTop: 8,
+    fontSize: 14,
     color: '#6B7280',
     textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+    paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  pickerList: {
+    maxHeight: 400,
+  },
+  pickerItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  pickerItemSelected: {
+    backgroundColor: '#F0FDF4',
+  },
+  pickerItemText: {
+    fontSize: 16,
+    color: '#374151',
+  },
+  pickerItemTextSelected: {
+    color: '#00704A',
+    fontWeight: '600',
+  },
+  meSection: {
+    marginTop: 24,
+    marginBottom: 20,
+    paddingHorizontal: 20,
+  },
+  meDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  meDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  meDividerText: {
+    paddingHorizontal: 16,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  meCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#00704A',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  avatarPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

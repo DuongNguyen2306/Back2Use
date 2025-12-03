@@ -324,11 +324,30 @@ export default function CustomerProductDetailScreen() {
                 throw new Error('Cannot find product ID. Please try again.');
               }
 
-              // Validate depositValue before sending
-              if (!depositValue || depositValue <= 0 || isNaN(depositValue)) {
+              // LẤY depositValue CỐ ĐỊNH TỪ PRODUCT - KHÔNG TÍNH TOÁN
+              // Chỉ lấy giá trị cố định từ productSizeId.depositValue hoặc productGroupId.depositValue
+              // KHÔNG tính toán từ rentalPrice * days
+              const backendDepositValue = 
+                (product.productSizeId as any)?.depositValue ??
+                (product.productGroupId as any)?.depositValue ??
+                0;
+              
+              console.log('💰 Backend DepositValue (cố định từ product):', {
+                value: backendDepositValue,
+                type: typeof backendDepositValue,
+                source: backendDepositValue === (product.productSizeId as any)?.depositValue 
+                  ? 'productSizeId.depositValue' 
+                  : 'productGroupId.depositValue'
+              });
+              
+              if (!backendDepositValue || backendDepositValue <= 0 || isNaN(backendDepositValue)) {
+                console.error('❌ Product không có depositValue hợp lệ:', {
+                  productSizeId: product.productSizeId,
+                  productGroupId: product.productGroupId
+                });
                 Alert.alert(
                   'Error',
-                  'Invalid deposit value. Please contact support or try another product.'
+                  'Sản phẩm này chưa có thông tin tiền cọc. Vui lòng liên hệ hỗ trợ hoặc thử sản phẩm khác.'
                 );
                 setBorrowing(false);
                 return;
@@ -337,7 +356,7 @@ export default function CustomerProductDetailScreen() {
               const borrowDto = {
                 productId,
                 businessId,
-                depositValue: depositValue, // Must be valid > 0
+                depositValue: backendDepositValue, // Dùng giá trị cố định từ backend
                 durationInDays: days,
                 type: "online" as const, // ← CỨ ĐỂ CỨNG THẾ NÀY LÀ CHẮC ĂN NHẤT
               };
@@ -345,9 +364,11 @@ export default function CustomerProductDetailScreen() {
               console.log('📦 FINAL borrowDto gửi đi:', {
                 productId,
                 businessId,
-                depositValue,
+                depositValue: backendDepositValue, // Giá trị cố định từ backend
+                depositValueType: typeof backendDepositValue,
                 durationInDays: days,
-                type: 'online'
+                type: 'online',
+                uiCalculated: depositValue, // Giá trị tính toán chỉ để hiển thị UI
               });
               console.log('📦 Borrow DTO (full):', JSON.stringify(borrowDto, null, 2));
 

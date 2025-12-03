@@ -239,38 +239,27 @@ export default function ProductGroupScreen() {
 
     const product = selectedProduct.product;
     
-    // Get deposit value safely - check multiple possible locations
+    // LẤY depositValue CỐ ĐỊNH TỪ PRODUCT - KHÔNG TÍNH TOÁN
+    // Chỉ lấy giá trị cố định từ productSizeId.depositValue hoặc productGroupId.depositValue
+    // KHÔNG tính toán từ rentalPrice * days
     let depositValue = 0;
-    
-    console.log('🔍 Full Product Object for depositValue:', JSON.stringify(product, null, 2));
-    console.log('🔍 productSizeId:', product.productSizeId);
     
     // Check if productSizeId is an object with depositValue
     if (product.productSizeId && typeof product.productSizeId === 'object') {
       const productSize = product.productSizeId as any;
-      console.log('🔍 productSizeId object keys:', Object.keys(productSize));
-      console.log('🔍 productSizeId full:', JSON.stringify(productSize, null, 2));
-      
-      // Try multiple possible field names
-      depositValue = productSize.depositValue || 
-                     productSize.basePrice || 
-                     productSize.price || 
-                     0;
-      
+      // Chỉ lấy depositValue, không lấy basePrice hay price
+      depositValue = productSize.depositValue || 0;
       console.log('💰 Found depositValue from productSizeId:', depositValue);
     }
     
-    // If still 0, check productGroupId.productSizeId
+    // If still 0, check productGroupId.depositValue
     if (depositValue === 0 && product.productGroupId) {
       const productGroup = product.productGroupId as any;
-      if (productGroup.productSizeId && typeof productGroup.productSizeId === 'object') {
-        const pgSize = productGroup.productSizeId;
-        depositValue = pgSize.depositValue || pgSize.basePrice || pgSize.price || 0;
-        console.log('💰 Found depositValue from productGroupId.productSizeId:', depositValue);
-      }
+      depositValue = productGroup.depositValue || 0;
+      console.log('💰 Found depositValue from productGroupId:', depositValue);
     }
     
-    console.log('💰 Final Deposit Value Check:', {
+    console.log('💰 Final Deposit Value (cố định từ product):', {
       hasProductSizeId: !!product.productSizeId,
       productSizeIdType: typeof product.productSizeId,
       depositValue,
@@ -278,10 +267,13 @@ export default function ProductGroupScreen() {
     
     // If depositValue is still 0, show error - backend requires valid depositValue
     if (depositValue === 0 || !depositValue || isNaN(depositValue)) {
-      console.error('❌ Cannot find depositValue');
+      console.error('❌ Product không có depositValue hợp lệ:', {
+        productSizeId: product.productSizeId,
+        productGroupId: product.productGroupId
+      });
       Alert.alert(
         'Error',
-        'Unable to find deposit information for this product. The product may not be properly configured. Please contact support or try another product.'
+        'Sản phẩm này chưa có thông tin tiền cọc. Vui lòng liên hệ hỗ trợ hoặc thử sản phẩm khác.'
       );
       return;
     }
@@ -407,11 +399,15 @@ export default function ProductGroupScreen() {
                 throw new Error('Không tìm thấy ID sản phẩm. Vui lòng thử lại.');
               }
 
-              // Validate depositValue before sending
+              // Validate depositValue before sending (đã validate ở trên, nhưng double check)
               if (!depositValue || depositValue <= 0 || isNaN(depositValue)) {
+                console.error('❌ Product không có depositValue hợp lệ:', {
+                  productSizeId: product.productSizeId,
+                  productGroupId: product.productGroupId
+                });
                 Alert.alert(
                   'Error',
-                  'Invalid deposit value. Please contact support or try another product.'
+                  'Sản phẩm này chưa có thông tin tiền cọc. Vui lòng liên hệ hỗ trợ hoặc thử sản phẩm khác.'
                 );
                 setBorrowing(false);
                 return;
@@ -420,7 +416,7 @@ export default function ProductGroupScreen() {
               const borrowDto = {
                 productId,
                 businessId,
-                depositValue: depositValue, // Must be valid > 0
+                depositValue: depositValue, // Giá trị cố định từ product, không tính toán
                 durationInDays: days,
                 type: "online" as const, // ← CỨ ĐỂ CỨNG THẾ NÀY LÀ CHẮC ĂN NHẤT
               };
@@ -428,7 +424,8 @@ export default function ProductGroupScreen() {
               console.log('📦 FINAL borrowDto gửi đi:', {
                 productId,
                 businessId,
-                depositValue,
+                depositValue, // Giá trị cố định từ product
+                depositValueType: typeof depositValue,
                 durationInDays: days,
                 type: 'online'
               });

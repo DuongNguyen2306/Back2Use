@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "794079969770",
+    "project_id": "back-2-use-55838",
+    "storage_bucket": "back-2-use-55838.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:794079969770:android:3fdc539625067f5ccd7293",
+        "android_client_info": {
+          "package_name": "com.duong2306.back2usemobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCqGTEec7fiYUA3dtuiltycbN_Y8F_rCtM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
