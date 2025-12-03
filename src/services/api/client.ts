@@ -93,6 +93,12 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error) => {
+    // Silently handle 502 errors (server unavailable) - don't log them
+    if (error.response?.status === 502) {
+      // Don't log 502 errors - they're handled silently
+      return Promise.reject(error);
+    }
+    
     // Only log errors that are not user-facing (avoid logging expected errors like validation)
     if (error.response?.status && error.response.status >= 500) {
       console.log('❌ API Error:', error.response?.status, error.config?.url);
@@ -157,6 +163,12 @@ async function apiCall<T>(
           data: {} as any,
         } as T;
       }
+    }
+    
+    // Silently handle 502 errors (server unavailable) - don't log them
+    if (error.response?.status === 502) {
+      // Don't log 502 errors - they're handled silently
+      throw new Error('SERVER_UNAVAILABLE');
     }
     
     // Only log server errors (500+), not validation errors (400)

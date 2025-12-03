@@ -66,21 +66,10 @@ export default function CustomerDashboard() {
         console.log('💰 Dashboard - AvailableBalance:', (user.wallet as any)?.availableBalance);
           setUserData(user);
         } catch (error: any) {
-          // Silently handle 502 server errors and SERVER_UNAVAILABLE errors
-          const is502Error = error?.response?.status === 502 || 
-                            error?.status === 502 ||
-                            error?.message === 'SERVER_UNAVAILABLE';
-          
           // Don't log network errors as errors - they're expected when offline
           const isNetworkError = error?.message?.toLowerCase().includes('network') ||
                                  error?.message?.toLowerCase().includes('timeout') ||
                                  error?.message?.toLowerCase().includes('connection');
-          
-          // Silently handle 502 errors - don't log or show
-          if (is502Error) {
-            // Continue silently with default user data
-            return;
-          }
           
           if (!isNetworkError) {
             console.error('Error loading user data:', error);

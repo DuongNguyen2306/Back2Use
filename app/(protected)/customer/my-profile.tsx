@@ -153,16 +153,6 @@ export default function MyProfile() {
         setHasBusinessRole(true);
       }
       } catch (error: any) {
-        // Silently handle 502 server errors and SERVER_UNAVAILABLE errors
-        const is502Error = error?.response?.status === 502 || 
-                          error?.status === 502 ||
-                          error?.message === 'SERVER_UNAVAILABLE';
-        
-        if (is502Error) {
-          // Silently handle - don't log or show toast
-          return;
-        }
-        
         // Don't show toast for network errors - they're expected when offline
         const isNetworkError = error?.message?.toLowerCase().includes('network') ||
                                error?.message?.toLowerCase().includes('timeout') ||
@@ -485,19 +475,31 @@ export default function MyProfile() {
       const response = await authApi.switchRole({ role: targetRole });
       
       if (response.data?.accessToken && response.data?.refreshToken) {
-        // Save new tokens
-        await AsyncStorage.setItem('ACCESS_TOKEN', response.data.accessToken);
-        await AsyncStorage.setItem('REFRESH_TOKEN', response.data.refreshToken);
-        
-        // Update role in auth state
         const newRole = response.data.user?.role as 'customer' | 'business' | 'admin';
-        if (newRole) {
-          await auth.actions.updateRole(newRole);
+        const tokenExpiry = Date.now() + (60 * 60 * 1000);
+        
+        // Use switchRoleWithTokens to update both tokens and role in auth state
+        await auth.actions.switchRoleWithTokens(
+          newRole || targetRole,
+          response.data.accessToken,
+          response.data.refreshToken,
+          tokenExpiry,
+          response.data.user || null
+        );
+        
+        console.log(`✅ Role switched, waiting for token propagation...`);
+        
+        // Wait a bit longer to ensure token is fully propagated
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Verify token was saved correctly before redirecting
+        const savedToken = await AsyncStorage.getItem('ACCESS_TOKEN');
+        if (savedToken !== response.data.accessToken) {
+          console.error('❌ Token mismatch after switch!');
+          throw new Error('Token không được lưu đúng cách');
         }
         
-        // Calculate token expiry (1 hour from now)
-        const tokenExpiry = Date.now() + (60 * 60 * 1000);
-        await AsyncStorage.setItem('TOKEN_EXPIRY', tokenExpiry.toString());
+        console.log(`✅ Token verified, redirecting...`);
         
         toast({
           title: "Thành công",

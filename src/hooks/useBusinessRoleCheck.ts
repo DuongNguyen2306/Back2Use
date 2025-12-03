@@ -109,7 +109,12 @@ export function useBusinessRoleCheck() {
             }
           }
         }
-      } catch (error) {
+      } catch (error: any) {
+        // Silently handle 502 errors (server unavailable)
+        if (error?.response?.status === 502 || error?.message === 'SERVER_UNAVAILABLE') {
+          // Don't log 502 errors
+          return false;
+        }
         console.error('❌ Error checking business history:', error);
       }
 

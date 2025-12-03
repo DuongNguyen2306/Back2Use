@@ -1,9 +1,7 @@
-// "use client"; // (không cần trong Expo RN, bạn có thể xóa dòng này)
-
 import { googleAuthService } from "@/services/auth/googleAuthService";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -21,6 +19,13 @@ import {
 } from "react-native";
 import { useAuth } from "../../context/AuthProvider";
 
+// --- THÊM CÁC IMPORT MỚI ---
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
+
+// Bắt buộc dòng này để trình duyệt tự đóng sau khi login xong
+WebBrowser.maybeCompleteAuthSession();
+
 type Role = "customer" | "business" | "admin";
 
 
@@ -31,6 +36,43 @@ export default function LoginScreen() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { actions } = useAuth();
+
+  // --- CẤU HÌNH GOOGLE LOGIN (EXPO GO) ---
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    // Client ID Web của bạn
+    clientId: '315932864975-im13bn584s55frdq3gp86ocqup2uqbdd.apps.googleusercontent.com',
+    // ✅ QUAN TRỌNG: Điền cứng link này để khớp với Google Console
+    // Dù app.json scheme là "com.back2use", ta vẫn dùng link này để Google không báo lỗi 400
+    redirectUri: 'https://auth.expo.io/@duong2306/com.back2use',
+  });
+
+  // --- LẮNG NGHE PHẢN HỒI TỪ GOOGLE ---
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const { id_token } = response.params;
+      handleBackendLogin(id_token);
+    } else if (response?.type === 'error') {
+      console.error('Google Login Error:', response.error);
+      Alert.alert('Lỗi', 'Đăng nhập Google thất bại');
+    }
+  }, [response]);
+
+  // --- HÀM GỬI TOKEN VỀ SERVER BACKEND ---
+  const handleBackendLogin = async (idToken: string) => {
+    setIsLoading(true);
+    try {
+      console.log("🔐 Token Google nhận được:", idToken.substring(0, 20) + '...');
+      
+      // Gọi service để xử lý logic backend
+      await googleAuthService.loginWithBackend(idToken);
+      
+    } catch (error) {
+      // Lỗi đã được xử lý alert bên trong service rồi
+      console.error('Google login error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSignIn = async () => {
     if (!username || !password) {
@@ -104,15 +146,7 @@ export default function LoginScreen() {
     );
   };
 
-  const handleGoogleLogin = async () => {
-    try {
-      console.log('Starting Google login...');
-      await googleAuthService.initiateGoogleLogin();
-    } catch (error) {
-      console.error('Google login error:', error);
-      Alert.alert('Error', 'Failed to login with Google. Please try again.');
-    }
-  };
+
 
   return (
     <ImageBackground
@@ -208,7 +242,18 @@ export default function LoginScreen() {
             <Text style={styles.dividerText2}>other way to sign in</Text>
 
             <View style={styles.socialContainer2}>
-              <TouchableOpacity style={styles.socialButton2} onPress={handleGoogleLogin}>
+              {/* NÚT GOOGLE ĐÃ ĐƯỢC CẬP NHẬT LOGIC */}
+              <TouchableOpacity 
+                style={styles.socialButton2} 
+                onPress={() => {
+                  if (request) {
+                    promptAsync(); // Gọi hook Expo Auth Session
+                  } else {
+                    Alert.alert('Lỗi', 'Dịch vụ Google chưa sẵn sàng');
+                  }
+                }}
+                disabled={!request || isLoading}
+              >
                 <Ionicons name="logo-google" size={24} color="#4285F4" />
               </TouchableOpacity>
               <TouchableOpacity style={styles.socialButton2} onPress={() => Alert.alert("Facebook Sign-In", "Facebook login will be available soon!")}>
@@ -229,6 +274,7 @@ export default function LoginScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
     </ImageBackground>
   );
 }
@@ -313,4 +359,74 @@ const styles = StyleSheet.create({
   footer: { flexDirection: "row", justifyContent: "center", alignItems: "center" },
   footerText: { fontSize: 14, color: "#6B7280" },
   footerLink: { fontSize: 14, color: "#0F4D3A", fontWeight: "600" },
+  // WebView styles
+  webViewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingTop: 50,
+    backgroundColor: '#4285F4',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  webViewCloseButton: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  webViewTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    flex: 1,
+    textAlign: 'center',
+  },
+  webViewLoading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  webViewLoadingText: {
+    marginTop: 16,
+    color: '#666',
+    fontSize: 16,
+  },
+  webViewErrorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 24,
+  },
+  webViewErrorTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  webViewErrorText: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  webViewErrorButton: {
+    backgroundColor: '#4285F4',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  webViewErrorButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });

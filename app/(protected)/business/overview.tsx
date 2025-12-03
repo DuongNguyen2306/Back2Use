@@ -47,8 +47,13 @@ export default function BusinessOverview() {
           if (profileResponse.data && profileResponse.data.business) {
             setBusinessProfile(profileResponse.data.business);
           }
-        } catch (error) {
-          console.error('❌ Error loading business profile:', error);
+        } catch (error: any) {
+          // Silently handle 403 errors (Access denied - role mismatch)
+          if (error?.response?.status === 403 || error?.message === 'ACCESS_DENIED_403') {
+            console.log('⚠️ Access denied (403) - silently handled');
+          } else {
+            console.error('❌ Error loading business profile:', error);
+          }
           // ignore - will show default values
         }
       }

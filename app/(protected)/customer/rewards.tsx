@@ -1,6 +1,8 @@
 import { getCurrentUserProfileWithAutoRefresh } from '@/services/api/userService';
 import { voucherApi } from '@/services/api/voucherService';
+import { getRoleFromToken } from '@/services/api/client';
 import { User } from '@/types/auth.types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -193,77 +195,210 @@ export default function Rewards() {
 
   // Load vouchers based on active tab
   const loadVouchers = useCallback(async (showLoading: boolean = true) => {
-    if (!auth.state.isAuthenticated) return;
+    if (!auth.state.isAuthenticated) {
+      console.log('⚠️ Not authenticated, skipping voucher load');
+      return;
+    }
+
+    // Kiểm tra role trong token
+      try {
+      const token = await AsyncStorage.getItem('ACCESS_TOKEN');
+      if (token) {
+        const role = getRoleFromToken(token);
+        console.log('🔍 Token role:', role);
+        console.log('🔍 Auth state role:', auth.state.role);
+        
+        if (role !== 'customer' && auth.state.role !== 'customer') {
+          console.error('❌ Invalid role for customer vouchers:', { tokenRole: role, authRole: auth.state.role });
+          Alert.alert(
+            'Lỗi xác thực',
+            'Bạn cần đăng nhập với tài khoản customer để xem voucher. Vui lòng đăng xuất và đăng nhập lại.',
+            [{ text: 'OK' }]
+          );
+          return;
+          }
+        }
+    } catch (error) {
+      console.error('❌ Error checking token role:', error);
+    }
 
     try {
       if (showLoading) setLoadingVouchers(true);
+      console.log('🔄 Loading vouchers...');
 
-      // Load available vouchers (for "vouchers" tab)
+      // Load my vouchers FIRST to get list of redeemed voucher IDs
+      let redeemedVoucherIds = new Set<string>();
       try {
+        console.log('📡 Calling voucherApi.getMy...');
+        const myVouchersResponse = await voucherApi.getMy({ page: 1, limit: 100 });
+        console.log('✅ My vouchers response:', {
+          statusCode: myVouchersResponse.statusCode,
+          hasData: !!myVouchersResponse.data,
+          dataType: Array.isArray(myVouchersResponse.data) ? 'array' : typeof myVouchersResponse.data,
+          dataLength: Array.isArray(myVouchersResponse.data) ? myVouchersResponse.data.length : 
+                     (myVouchersResponse.data?.items ? myVouchersResponse.data.items.length : 0)
+        });
+        
+        if (myVouchersResponse.statusCode === 200) {
+          // Handle both formats: data as array or data.items
+          let vouchersArray: any[] = [];
+          if (Array.isArray(myVouchersResponse.data)) {
+            vouchersArray = myVouchersResponse.data;
+            console.log('✅ Using new format (array directly):', vouchersArray.length, 'vouchers');
+          } else if (myVouchersResponse.data?.items && Array.isArray(myVouchersResponse.data.items)) {
+            vouchersArray = myVouchersResponse.data.items;
+            console.log('✅ Using old format (data.items):', vouchersArray.length, 'vouchers');
+          } else {
+            console.warn('⚠️ Unknown data format:', myVouchersResponse.data);
+          }
+          
+          if (vouchersArray.length > 0) {
+            const allMyVouchers = vouchersArray.map((v, i) => convertVoucherToUI(v, i));
+            // Get IDs of vouchers that user has already redeemed
+            redeemedVoucherIds = new Set(
+              allMyVouchers.map(v => v.voucherId || v.id).filter(Boolean) as string[]
+            );
+            
+            // Filter: "redeemed" status = not used yet (show in My Vouchers)
+            // "used" or "expired" status = used (show in History)
+            const notUsed = allMyVouchers.filter(v => !v.isUsed);
+            const used = allMyVouchers.filter(v => v.isUsed);
+            setMyVouchers(notUsed);
+            setUsedVouchers(used);
+            console.log('✅ Set my vouchers:', notUsed.length, 'not used,', used.length, 'used');
+            console.log('✅ Redeemed voucher IDs:', Array.from(redeemedVoucherIds));
+          } else {
+            console.log('ℹ️ No my vouchers found');
+            setMyVouchers([]);
+            setUsedVouchers([]);
+          }
+        } else {
+          console.warn('⚠️ Unexpected status code:', myVouchersResponse.statusCode);
+          setMyVouchers([]);
+          setUsedVouchers([]);
+        }
+      } catch (error: any) {
+        console.error('❌ Error loading my vouchers:', error);
+        console.error('❌ Error details:', {
+          message: error?.message,
+          status: error?.response?.status,
+          data: error?.response?.data
+        });
+        
+        // Xử lý lỗi "Access denied" - có thể do role không đúng
+        if (error?.message?.includes('Access denied') || error?.message?.includes('Allowed roles')) {
+          console.error('❌ Access denied - checking token role...');
+          try {
+            const token = await AsyncStorage.getItem('ACCESS_TOKEN');
+            if (token) {
+              const role = getRoleFromToken(token);
+              console.error('❌ Current token role:', role);
+              console.error('❌ Expected role: customer');
+              
+              if (role !== 'customer') {
+                Alert.alert(
+                  'Lỗi xác thực',
+                  `Token của bạn có role "${role}" nhưng cần role "customer". Vui lòng đăng xuất và đăng nhập lại.`,
+                  [{ text: 'OK' }]
+                );
+              }
+            }
+          } catch (e) {
+            console.error('❌ Error checking token:', e);
+        }
+        }
+        
+        setMyVouchers([]);
+        setUsedVouchers([]);
+      }
+
+      // Load available vouchers (for "vouchers" tab) - AFTER loading my vouchers
+      try {
+        console.log('📡 Calling voucherApi.getAll...');
         const allVouchersResponse = await voucherApi.getAll({ page: 1, limit: 100 });
+        console.log('✅ Available vouchers response:', {
+          statusCode: allVouchersResponse.statusCode,
+          hasData: !!allVouchersResponse.data,
+          dataType: Array.isArray(allVouchersResponse.data) ? 'array' : typeof allVouchersResponse.data,
+          dataLength: Array.isArray(allVouchersResponse.data) ? allVouchersResponse.data.length : 
+                     (allVouchersResponse.data?.items ? allVouchersResponse.data.items.length : 0)
+        });
+        
         if (allVouchersResponse.statusCode === 200) {
           // Handle both formats: data as array or data.items
           let vouchersArray: any[] = [];
           if (Array.isArray(allVouchersResponse.data)) {
             // New format: data is array directly
             vouchersArray = allVouchersResponse.data;
+            console.log('✅ Using new format (array directly):', vouchersArray.length, 'vouchers');
           } else if (allVouchersResponse.data?.items && Array.isArray(allVouchersResponse.data.items)) {
             // Old format: data.items is array
             vouchersArray = allVouchersResponse.data.items;
+            console.log('✅ Using old format (data.items):', vouchersArray.length, 'vouchers');
+          } else {
+            console.warn('⚠️ Unknown data format:', allVouchersResponse.data);
           }
           
           if (vouchersArray.length > 0) {
             const converted = vouchersArray.map((v, i) => convertVoucherToUI(v, i));
-            setAvailableVouchers(converted);
+            // Filter out vouchers that user has already redeemed
+            const filtered = converted.filter(v => {
+              const voucherId = v.voucherId || v.id;
+              return !redeemedVoucherIds.has(voucherId);
+            });
+            setAvailableVouchers(filtered);
+            console.log('✅ Set available vouchers:', {
+              total: converted.length,
+              filtered: filtered.length,
+              removed: converted.length - filtered.length
+            });
           } else {
+            console.log('ℹ️ No available vouchers found');
             setAvailableVouchers([]);
           }
+        } else {
+          console.warn('⚠️ Unexpected status code:', allVouchersResponse.statusCode);
+          setAvailableVouchers([]);
         }
       } catch (error: any) {
-        // Silently handle errors
-        if (error?.response?.status !== 403 && error?.response?.status !== 500) {
-          // Only log unexpected errors
+        console.error('❌ Error loading available vouchers:', error);
+        console.error('❌ Error details:', {
+          message: error?.message,
+          status: error?.response?.status,
+          data: error?.response?.data
+        });
+        
+        // Xử lý lỗi "Access denied" - có thể do role không đúng
+        if (error?.message?.includes('Access denied') || error?.message?.includes('Allowed roles')) {
+          console.error('❌ Access denied - checking token role...');
+          try {
+            const token = await AsyncStorage.getItem('ACCESS_TOKEN');
+            if (token) {
+              const role = getRoleFromToken(token);
+              console.error('❌ Current token role:', role);
+              console.error('❌ Expected role: customer');
+              
+              if (role !== 'customer') {
+                Alert.alert(
+                  'Lỗi xác thực',
+                  `Token của bạn có role "${role}" nhưng cần role "customer". Vui lòng đăng xuất và đăng nhập lại.`,
+                  [{ text: 'OK' }]
+                );
+              }
+            }
+          } catch (e) {
+            console.error('❌ Error checking token:', e);
+          }
         }
+        
         setAvailableVouchers([]);
       }
 
-      // Load my vouchers (for "my-vouchers" and "history" tabs)
-      try {
-        const myVouchersResponse = await voucherApi.getMy({ page: 1, limit: 100 });
-        if (myVouchersResponse.statusCode === 200) {
-          // Handle both formats: data as array or data.items
-          let vouchersArray: any[] = [];
-          if (Array.isArray(myVouchersResponse.data)) {
-            // New format: data is array directly
-            vouchersArray = myVouchersResponse.data;
-          } else if (myVouchersResponse.data?.items && Array.isArray(myVouchersResponse.data.items)) {
-            // Old format: data.items is array
-            vouchersArray = myVouchersResponse.data.items;
-          }
-          
-          if (vouchersArray.length > 0) {
-            const allMyVouchers = vouchersArray.map((v, i) => convertVoucherToUI(v, i));
-            // Filter: "redeemed" status = not used yet (show in My Vouchers)
-            // "used" or "expired" status = used (show in History)
-            setMyVouchers(allMyVouchers.filter(v => !v.isUsed));
-            setUsedVouchers(allMyVouchers.filter(v => v.isUsed));
-          } else {
-            setMyVouchers([]);
-            setUsedVouchers([]);
-          }
-        }
-      } catch (error: any) {
-        // Silently handle errors
-        if (error?.response?.status !== 403 && error?.response?.status !== 500) {
-          // Only log unexpected errors
-        }
-        setMyVouchers([]);
-        setUsedVouchers([]);
-      }
     } catch (error) {
-      // Silently handle general errors
+      console.error('❌ General error loading vouchers:', error);
     } finally {
       if (showLoading) setLoadingVouchers(false);
+      console.log('✅ Finished loading vouchers');
     }
   }, [auth.state.isAuthenticated]);
 
@@ -273,6 +408,7 @@ export default function Rewards() {
       loadVouchers();
     }
   }, [auth.state.isAuthenticated, auth.state.isHydrated, activeTab, loadVouchers]);
+
 
   // Handle refresh
   const onRefresh = useCallback(async () => {
@@ -380,9 +516,8 @@ export default function Rewards() {
     
     const getStatusText = () => {
       if (isExpired) return 'Hết hạn';
-      if (isInactive) return 'Chưa kích hoạt';
       if (voucher.isUsed) return 'Đã sử dụng';
-      return null;
+      return null; // Không hiện "Chưa kích hoạt"
     };
 
     const getStatusColor = () => {
@@ -402,14 +537,14 @@ export default function Rewards() {
     return (
       <TouchableOpacity 
         key={voucher.id} 
-        style={[styles.voucherCard, (voucher.isUsed || !isActive) && styles.usedVoucherCard]}
+        style={[styles.voucherCard, voucher.isUsed && styles.usedVoucherCard]}
         disabled={isRedeeming}
         onPress={handleCardPress}
       >
       <View style={[
         styles.voucherGradient, 
         { backgroundColor: voucher.gradient[0] },
-          (voucher.isUsed || !isActive) && styles.usedVoucherGradient
+        voucher.isUsed && styles.usedVoucherGradient
         ]}>
           {/* Status Badge */}
           {getStatusText() && (
@@ -434,21 +569,21 @@ export default function Rewards() {
         
         <View style={styles.voucherContent}>
           <View style={styles.voucherHeader}>
-              <Text style={[styles.voucherTitle, (voucher.isUsed || !isActive) && styles.usedVoucherText]}>
+              <Text style={[styles.voucherTitle, voucher.isUsed && styles.usedVoucherText]}>
               {voucher.title}
             </Text>
           </View>
-            <Text style={[styles.voucherDiscount, (voucher.isUsed || !isActive) && styles.usedVoucherText]}>
+            <Text style={[styles.voucherDiscount, voucher.isUsed && styles.usedVoucherText]}>
             {voucher.discount}
           </Text>
-            <Text style={[styles.voucherDescription, (voucher.isUsed || !isActive) && styles.usedVoucherText]}>
+            <Text style={[styles.voucherDescription, voucher.isUsed && styles.usedVoucherText]}>
             {voucher.description}
           </Text>
           <View style={styles.voucherCodeContainer}>
             <Text style={styles.voucherCode}>{voucher.code}</Text>
           </View>
           <View style={styles.voucherFooter}>
-              <Text style={[styles.validUntil, (voucher.isUsed || !isActive) && styles.usedVoucherText]}>
+              <Text style={[styles.validUntil, voucher.isUsed && styles.usedVoucherText]}>
                 HSD: {voucher.validUntil}
             </Text>
             {voucher.isUsed ? (
@@ -477,11 +612,13 @@ export default function Rewards() {
                   {isRedeeming ? (
                     <ActivityIndicator size="small" color="#0F4D3A" />
                   ) : (
-                    <Text style={styles.useButtonText}>Nhận ngay</Text>
+                    <Text style={styles.useButtonText}>
+                      {isInactive ? 'Chưa phát hành' : 'Nhận ngay'}
+                    </Text>
                   )}
               </TouchableOpacity>
               ) : (
-                <Text style={styles.ownedLabel}>Đã sở hữu</Text>
+                <Text style={styles.ownedLabel}>Đã nhận</Text>
             )}
           </View>
         </View>
@@ -593,11 +730,7 @@ export default function Rewards() {
         {activeTab === 'vouchers' && (
           <View style={styles.voucherList}>
                 {availableVouchers.length > 0 ? (
-                  <>
-                    {availableVouchers.map(v => renderVoucherCard(v, true))}
-                    {/* Locked Voucher Slot - Ghost Style */}
-                    {renderLockedVoucherSlot()}
-                  </>
+                  availableVouchers.map(v => renderVoucherCard(v, true))
                 ) : (
                   <View style={styles.emptyState}>
                     <Ionicons name="ticket-outline" size={48} color="#9CA3AF" />

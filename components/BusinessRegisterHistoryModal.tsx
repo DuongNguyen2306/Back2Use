@@ -47,7 +47,13 @@ export default function BusinessRegisterHistoryModal({ visible, onClose }: Busin
           setSelectedHistory(response.data[0]);
         }
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Silently handle 502 errors (server unavailable)
+      if (error?.response?.status === 502 || error?.message === 'SERVER_UNAVAILABLE') {
+        // Don't log or show alert for 502 errors
+        setLoading(false);
+        return;
+      }
       console.error('Error loading business history:', error);
       Alert.alert("Lỗi", "Không thể tải lịch sử đăng ký. Vui lòng thử lại.");
     } finally {

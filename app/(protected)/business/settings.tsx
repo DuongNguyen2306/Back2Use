@@ -54,11 +54,16 @@ export default function BusinessSettings() {
             setBusinessProfile(profileResponse.data.business);
           }
         } catch (error: any) {
-          console.error('Error loading business profile:', error);
-          // Don't show alert for network errors in settings - just log and continue
-          // User can still use the settings screen with default values
-          if (error?.message?.includes('Network error') || error?.message?.includes('timeout')) {
-            console.warn('Network error loading business profile, using default values');
+          // Silently handle 403 errors (Access denied - role mismatch)
+          if (error?.response?.status === 403 || error?.message === 'ACCESS_DENIED_403') {
+            console.log('⚠️ Access denied (403) - silently handled');
+          } else {
+            console.error('Error loading business profile:', error);
+            // Don't show alert for network errors in settings - just log and continue
+            // User can still use the settings screen with default values
+            if (error?.message?.includes('Network error') || error?.message?.includes('timeout')) {
+              console.warn('Network error loading business profile, using default values');
+            }
           }
         } finally {
           setLoading(false);

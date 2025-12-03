@@ -6,6 +6,7 @@ import { useAuth } from "../../../context/AuthProvider";
 import { useI18n } from "../../../hooks/useI18n";
 import { useBusinessRoleCheck } from "../../../src/hooks/useBusinessRoleCheck";
 import { getCurrentUserProfileWithAutoRefresh } from "../../../src/services/api/userService";
+import { Role } from "../../../src/types/auth.types";
 
 export default function CustomerLayout() {
   const pathname = usePathname();
@@ -37,7 +38,7 @@ export default function CustomerLayout() {
       }
       
       // If user is staff or business, redirect immediately without calling API
-      if (authState.role === 'staff' || authState.role === 'business') {
+      if (authState.role === ('staff' as const) || authState.role === ('business' as const)) {
         if (!isRedirectingRef.current) {
           isRedirectingRef.current = true;
           console.log(`🚀 CustomerLayout: User is ${authState.role}, redirecting to business dashboard...`);
@@ -57,7 +58,7 @@ export default function CustomerLayout() {
         
         console.log('🔍 Role from backend:', backendRole);
         
-        if (backendRole === 'business' || backendRole === 'staff') {
+        if (backendRole === ('business' as const) || backendRole === ('staff' as const)) {
           console.log(`✅ CustomerLayout: Backend role is ${backendRole}, updating auth state...`);
           
           // Update role in auth state immediately
@@ -79,21 +80,12 @@ export default function CustomerLayout() {
         if (error?.response?.status === 403) {
           console.log('⚠️ CustomerLayout: Access denied (staff/business role)');
           // Redirect to business if not already redirecting
-          if (!isRedirectingRef.current && (authState.role === 'staff' || authState.role === 'business')) {
+          // Use type assertion since TypeScript may narrow the type incorrectly
+          const currentRole = authState.role as Role | null;
+          if (!isRedirectingRef.current && (currentRole === 'staff' || currentRole === 'business')) {
             isRedirectingRef.current = true;
             router.replace('/(protected)/business');
           }
-          hasCheckedRoleRef.current = false;
-          return;
-        }
-        
-        // Silently handle 502 server errors and SERVER_UNAVAILABLE errors
-        const is502Error = error?.response?.status === 502 || 
-                          error?.status === 502 ||
-                          error?.message === 'SERVER_UNAVAILABLE';
-        
-        if (is502Error) {
-          // Silently handle - don't log or show
           hasCheckedRoleRef.current = false;
           return;
         }
@@ -133,14 +125,14 @@ export default function CustomerLayout() {
     // Only redirect if we're on a customer screen and user is business or staff
     const isOnCustomerScreen = pathname?.includes('/customer');
     
-    if (authState.isHydrated && authState.isAuthenticated && (authState.role === 'business' || authState.role === 'staff') && isOnCustomerScreen) {
+    if (authState.isHydrated && authState.isAuthenticated && (authState.role === ('business' as const) || authState.role === ('staff' as const)) && isOnCustomerScreen) {
       if (!isRedirectingRef.current) {
         isRedirectingRef.current = true;
         console.log(`🚀 CustomerLayout: User is ${authState.role} but on customer screen, redirecting to business dashboard`);
         // Redirect immediately
         router.replace('/(protected)/business');
       }
-    } else if (!isOnCustomerScreen || (authState.role !== 'business' && authState.role !== 'staff')) {
+    } else if (!isOnCustomerScreen || (authState.role !== ('business' as const) && authState.role !== ('staff' as const))) {
       // Reset redirect flag if we're not on customer screen or role changed
       isRedirectingRef.current = false;
     }

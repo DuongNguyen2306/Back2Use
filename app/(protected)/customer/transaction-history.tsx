@@ -263,15 +263,30 @@ export default function CustomerTransactionHistory() {
               // Reload history to get latest data
               await loadHistory();
             } catch (error: any) {
+              console.error('❌ Cancel transaction error:', error);
+              console.error('❌ Error details:', {
+                message: error?.message,
+                response: error?.response?.data,
+                status: error?.response?.status,
+              });
+              
               const errorMessage = error?.response?.data?.message || error?.message || '';
-              if (errorMessage.toLowerCase().includes('cannot cancel') || 
-                  errorMessage.toLowerCase().includes('không thể hủy')) {
+              const errorStatus = error?.response?.status;
+              
+              if (errorStatus === 400 || errorMessage.toLowerCase().includes('cannot cancel') || 
+                  errorMessage.toLowerCase().includes('không thể hủy') ||
+                  errorMessage.toLowerCase().includes('not allowed') ||
+                  errorMessage.toLowerCase().includes('invalid status')) {
                 Alert.alert(
                   'Cannot Cancel',
-                  'This borrow order cannot be cancelled. It may have been confirmed or already processed.'
+                  errorMessage || 'This borrow order cannot be cancelled. It may have been confirmed or already processed.'
                 );
+              } else if (errorStatus === 404) {
+                Alert.alert('Error', 'Transaction not found. It may have been deleted.');
+              } else if (errorStatus === 403) {
+                Alert.alert('Error', 'You do not have permission to cancel this transaction.');
               } else {
-                Alert.alert('Error', 'Failed to cancel borrow order. Please try again later.');
+                Alert.alert('Error', errorMessage || 'Failed to cancel borrow order. Please try again later.');
               }
             } finally {
               setCancelingId(null);

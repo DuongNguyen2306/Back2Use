@@ -433,7 +433,29 @@ export function useAuthCore() {
   }, []);
 
   const getCurrentAccessToken = useCallback(async () => {
-    if (!state.isAuthenticated || !state.accessToken) {
+    if (!state.isAuthenticated) {
+      return null;
+    }
+
+    // Always get the latest token from AsyncStorage to ensure we have the most recent one
+    // This is important after role switching
+    try {
+      const latestToken = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      if (latestToken && latestToken !== state.accessToken) {
+        console.log('🔄 Token in AsyncStorage differs from state, updating state...');
+        // Update state with latest token from storage
+        setState(prev => ({
+          ...prev,
+          accessToken: latestToken,
+        }));
+        return latestToken;
+      }
+    } catch (error) {
+      console.warn('⚠️ Error getting token from AsyncStorage, using state token:', error);
+    }
+
+    // Fallback to state token if AsyncStorage read fails
+    if (!state.accessToken) {
       return null;
     }
 
@@ -470,6 +492,61 @@ export function useAuthCore() {
       console.log(`✅ Role updated to: ${newRole}`);
     } catch (error) {
       console.error('❌ Error updating role:', error);
+    }
+  }, []);
+
+  /**
+   * Switch role with new tokens
+   * Used when switching between customer and business roles
+   */
+  const switchRoleWithTokens = useCallback(async (
+    newRole: Role,
+    accessToken: string,
+    refreshToken: string,
+    tokenExpiry: number,
+    user?: User | null
+  ) => {
+    try {
+      console.log(`🔄 Switching role to: ${newRole} with new tokens`);
+      console.log(`🔑 New token preview: ${accessToken.substring(0, 20)}...`);
+      
+      // Save tokens to storage FIRST (before updating state)
+      await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+      await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+      await AsyncStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRY, tokenExpiry.toString());
+      await AsyncStorage.setItem(STORAGE_KEYS.ROLE, newRole);
+      await AsyncStorage.setItem(STORAGE_KEYS.AUTH, 'true');
+      
+      console.log(`✅ Tokens saved to AsyncStorage`);
+      
+      // Verify token was saved correctly
+      const savedToken = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      if (savedToken !== accessToken) {
+        console.error('❌ Token mismatch! Saved token does not match new token');
+        throw new Error('Failed to save new token');
+      }
+      console.log(`✅ Verified token saved correctly`);
+      
+      // Update state with new tokens and role
+      setState(prev => ({
+        ...prev,
+        role: newRole,
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+        tokenExpiry: tokenExpiry,
+        user: user || prev.user,
+        isAuthenticated: true,
+      }));
+      
+      console.log(`✅ Auth state updated with new tokens and role: ${newRole}`);
+      
+      // Small delay to ensure all updates are propagated
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      console.log(`✅ Role switched to: ${newRole} with new tokens - COMPLETE`);
+    } catch (error) {
+      console.error('❌ Error switching role with tokens:', error);
+      throw error;
     }
   }, []);
 
@@ -529,7 +606,8 @@ export function useAuthCore() {
     getCurrentAccessToken,
     updateRole,
     refreshUserRole,
-  }), [login, register, logout, getCurrentAccessToken, updateRole, refreshUserRole]);
+    switchRoleWithTokens,
+  }), [login, register, logout, getCurrentAccessToken, updateRole, refreshUserRole, switchRoleWithTokens]);
 
   return {
     state,

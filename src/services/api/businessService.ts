@@ -436,15 +436,24 @@ export const businessesApi = {
         throw new Error(result.message || 'Failed to get business profile');
       }
     } catch (error: any) {
-      console.error('Error fetching business profile:', error);
-      console.error('Error details:', {
-        message: error.message,
-        code: error.code,
-        response: error.response?.data,
-        status: error.response?.status,
-        url: error.config?.url,
-        retriesLeft: retries
-      });
+      // Silently handle 403 errors (Access denied - role mismatch)
+      if (error?.response?.status === 403) {
+        console.log('⚠️ Access denied (403) - silently handled');
+        throw new Error('ACCESS_DENIED_403'); // Custom error for silent handling
+      }
+      
+      // Only log non-403 errors
+      if (error?.response?.status !== 403) {
+        console.error('Error fetching business profile:', error);
+        console.error('Error details:', {
+          message: error.message,
+          code: error.code,
+          response: error.response?.data,
+          status: error.response?.status,
+          url: error.config?.url,
+          retriesLeft: retries
+        });
+      }
       
       // Retry logic for timeout or network errors
       if (retries > 0 && (error.code === 'ECONNABORTED' || error.message === 'Network Error' || !error.response)) {

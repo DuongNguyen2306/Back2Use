@@ -83,22 +83,34 @@ export default function BusinessMenu() {
     try {
       console.log(`🔄 Switching role to: customer`);
       
-                const response = await authApi.switchRole({ role: 'customer' });
+      const response = await authApi.switchRole({ role: 'customer' });
       
       if (response.data?.accessToken && response.data?.refreshToken) {
-        // Save new tokens
-        await AsyncStorage.setItem('ACCESS_TOKEN', response.data.accessToken);
-        await AsyncStorage.setItem('REFRESH_TOKEN', response.data.refreshToken);
-        
-        // Update role in auth state
         const newRole = response.data.user?.role as 'customer' | 'business' | 'admin';
-        if (newRole) {
-          await auth.actions.updateRole(newRole);
+        const tokenExpiry = Date.now() + (60 * 60 * 1000);
+        
+        // Use switchRoleWithTokens to update both tokens and role in auth state
+        await auth.actions.switchRoleWithTokens(
+          newRole || 'customer',
+          response.data.accessToken,
+          response.data.refreshToken,
+          tokenExpiry,
+          response.data.user || null
+        );
+        
+        console.log(`✅ Role switched, waiting for token propagation...`);
+        
+        // Wait a bit longer to ensure token is fully propagated
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Verify token was saved correctly before redirecting
+        const savedToken = await AsyncStorage.getItem('ACCESS_TOKEN');
+        if (savedToken !== response.data.accessToken) {
+          console.error('❌ Token mismatch after switch!');
+          throw new Error('Token không được lưu đúng cách');
         }
         
-        // Calculate token expiry (1 hour from now)
-        const tokenExpiry = Date.now() + (60 * 60 * 1000);
-        await AsyncStorage.setItem('TOKEN_EXPIRY', tokenExpiry.toString());
+        console.log(`✅ Token verified, redirecting...`);
         
         toast({
           title: "Success",
@@ -106,7 +118,7 @@ export default function BusinessMenu() {
         });
         
         // Redirect to customer dashboard
-                  router.replace('/(protected)/customer');
+        router.replace('/(protected)/customer');
       } else {
         throw new Error('No token received from server');
       }

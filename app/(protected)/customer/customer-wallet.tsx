@@ -2161,20 +2161,25 @@ const styles = StyleSheet.create({
   quickAmounts: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: 30,
     gap: 8,
   },
   quickAmountButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 20,
+    flex: 1,
+    minWidth: '30%',
+    backgroundColor: 'white',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
   },
   quickAmountText: {
     fontSize: 12,
+    color: '#6B7280',
     fontWeight: '500',
-    color: '#374151',
   },
   modalButton: {
     backgroundColor: '#00704A',
@@ -2300,7 +2305,7 @@ const styles = StyleSheet.create({
   currencySymbol: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#3B82F6',
+    color: '#0F4D3A',
     marginRight: 8,
   },
   amountInput: {

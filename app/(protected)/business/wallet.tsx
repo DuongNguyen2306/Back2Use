@@ -219,6 +219,11 @@ export default function BusinessWalletScreen() {
           }
         }
       } catch (error: any) {
+        // Silently handle 403 errors (Access denied - role mismatch)
+        if (error?.response?.status === 403 || error?.message === 'ACCESS_DENIED_403') {
+          console.log('⚠️ Access denied (403) - silently handled');
+          // Continue with default/empty wallet data
+        } else {
         // Don't log network errors as errors - they're expected when offline
         const isNetworkError = error?.message?.toLowerCase().includes('network') ||
                                error?.message?.toLowerCase().includes('timeout') ||
@@ -226,7 +231,7 @@ export default function BusinessWalletScreen() {
         
         if (!isNetworkError) {
           console.error('Error loading business profile:', error);
-          // Show user-friendly error message for non-network errors
+            // Show user-friendly error message for non-network errors (but not 403)
           Alert.alert(
             'Lỗi',
             'Không thể tải dữ liệu doanh nghiệp. Vui lòng thử lại.',
@@ -238,6 +243,7 @@ export default function BusinessWalletScreen() {
         } else {
           console.warn('⚠️ Network error loading business profile (will retry later):', error.message);
           // Don't show alert for network errors - user can still use the screen with default values
+          }
         }
         // Continue with default/empty wallet data
       } finally {
@@ -1118,11 +1124,11 @@ export default function BusinessWalletScreen() {
                       
                       // Clear callback URL
                       setCallbackUrl(null);
-                      
+                  
                       // Đóng WebView
-                      setShowPaymentWebView(false);
-                      setPaymentUrl('');
-                      
+                  setShowPaymentWebView(false);
+                  setPaymentUrl('');
+                  
                       // Xử lý kết quả
                       if (responseCode === '00' && transactionStatus === '00') {
                         // Bắt đầu verify payment
@@ -1150,11 +1156,11 @@ export default function BusinessWalletScreen() {
                       
                       // Clear callback URL
                       setCallbackUrl(null);
-                      
+                
                       // Đóng WebView
-                      setShowPaymentWebView(false);
-                      setPaymentUrl('');
-                      
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
+                
                       // Xử lý kết quả
                       if (resultCode === '0') {
                         // Bắt đầu verify payment
@@ -1164,15 +1170,15 @@ export default function BusinessWalletScreen() {
                         setPaymentResult('failed');
                         setShowPaymentResult(true);
                       }
-                      return;
-                    }
+                return;
+              }
                   }
                   
                   // Không phải callback URL, chỉ đóng bình thường
                   setCallbackUrl(null);
                   callbackProcessedRef.current = false; // Reset flag
-                  setShowPaymentWebView(false);
-                  setPaymentUrl('');
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
                   loadBusinessData();
                 }
               }}
@@ -1283,14 +1289,14 @@ export default function BusinessWalletScreen() {
                     console.log('📊 Transaction ref:', txnRef);
                     
                     // Set payment result TRƯỚC khi đóng WebView
-                    setPaymentResult('success');
+                  setPaymentResult('success');
                     setPaymentAmount(savedPaymentAmount || Number(amount) || 0);
                     
                     // Đợi một chút để state được set xong rồi mới hiển thị modal
                     setTimeout(() => {
-                      setShowPaymentResult(true);
+                  setShowPaymentResult(true);
                     }, 100);
-                    
+                  
                     // Đóng WebView sau khi đã set state
                     setTimeout(() => {
                       setShowPaymentWebView(false);
@@ -1304,7 +1310,7 @@ export default function BusinessWalletScreen() {
                     }, 200);
                     
                     return false; // Chặn load localhost
-                  } else {
+                } else {
                     // Backend payment-success - cho phép load, xử lý trong onLoadEnd
                     console.log('✅ Payment success page detected - allowing load first');
                     console.log('📊 URL:', originalUrl);
@@ -1317,7 +1323,7 @@ export default function BusinessWalletScreen() {
                     !originalUrl.includes('payment-success')) {
                   console.log('⚠️ Chặn localhost URL:', originalUrl);
                   return false;
-                }
+              }
 
                 // Cho phép tất cả các URL khác (VNPay gateway, ngân hàng, OTP, etc.)
                 console.log('✅ Allowing URL to load:', originalUrl);
@@ -1334,28 +1340,28 @@ export default function BusinessWalletScreen() {
                 if (urlLower.includes('payment-success')) {
                   const params = new URLSearchParams(url.split('?')[1]);
                   const txnRef = params.get('txnRef');
-                  
+                
                   console.log('✅ Payment success page loaded - closing WebView and showing success');
                   console.log('📊 Transaction ref:', txnRef);
-                  
+                
                   // Đợi 1 giây để WebView hiển thị xong rồi mới đóng
                   setTimeout(() => {
-                    setShowPaymentWebView(false);
-                    setPaymentUrl('');
+                setShowPaymentWebView(false);
+                setPaymentUrl('');
                     setCallbackUrl(null);
                     callbackProcessedRef.current = false;
-                    
+
                     // Hiển thị màn hình thành công
-                    setPaymentResult('success');
+                  setPaymentResult('success');
                     setPaymentAmount(savedPaymentAmount || Number(amount) || 0);
-                    setShowPaymentResult(true);
-                    
+                  setShowPaymentResult(true);
+                  
                     // Refresh ví ngay lập tức
                     loadBusinessData();
                     loadTransactions();
                   }, 1000);
-                  return;
-                }
+                return;
+              }
 
                 // Chỉ log, không tự động đóng - để user tự đóng bằng nút Back
                 // Chỉ xử lý 1 lần để tránh reload loop
@@ -1430,12 +1436,12 @@ export default function BusinessWalletScreen() {
               cacheEnabled={false}
               domStorageEnabled={true}
               javaScriptEnabled={true}
-            />
+          />
           ) : (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
               <ActivityIndicator size="large" color="#00704A" />
               <Text style={{ marginTop: 16, color: '#666' }}>Đang chuẩn bị...</Text>
-            </View>
+        </View>
           )}
 
           {/* Verification Overlay */}

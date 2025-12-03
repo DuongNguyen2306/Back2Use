@@ -157,6 +157,100 @@ export const borrowTransactionsApi = {
       throw new Error(errorMessage);
     }
   },
+
+  // Get customer borrow transaction detail by ID
+  getCustomerDetail: async (id: string): Promise<any> => {
+    try {
+      // Get token
+      let accessToken: string | undefined;
+      if (getCurrentAccessToken) {
+        try {
+          accessToken = await getCurrentAccessToken() || undefined;
+        } catch (error) {
+          console.warn('Error getting token from provider:', error);
+        }
+      }
+
+      if (!accessToken) {
+        try {
+          accessToken = await AsyncStorage.getItem('ACCESS_TOKEN') || undefined;
+        } catch (error) {
+          console.warn('Error getting token from AsyncStorage:', error);
+        }
+      }
+
+      if (!accessToken) {
+        throw new Error('No access token available. Please log in first.');
+      }
+
+      if (!id) {
+        throw new Error('Transaction ID is required');
+      }
+
+      const endpoint = `${API_ENDPOINTS.BORROW_TRANSACTIONS.CUSTOMER_DETAIL}/${id}`;
+
+      const response = await apiClient.get(endpoint, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: REQUEST_TIMEOUT,
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Error getting customer borrow transaction detail:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to get transaction detail';
+      throw new Error(errorMessage);
+    }
+  },
+
+  // Cancel customer borrow transaction - PATCH /borrow-transactions/customer/cancel/{id}
+  cancel: async (id: string): Promise<any> => {
+    try {
+      // Get token
+      let accessToken: string | undefined;
+      if (getCurrentAccessToken) {
+        try {
+          accessToken = await getCurrentAccessToken() || undefined;
+        } catch (error) {
+          console.warn('Error getting token from provider:', error);
+        }
+      }
+
+      if (!accessToken) {
+        try {
+          accessToken = await AsyncStorage.getItem('ACCESS_TOKEN') || undefined;
+        } catch (error) {
+          console.warn('Error getting token from AsyncStorage:', error);
+        }
+      }
+
+      if (!accessToken) {
+        throw new Error('No access token available. Please log in first.');
+      }
+
+      if (!id) {
+        throw new Error('Transaction ID is required');
+      }
+
+      const endpoint = `${API_ENDPOINTS.BORROW_TRANSACTIONS.CUSTOMER_CANCEL}/${id}`;
+
+      const response = await apiClient.patch(endpoint, {}, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: REQUEST_TIMEOUT,
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Error canceling borrow transaction:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to cancel transaction';
+      throw new Error(errorMessage);
+    }
+  },
 };
 
 export default borrowTransactionsApi;

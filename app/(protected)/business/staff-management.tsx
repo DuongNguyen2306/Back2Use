@@ -79,22 +79,22 @@ export default function StaffManagementScreen() {
       if (profileResponse.data?.business?._id) {
         setBusinessId(profileResponse.data.business._id);
         // Staff list will be loaded by useEffect when businessId is set
-      } else {
-        Alert.alert("Error", "Unable to load business profile");
-        setLoading(false);
       }
     } catch (error: any) {
-      // Silently handle 403 errors (staff trying to access business profile)
-      if (error?.response?.status === 403) {
-        console.log("⚠️ Staff role cannot access business profile API");
+      // Silently handle 403 errors (Access denied - role mismatch)
+      if (error?.response?.status === 403 || error?.message === 'ACCESS_DENIED_403') {
+        console.log("⚠️ Access denied (403) - silently handled");
         setLoading(false);
         return;
       }
-      // Only log and show alert for other errors
+      
+      // Only show alert for other errors (not 403)
       if (error?.response?.status && error.response.status >= 500) {
         console.error("Error loading business profile:", error);
       }
-      if (error?.response?.status !== 403) {
+      
+      // Only show alert if not 403 error
+      if (error?.response?.status !== 403 && error?.message !== 'ACCESS_DENIED_403') {
         Alert.alert("Error", error.message || "Failed to load business profile");
       }
       setLoading(false);

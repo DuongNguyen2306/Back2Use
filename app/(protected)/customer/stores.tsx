@@ -37,7 +37,6 @@ export default function Stores() {
   const router = useRouter();
   const [businessesLoading, setBusinessesLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   
   // Pagination for stores
   const [storePage, setStorePage] = useState(1);
@@ -264,16 +263,6 @@ export default function Stores() {
     });
   };
 
-  // Get unique categories from businesses
-  const categories = React.useMemo(() => {
-    const uniqueCategories = new Set<string>();
-    businesses.forEach(business => {
-      if (business.businessType) {
-        uniqueCategories.add(business.businessType);
-      }
-    });
-    return Array.from(uniqueCategories).sort();
-  }, [businesses]);
 
   // Filter businesses based on filter criteria, search, and category
   const filteredStores = React.useMemo(() => {
@@ -290,10 +279,6 @@ export default function Stores() {
       );
     }
     
-    // Apply category filter
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter(store => store.businessType === selectedCategory);
-    }
     
     // If no user location, return filtered businesses
     if (!userLocation) {
@@ -338,7 +323,7 @@ export default function Stores() {
     }
     
     return stores;
-  }, [businesses, activeFilter, userLocation, searchQuery, selectedCategory]);
+  }, [businesses, activeFilter, userLocation, searchQuery]);
 
   const renderStoreCard = (store: Business & { distance?: number }) => {
     const [longitude, latitude] = store.location.coordinates;
@@ -493,9 +478,14 @@ export default function Stores() {
         </View>
       </View>
 
-      {/* Map View - Large (40% of screen) */}
-      <View style={styles.mapSection}>
-
+      {/* Main ScrollView - Contains Map and Store List */}
+      <ScrollView 
+        style={styles.mainScrollView}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.mainScrollContent}
+      >
+        {/* Map View - Large (40% of screen) */}
+        <View style={styles.mapSection}>
           <View style={styles.mapContainer}>
             {businessesLoading ? (
               <View style={styles.mapLoadingContainer}>
@@ -518,6 +508,8 @@ export default function Stores() {
                   showsMyLocationButton={false}
                   showsCompass={true}
                   showsScale={true}
+                  scrollEnabled={false}
+                  zoomEnabled={false}
                 >
                   {/* User location marker */}
                   {userLocation && (
@@ -604,38 +596,6 @@ export default function Stores() {
           </View>
         </View>
 
-        {/* Filters - Below Map */}
-        <View style={styles.filtersSection}>
-          {categories.length > 0 && (
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              style={styles.categoryContainer}
-              contentContainerStyle={styles.categoryContent}
-            >
-              <TouchableOpacity
-                style={[styles.categoryChip, selectedCategory === 'all' && styles.categoryChipActive]}
-                onPress={() => setSelectedCategory('all')}
-              >
-                <Text style={[styles.categoryChipText, selectedCategory === 'all' && styles.categoryChipTextActive]}>
-                  All
-                </Text>
-              </TouchableOpacity>
-              {categories.map((category) => (
-                <TouchableOpacity
-                  key={category}
-                  style={[styles.categoryChip, selectedCategory === category && styles.categoryChipActive]}
-                  onPress={() => setSelectedCategory(category)}
-                >
-                  <Text style={[styles.categoryChipText, selectedCategory === category && styles.categoryChipTextActive]}>
-                    {category}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-        </View>
-
         {/* Store List Section */}
         <View style={styles.storeListSection}>
           {/* Filter Tabs */}
@@ -685,6 +645,7 @@ export default function Stores() {
             )}
           </View>
         </View>
+      </ScrollView>
     </View>
   );
 }
@@ -749,11 +710,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#111827',
   },
-  // Scroll Content
-  scrollContent: {
+  // Main ScrollView
+  mainScrollView: {
     flex: 1,
   },
-  // Map Section - 40% of screen
+  mainScrollContent: {
+    flexGrow: 1,
+  },
+  // Map Section - Fixed height
   mapSection: {
     height: screenHeight * 0.4,
     paddingHorizontal: 0,
@@ -767,14 +731,6 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
     width: '100%',
-  },
-  // Filters Section
-  filtersSection: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
   },
   mapLoadingContainer: {
     flex: 1,
@@ -874,7 +830,6 @@ const styles = StyleSheet.create({
   },
   // Store List Section
   storeListSection: {
-    flex: 1,
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 20,
@@ -1057,29 +1012,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
-  },
-  categoryContainer: {
-    marginBottom: 0,
-  },
-  categoryContent: {
-    paddingRight: 20,
-  },
-  categoryChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    marginRight: 8,
-  },
-  categoryChipActive: {
-    backgroundColor: '#0F4D3A',
-  },
-  categoryChipText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  categoryChipTextActive: {
-    color: '#FFFFFF',
   },
 });

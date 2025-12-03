@@ -176,21 +176,31 @@ export default function ProfileDetail() {
           const switchResponse = await authApi.switchRole({ role: 'customer' });
           
           if (switchResponse.data?.accessToken && switchResponse.data?.refreshToken) {
-            // Save new tokens
-            await AsyncStorage.setItem('ACCESS_TOKEN', switchResponse.data.accessToken);
-            await AsyncStorage.setItem('REFRESH_TOKEN', switchResponse.data.refreshToken);
-            
-            // Update role in auth state
             const newRole = switchResponse.data.user?.role as 'customer' | 'business' | 'admin';
-            if (newRole) {
-              await auth.actions.updateRole(newRole);
+            const tokenExpiry = Date.now() + (60 * 60 * 1000);
+            
+            // Use switchRoleWithTokens to update both tokens and role in auth state
+            await auth.actions.switchRoleWithTokens(
+              newRole || 'customer',
+              switchResponse.data.accessToken,
+              switchResponse.data.refreshToken,
+              tokenExpiry,
+              switchResponse.data.user || null
+            );
+            
+            console.log('✅ Successfully switched to customer role, waiting for token propagation...');
+            
+            // Wait a bit longer to ensure token is fully propagated
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Verify token was saved correctly
+            const savedToken = await AsyncStorage.getItem('ACCESS_TOKEN');
+            if (savedToken !== switchResponse.data.accessToken) {
+              console.error('❌ Token mismatch after switch!');
+              throw new Error('Token không được lưu đúng cách');
             }
             
-            // Calculate token expiry (1 hour from now)
-            const tokenExpiry = Date.now() + (60 * 60 * 1000);
-            await AsyncStorage.setItem('TOKEN_EXPIRY', tokenExpiry.toString());
-            
-            console.log('✅ Successfully switched to customer role');
+            console.log('✅ Token verified');
             toast({
               title: "Success",
               description: "Switched to customer account. Please try saving again.",
