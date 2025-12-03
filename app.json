@@ -54,7 +54,7 @@
         {
           "android": {
             "usesCleartextTraffic": true,
-            "kotlinVersion": "1.9.0",
+            "kotlinVersion": "2.0.20",
             "buildToolsVersion": "34.0.0",
             "compileSdkVersion": 34,
             "targetSdkVersion": 34
@@ -77,11 +77,9 @@
         "projectId": "463bb199-8a7c-4435-aa81-6781c18a49fe"
       }
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "updates": {
-      "url": "https://u.expo.dev/463bb199-8a7c-4435-aa81-6781c18a49fe"
+      "enabled": false
     }
   }
 }
