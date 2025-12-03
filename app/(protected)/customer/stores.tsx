@@ -56,8 +56,13 @@ export default function Stores() {
         setLoading(true);
         const userData = await getCurrentUserProfileWithAutoRefresh();
         setUser(userData);
-      } catch (error) {
-        console.error('Error loading user data:', error);
+      } catch (error: any) {
+        // Silently handle "No valid access token available" errors
+        const isNoTokenError = error?.message?.toLowerCase().includes('no valid access token') ||
+                               error?.message?.toLowerCase().includes('no access token');
+        if (!isNoTokenError) {
+          console.error('Error loading user data:', error);
+        }
       } finally {
         setLoading(false);
       }

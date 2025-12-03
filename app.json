@@ -34,7 +34,10 @@
               "scheme": "com.back2use"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "package": "com.duong2306.back2usemobile"
@@ -79,7 +82,8 @@
     },
     "runtimeVersion": "1.0.0",
     "updates": {
-      "enabled": false
+      "enabled": false,
+      "url": "https://u.expo.dev/463bb199-8a7c-4435-aa81-6781c18a49fe"
     }
   }
 }

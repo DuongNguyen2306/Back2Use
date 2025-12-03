@@ -389,8 +389,18 @@ export function useAuthCore() {
 
       return { success: true, user, role };
     } catch (error: any) {
-      console.error("❌ Login failed:", error);
-      throw new Error(error.message || "Login failed");
+      const errorMessage = error?.message || "Login failed";
+      
+      // Silently handle "Invalid username or password" errors - don't log
+      const isInvalidCredentials = errorMessage.toLowerCase().includes('invalid username') || 
+                                   errorMessage.toLowerCase().includes('invalid password') ||
+                                   errorMessage.toLowerCase().includes('invalid username or password');
+      
+      if (!isInvalidCredentials) {
+        console.error("❌ Login failed:", error);
+      }
+      
+      throw new Error(errorMessage);
     }
   }, []);
 

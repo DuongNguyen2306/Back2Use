@@ -119,7 +119,12 @@ export default function CustomerProductDetailScreen() {
           const user = await getCurrentUserProfileWithAutoRefresh();
           setUserData(user);
         } catch (error: any) {
-          console.error('Error loading user data:', error);
+          // Silently handle "No valid access token available" errors
+          const isNoTokenError = error?.message?.toLowerCase().includes('no valid access token') ||
+                                 error?.message?.toLowerCase().includes('no access token');
+          if (!isNoTokenError) {
+            console.error('Error loading user data:', error);
+          }
         }
       }
     };
@@ -145,7 +150,12 @@ export default function CustomerProductDetailScreen() {
       currentUserData = await getCurrentUserProfileWithAutoRefresh();
       setUserData(currentUserData);
     } catch (error: any) {
-      console.error('Error reloading user data:', error);
+      // Silently handle "No valid access token available" errors
+      const isNoTokenError = error?.message?.toLowerCase().includes('no valid access token') ||
+                             error?.message?.toLowerCase().includes('no access token');
+      if (!isNoTokenError) {
+        console.error('Error reloading user data:', error);
+      }
     }
 
     // Get deposit value safely - check multiple possible locations (giống customer dashboard)

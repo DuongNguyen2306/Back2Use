@@ -199,7 +199,7 @@ export default function StaffManagementScreen() {
       setSubmitting(true);
       // Staff cannot create other staff, only business owner can
       if (isStaff) {
-        Alert.alert("Error", "Staff không có quyền tạo staff mới");
+        Alert.alert("Error", "Staff members cannot create new staff");
         return;
       }
 
@@ -238,12 +238,12 @@ export default function StaffManagementScreen() {
       // Show user-friendly alert without logging to console
       if (errorMessage.includes("already exists") || errorMessage.includes("duplicate")) {
         Alert.alert(
-          "Lỗi",
-          "Email này đã được sử dụng. Vui lòng sử dụng email khác."
+          "Error",
+          "This email is already in use. Please use a different email."
         );
       } else {
         Alert.alert(
-          "Lỗi",
+          "Error",
           errorMessage
         );
       }
@@ -352,9 +352,9 @@ export default function StaffManagementScreen() {
     } catch (error: any) {
       const errorMessage = error?.response?.data?.message || error?.message || "Failed to update staff";
       if (errorMessage.includes("already exists") || errorMessage.includes("duplicate")) {
-        Alert.alert("Lỗi", "Email này đã được sử dụng. Vui lòng sử dụng email khác.");
+        Alert.alert("Error", "This email is already in use. Please use a different email.");
       } else {
-        Alert.alert("Lỗi", errorMessage);
+        Alert.alert("Error", errorMessage);
       }
     } finally {
       setSubmitting(false);
@@ -501,7 +501,7 @@ export default function StaffManagementScreen() {
           <Ionicons name="search-outline" size={20} color="#6B7280" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Tìm kiếm staff..."
+            placeholder="Search staff..."
             placeholderTextColor="#9CA3AF"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -517,7 +517,7 @@ export default function StaffManagementScreen() {
             style={[styles.filterButton, statusFilter === "all" && styles.filterButtonActive]}
             onPress={() => setStatusFilter("all")}
           >
-            <Text style={[styles.filterText, statusFilter === "all" && styles.filterTextActive]}>Tất cả</Text>
+            <Text style={[styles.filterText, statusFilter === "all" && styles.filterTextActive]}>All</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.filterButton, statusFilter === "active" && styles.filterButtonActive]}
@@ -543,12 +543,12 @@ export default function StaffManagementScreen() {
         <View style={styles.emptyContainer}>
           <Ionicons name="people-outline" size={64} color="#D1D5DB" />
           <Text style={styles.emptyText}>
-            {searchQuery || statusFilter !== "all" ? "Không tìm thấy staff" : "Bạn chưa có staff"}
+            {searchQuery || statusFilter !== "all" ? "No staff found" : "You don't have any staff"}
           </Text>
           <Text style={styles.emptySubtext}>
             {searchQuery || statusFilter !== "all" 
-              ? "Thử thay đổi bộ lọc hoặc tìm kiếm" 
-              : "Thêm nhân viên đầu tiên để bắt đầu"}
+              ? "Try changing the filter or search" 
+              : "Add your first staff member to get started"}
           </Text>
         </View>
       ) : (
@@ -624,7 +624,7 @@ export default function StaffManagementScreen() {
                         <Ionicons name="person-outline" size={20} color="#6B7280" style={styles.inputIcon} />
                         <TextInput
                           style={styles.input}
-                          placeholder="Nguyen Van A"
+                          placeholder="John Doe"
                           placeholderTextColor="#9CA3AF"
                           value={fullName}
                           onChangeText={setFullName}
@@ -650,7 +650,7 @@ export default function StaffManagementScreen() {
                         />
                       </View>
                       <Text style={styles.helperText}>
-                        Lưu ý: Mật khẩu sẽ được hệ thống tự động gửi vào email này.
+                        Note: Password will be automatically sent to this email.
                       </Text>
                     </View>
 
@@ -769,7 +769,7 @@ export default function StaffManagementScreen() {
                         <Ionicons name="person-outline" size={20} color="#6B7280" style={styles.inputIcon} />
                         <TextInput
                           style={styles.input}
-                          placeholder="Nguyen Van A"
+                          placeholder="John Doe"
                           placeholderTextColor="#9CA3AF"
                           value={editFullName}
                           onChangeText={setEditFullName}

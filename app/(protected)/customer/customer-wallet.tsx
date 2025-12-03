@@ -158,14 +158,18 @@ export default function CustomerWallet() {
           return;
         }
         
+        // Silently handle "No valid access token available" errors
+        const isNoTokenError = error?.message?.toLowerCase().includes('no valid access token') ||
+                               error?.message?.toLowerCase().includes('no access token');
+        
         // Don't log network errors as errors - they're expected when offline
         const isNetworkError = error?.message?.toLowerCase().includes('network') ||
                                error?.message?.toLowerCase().includes('timeout') ||
                                error?.message?.toLowerCase().includes('connection');
         
-        if (!isNetworkError) {
+        if (!isNoTokenError && !isNetworkError) {
           console.error('Error loading user data:', error);
-        } else {
+        } else if (isNetworkError) {
           console.warn('⚠️ Network error loading user data (will retry later):', error.message);
         }
         // Continue with default/empty wallet data

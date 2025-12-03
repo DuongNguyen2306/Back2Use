@@ -39,7 +39,7 @@ export default function BusinessRegisterHistoryModal({ visible, onClose }: Busin
       const response = await businessApi.getHistory({ page: 1, limit: 10 });
       if (response.data && response.data.length > 0) {
         setHistory(response.data);
-        // Tự động chọn bản đăng ký pending đầu tiên nếu có
+        // Automatically select the first pending registration if available
         const pendingForm = response.data.find(item => item.status === 'pending');
         if (pendingForm) {
           setSelectedHistory(pendingForm);
@@ -55,7 +55,7 @@ export default function BusinessRegisterHistoryModal({ visible, onClose }: Busin
         return;
       }
       console.error('Error loading business history:', error);
-      Alert.alert("Lỗi", "Không thể tải lịch sử đăng ký. Vui lòng thử lại.");
+      Alert.alert("Error", "Failed to load registration history. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -77,11 +77,11 @@ export default function BusinessRegisterHistoryModal({ visible, onClose }: Busin
   const getStatusText = (status: string) => {
     switch (status) {
       case 'pending':
-        return 'Đang chờ duyệt';
+        return 'Pending';
       case 'approved':
-        return 'Đã được duyệt';
+        return 'Approved';
       case 'rejected':
-        return 'Đã bị từ chối';
+        return 'Rejected';
       default:
         return status;
     }
@@ -90,7 +90,7 @@ export default function BusinessRegisterHistoryModal({ visible, onClose }: Busin
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString('vi-VN', {
+      return date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -125,7 +125,7 @@ export default function BusinessRegisterHistoryModal({ visible, onClose }: Busin
               <View style={styles.modalHeader}>
                 <View style={styles.titleContainer}>
                   <Ionicons name="time-outline" size={28} color="#0F4D3A" style={{ marginRight: 12 }} />
-                  <Text style={styles.modalTitle}>Lịch sử đăng ký doanh nghiệp</Text>
+                  <Text style={styles.modalTitle}>Business Registration History</Text>
                 </View>
                 <TouchableOpacity onPress={onClose} disabled={loading} style={styles.closeButton}>
                   <Ionicons name="close" size={24} color="#374151" />
@@ -135,13 +135,13 @@ export default function BusinessRegisterHistoryModal({ visible, onClose }: Busin
               {loading ? (
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="large" color="#0F4D3A" />
-                  <Text style={styles.loadingText}>Đang tải lịch sử...</Text>
+                  <Text style={styles.loadingText}>Loading history...</Text>
                 </View>
               ) : history.length === 0 ? (
                 <View style={styles.emptyContainer}>
                   <Ionicons name="document-text-outline" size={64} color="#9CA3AF" />
-                  <Text style={styles.emptyText}>Chưa có lịch sử đăng ký</Text>
-                  <Text style={styles.emptySubtext}>Bạn chưa có đơn đăng ký doanh nghiệp nào</Text>
+                  <Text style={styles.emptyText}>No registration history</Text>
+                  <Text style={styles.emptySubtext}>You don't have any business registration requests</Text>
                 </View>
               ) : (
                 <ScrollView 
@@ -188,7 +188,7 @@ export default function BusinessRegisterHistoryModal({ visible, onClose }: Busin
                     <View style={styles.detailsContainer}>
                       <View style={styles.detailsHeader}>
                         <Ionicons name="information-circle-outline" size={24} color="#0F4D3A" />
-                        <Text style={styles.detailsTitle}>Chi tiết đăng ký</Text>
+                        <Text style={styles.detailsTitle}>Registration Details</Text>
                       </View>
 
                       <View style={styles.detailsContent}>
@@ -204,12 +204,12 @@ export default function BusinessRegisterHistoryModal({ visible, onClose }: Busin
 
                         {/* Business Information */}
                         <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Tên doanh nghiệp:</Text>
+                          <Text style={styles.detailLabel}>Business Name:</Text>
                           <Text style={styles.detailValue}>{selectedHistory.businessName}</Text>
                         </View>
 
                         <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Loại hình:</Text>
+                          <Text style={styles.detailLabel}>Business Type:</Text>
                           <Text style={styles.detailValue}>{selectedHistory.businessType}</Text>
                         </View>
 
@@ -219,32 +219,32 @@ export default function BusinessRegisterHistoryModal({ visible, onClose }: Busin
                         </View>
 
                         <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Địa chỉ:</Text>
+                          <Text style={styles.detailLabel}>Address:</Text>
                           <Text style={styles.detailValue}>{selectedHistory.businessAddress}</Text>
                         </View>
 
                         <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Số điện thoại:</Text>
+                          <Text style={styles.detailLabel}>Phone Number:</Text>
                           <Text style={styles.detailValue}>{selectedHistory.businessPhone}</Text>
                         </View>
 
                         <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Mã số thuế:</Text>
+                          <Text style={styles.detailLabel}>Tax Code:</Text>
                           <Text style={styles.detailValue}>{selectedHistory.taxCode}</Text>
                         </View>
 
                         <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Giờ mở cửa:</Text>
+                          <Text style={styles.detailLabel}>Opening Hours:</Text>
                           <Text style={styles.detailValue}>{selectedHistory.openTime}</Text>
                         </View>
 
                         <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Giờ đóng cửa:</Text>
+                          <Text style={styles.detailLabel}>Closing Hours:</Text>
                           <Text style={styles.detailValue}>{selectedHistory.closeTime}</Text>
                         </View>
 
                         <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Trạng thái:</Text>
+                          <Text style={styles.detailLabel}>Status:</Text>
                           <View style={[styles.statusBadge, { backgroundColor: getStatusColor(selectedHistory.status) + '20' }]}>
                             <Text style={[styles.statusText, { color: getStatusColor(selectedHistory.status) }]}>
                               {getStatusText(selectedHistory.status)}
@@ -253,18 +253,18 @@ export default function BusinessRegisterHistoryModal({ visible, onClose }: Busin
                         </View>
 
                         <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>Ngày đăng ký:</Text>
+                          <Text style={styles.detailLabel}>Registration Date:</Text>
                           <Text style={styles.detailValue}>{formatDate(selectedHistory.createdAt)}</Text>
                         </View>
 
                         {/* Documents */}
                         <View style={styles.documentsSection}>
-                          <Text style={styles.documentsTitle}>Tài liệu đã nộp:</Text>
+                          <Text style={styles.documentsTitle}>Submitted Documents:</Text>
                           
                           {selectedHistory.FoodSafetyCertUrl && (
                             <View style={styles.documentItem}>
                               <Ionicons name="document-text" size={20} color="#0F4D3A" />
-                              <Text style={styles.documentText}>Giấy chứng nhận an toàn thực phẩm</Text>
+                              <Text style={styles.documentText}>Food Safety Certificate</Text>
                               <TouchableOpacity onPress={() => {}}>
                                 <Ionicons name="eye-outline" size={20} color="#0F4D3A" />
                               </TouchableOpacity>
@@ -274,7 +274,7 @@ export default function BusinessRegisterHistoryModal({ visible, onClose }: Busin
                           {selectedHistory.businessLicenseUrl && (
                             <View style={styles.documentItem}>
                               <Ionicons name="document-attach" size={20} color="#0F4D3A" />
-                              <Text style={styles.documentText}>Giấy phép đăng ký kinh doanh</Text>
+                              <Text style={styles.documentText}>Business Registration License</Text>
                               <TouchableOpacity onPress={() => {}}>
                                 <Ionicons name="eye-outline" size={20} color="#0F4D3A" />
                               </TouchableOpacity>

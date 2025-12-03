@@ -163,8 +163,13 @@ export default function StoreDetailScreen() {
             console.log('ℹ️ User is not a business owner or error loading business profile:', error);
           }
         }
-      } catch (error) {
-        console.error('Error loading user data:', error);
+      } catch (error: any) {
+        // Silently handle "No valid access token available" errors
+        const isNoTokenError = error?.message?.toLowerCase().includes('no valid access token') ||
+                               error?.message?.toLowerCase().includes('no access token');
+        if (!isNoTokenError) {
+          console.error('Error loading user data:', error);
+        }
       }
     };
     loadUserData();
@@ -411,8 +416,13 @@ export default function StoreDetailScreen() {
         try {
           const user = await getCurrentUserProfileWithAutoRefresh();
           setUserData(user);
-        } catch (error) {
-          console.error('Error reloading user data:', error);
+        } catch (error: any) {
+          // Silently handle "No valid access token available" errors
+          const isNoTokenError = error?.message?.toLowerCase().includes('no valid access token') ||
+                                 error?.message?.toLowerCase().includes('no access token');
+          if (!isNoTokenError) {
+            console.error('Error reloading user data:', error);
+          }
         }
       } else {
         console.error('❌ No product data in response');
@@ -456,8 +466,13 @@ export default function StoreDetailScreen() {
       console.log('💰 Fresh AvailableBalance:', (freshUser.wallet as any)?.availableBalance);
       currentUserData = freshUser;
       setUserData(freshUser);
-    } catch (error) {
-      console.error('Error reloading user data:', error);
+    } catch (error: any) {
+      // Silently handle "No valid access token available" errors
+      const isNoTokenError = error?.message?.toLowerCase().includes('no valid access token') ||
+                             error?.message?.toLowerCase().includes('no access token');
+      if (!isNoTokenError) {
+        console.error('Error reloading user data:', error);
+      }
       // Continue with existing userData if reload fails
     }
 

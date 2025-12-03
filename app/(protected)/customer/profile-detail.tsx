@@ -11,6 +11,7 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StatusBar,
@@ -35,6 +36,15 @@ export default function ProfileDetail() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+
+  // Change password states
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    oldPassword: "",
+    newPassword: "",
+    confirmNewPassword: "",
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -369,6 +379,65 @@ export default function ProfileDetail() {
     }
   };
 
+  const handleChangePassword = async () => {
+    try {
+      setChangingPassword(true);
+
+      // Validation
+      if (!passwordData.oldPassword || !passwordData.newPassword || !passwordData.confirmNewPassword) {
+        toast({
+          title: "Error",
+          description: "Please fill in all fields",
+        });
+        return;
+      }
+
+      if (passwordData.newPassword !== passwordData.confirmNewPassword) {
+        toast({
+          title: "Error",
+          description: "New passwords do not match",
+        });
+        return;
+      }
+
+      if (passwordData.newPassword.length < 6) {
+        toast({
+          title: "Error",
+          description: "New password must be at least 6 characters",
+        });
+        return;
+      }
+
+      // Call API to change password
+      await authApi.changePassword({
+        oldPassword: passwordData.oldPassword,
+        newPassword: passwordData.newPassword,
+        confirmNewPassword: passwordData.confirmNewPassword,
+      });
+      
+      toast({
+        title: "Success",
+        description: "Password changed successfully",
+      });
+
+      // Reset form
+      setPasswordData({
+        oldPassword: "",
+        newPassword: "",
+        confirmNewPassword: "",
+      });
+      setShowChangePasswordModal(false);
+    } catch (error: any) {
+      console.error("Error changing password:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to change password",
+      });
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -582,6 +651,16 @@ export default function ProfileDetail() {
                 <Text style={styles.infoValue}>{formData.dateOfBirth || "Not provided"}</Text>
               </View>
             </View>
+
+            {/* Change Password Button */}
+            <TouchableOpacity 
+              style={styles.changePasswordButton}
+              onPress={() => setShowChangePasswordModal(true)}
+            >
+              <Ionicons name="lock-closed-outline" size={20} color="#00704A" />
+              <Text style={styles.changePasswordButtonText}>Change Password</Text>
+              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
           </View>
         )}
 
@@ -589,6 +668,91 @@ export default function ProfileDetail() {
           <View style={styles.bottomSpacing} />
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Change Password Modal */}
+      <Modal
+        visible={showChangePasswordModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowChangePasswordModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Change Password</Text>
+              <TouchableOpacity onPress={() => setShowChangePasswordModal(false)}>
+                <Ionicons name="close" size={24} color="#374151" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Old Password</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={passwordData.oldPassword}
+                  onChangeText={(text) => setPasswordData(prev => ({ ...prev, oldPassword: text }))}
+                  placeholder="Enter old password"
+                  placeholderTextColor="#9CA3AF"
+                  secureTextEntry
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>New Password</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={passwordData.newPassword}
+                  onChangeText={(text) => setPasswordData(prev => ({ ...prev, newPassword: text }))}
+                  placeholder="Enter new password"
+                  placeholderTextColor="#9CA3AF"
+                  secureTextEntry
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Confirm New Password</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={passwordData.confirmNewPassword}
+                  onChangeText={(text) => setPasswordData(prev => ({ ...prev, confirmNewPassword: text }))}
+                  placeholder="Confirm new password"
+                  placeholderTextColor="#9CA3AF"
+                  secureTextEntry
+                />
+              </View>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => {
+                  setShowChangePasswordModal(false);
+                  setPasswordData({
+                    oldPassword: "",
+                    newPassword: "",
+                    confirmNewPassword: "",
+                  });
+                }}
+                disabled={changingPassword}
+              >
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveButton, changingPassword && styles.modalSaveButtonDisabled]}
+                onPress={handleChangePassword}
+                disabled={changingPassword}
+              >
+                {changingPassword ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalSaveButtonText}>Change Password</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -817,5 +981,90 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 200,
+  },
+  changePasswordButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 24,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  changePasswordButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#00704A',
+    marginLeft: 12,
+    flex: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  modalBody: {
+    padding: 20,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  modalCancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+  },
+  modalCancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  modalSaveButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#00704A',
+    alignItems: 'center',
+  },
+  modalSaveButtonDisabled: {
+    opacity: 0.5,
+  },
+  modalSaveButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

@@ -104,8 +104,17 @@ export default function LoginScreen() {
         router.push(destination);
       }
     } catch (error: any) {
-      console.error("Login error:", error);
       const errorMessage = error?.message || "Login failed. Please check your credentials and try again.";
+      
+      // Silently handle "Invalid username or password" errors - don't log or show alert
+      const isInvalidCredentials = errorMessage.toLowerCase().includes('invalid username') || 
+                                   errorMessage.toLowerCase().includes('invalid password') ||
+                                   errorMessage.toLowerCase().includes('invalid username or password');
+      
+      if (isInvalidCredentials) {
+        // Silently handle - don't log or show alert
+        return;
+      }
       
       // Check if error is about admin access restriction
       if (errorMessage.includes("Admin accounts cannot be accessed on mobile") || 

@@ -122,6 +122,13 @@ export default function BusinessOverview() {
           rating: 0, // Rating not available from transactions
         });
       } catch (error: any) {
+        // Silently handle Unauthorized errors
+        if (error?.response?.status === 401 || 
+            error?.message?.toLowerCase().includes('unauthorized')) {
+          // Silently handle - don't show error to user
+          console.log('⚠️ Unauthorized error loading transaction stats (silently handled)');
+          return;
+        }
         console.error('❌ Error loading transaction stats:', error);
         // Silently fail - will show default values
       }

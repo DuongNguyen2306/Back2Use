@@ -93,14 +93,18 @@ export default function CustomerDashboard() {
             setUserRank(null);
           }
         } catch (error: any) {
+          // Silently handle "No valid access token available" errors
+          const isNoTokenError = error?.message?.toLowerCase().includes('no valid access token') ||
+                                 error?.message?.toLowerCase().includes('no access token');
+          
           // Don't log network errors as errors - they're expected when offline
           const isNetworkError = error?.message?.toLowerCase().includes('network') ||
                                  error?.message?.toLowerCase().includes('timeout') ||
                                  error?.message?.toLowerCase().includes('connection');
           
-          if (!isNetworkError) {
+          if (!isNoTokenError && !isNetworkError) {
             console.error('Error loading user data:', error);
-          } else {
+          } else if (isNetworkError) {
             console.warn('⚠️ Network error loading user data (using default values):', error.message);
           }
           // Continue with default user data
@@ -150,8 +154,13 @@ export default function CustomerDashboard() {
           console.log('💰 Updated Wallet Balance:', user.wallet?.balance);
           console.log('💰 Updated AvailableBalance:', (user.wallet as any)?.availableBalance);
           setUserData(user);
-        } catch (error) {
-          console.error('Error reloading user data:', error);
+        } catch (error: any) {
+          // Silently handle "No valid access token available" errors
+          const isNoTokenError = error?.message?.toLowerCase().includes('no valid access token') ||
+                                 error?.message?.toLowerCase().includes('no access token');
+          if (!isNoTokenError) {
+            console.error('Error reloading user data:', error);
+          }
         }
       };
       reloadUserData();
@@ -448,8 +457,13 @@ export default function CustomerDashboard() {
       console.log('💰 Fresh AvailableBalance:', (freshUser.wallet as any)?.availableBalance);
       currentUserData = freshUser;
       setUserData(freshUser);
-    } catch (error) {
-      console.error('Error reloading user data:', error);
+    } catch (error: any) {
+      // Silently handle "No valid access token available" errors
+      const isNoTokenError = error?.message?.toLowerCase().includes('no valid access token') ||
+                             error?.message?.toLowerCase().includes('no access token');
+      if (!isNoTokenError) {
+        console.error('Error reloading user data:', error);
+      }
       // Continue with existing userData if reload fails
     }
 

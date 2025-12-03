@@ -95,14 +95,8 @@ export default function WelcomeScreen() {
         setBusinesses([]);
       }
     } catch (error: any) {
-      console.error('❌ Welcome page: Error fetching businesses:', error);
-      console.error('Error details:', {
-        message: error.message,
-        code: error.code,
-        response: error.response?.data,
-        status: error.response?.status,
-      });
-      // Fallback to empty array on error
+      // Silently handle network errors - don't show to user
+      // Just set empty array and continue
       setBusinesses([]);
     } finally {
       setLoading(false);

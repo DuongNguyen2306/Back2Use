@@ -233,6 +233,14 @@ export default function BusinessProfileScreen() {
       title: '', // No title for main menu
       items: [
         {
+          id: 'change-password',
+          title: 'Change Password',
+          icon: 'lock-closed-outline',
+          color: '#3B82F6',
+          onPress: () => setShowChangePasswordModal(true),
+          showArrow: false,
+        },
+        {
           id: 'switch-to-customer',
           title: 'Switch to Customer Account',
           icon: 'swap-horizontal-outline',

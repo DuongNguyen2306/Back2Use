@@ -153,18 +153,22 @@ export default function MyProfile() {
         setHasBusinessRole(true);
       }
       } catch (error: any) {
+        // Silently handle "No valid access token available" errors
+        const isNoTokenError = error?.message?.toLowerCase().includes('no valid access token') ||
+                               error?.message?.toLowerCase().includes('no access token');
+        
         // Don't show toast for network errors - they're expected when offline
         const isNetworkError = error?.message?.toLowerCase().includes('network') ||
                                error?.message?.toLowerCase().includes('timeout') ||
                                error?.message?.toLowerCase().includes('connection');
         
-        if (!isNetworkError) {
+        if (!isNoTokenError && !isNetworkError) {
           console.error('Error loading user data:', error);
           toast({
             title: "Lỗi",
             description: "Không thể tải dữ liệu hồ sơ. Vui lòng thử lại.",
           });
-        } else {
+        } else if (isNetworkError) {
           console.warn('⚠️ Network error loading user data (will retry later):', error.message);
           // Don't show toast for network errors - user can still use the form
         }

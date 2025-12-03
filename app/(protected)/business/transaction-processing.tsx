@@ -115,6 +115,7 @@ export default function TransactionProcessingScreen() {
   });
   const [calculatedPoints, setCalculatedPoints] = useState(0);
   const [calculatedCondition, setCalculatedCondition] = useState<'good' | 'damaged'>('good');
+  const [checkReturnResponse, setCheckReturnResponse] = useState<any>(null); // Lưu response từ checkReturn
   
   // QR Scanner states
   const [showQRScanner, setShowQRScanner] = useState(false);
@@ -313,10 +314,15 @@ export default function TransactionProcessingScreen() {
         setTransactions([]);
       }
     } catch (error: any) {
-      // Silently handle 403/500 errors (Access denied / Business not found)
-      if (error?.response?.status === 403 || error?.response?.status === 500) {
-        console.log('⚠️ Error accessing business transactions API:', error?.response?.status);
+      // Silently handle 401/403/500 errors (Unauthorized / Access denied / Business not found)
+      if (error?.response?.status === 401 || 
+          error?.response?.status === 403 || 
+          error?.response?.status === 500 ||
+          error?.message?.toLowerCase().includes('unauthorized')) {
+        // Silently handle - don't show error to user
+        console.log('⚠️ Error accessing business transactions API:', error?.response?.status || error?.message);
         setTransactions([]);
+        return;
       } else if (error?.response?.status && error.response.status >= 500) {
         console.error('Error loading transactions:', error);
       }
@@ -496,6 +502,17 @@ export default function TransactionProcessingScreen() {
           return;
         }
       } catch (error: any) {
+        // Silently handle Unauthorized errors
+        if (error?.response?.status === 401 || 
+            error?.message?.toLowerCase().includes('unauthorized')) {
+          console.log('⚠️ Unauthorized error getting transaction (silently handled)');
+          Alert.alert(
+            'Error', 
+            'Cannot get serial number from transaction. Please scan the product QR code (not the transaction QR code).'
+          );
+          scanLock.current = false;
+          return;
+        }
         // If error, don't use transaction ID as serialNumber
         console.log('⚠️ Error getting transaction:', error?.response?.status || error?.message);
         Alert.alert(
@@ -1360,13 +1377,45 @@ export default function TransactionProcessingScreen() {
 
                   try {
                     setCheckingReturn(true);
-                    await borrowTransactionsApi.checkReturn(returnSerialNumber, checkData);
+                    const checkResponse = await borrowTransactionsApi.checkReturn(returnSerialNumber, checkData);
+                    
+                    // Lưu response từ checkReturn để dùng cho confirmReturn
+                    // checkResponse đã là response.data rồi (từ service trả về response.data)
+                    console.log('✅ Check Return Response (Full):', JSON.stringify(checkResponse, null, 2));
+                    console.log('✅ Check Return Response - Type:', typeof checkResponse);
+                    console.log('✅ Check Return Response - Keys:', checkResponse ? Object.keys(checkResponse) : 'null/undefined');
+                    console.log('✅ Check Return Response - tempImages:', checkResponse?.tempImages);
+                    console.log('✅ Check Return Response - totalDamagePoints:', checkResponse?.totalDamagePoints);
+                    console.log('✅ Check Return Response - finalCondition:', checkResponse?.finalCondition);
+                    console.log('✅ Check Return Response - damageFaces:', checkResponse?.damageFaces);
+                    console.log('✅ Check Return Response - note:', checkResponse?.note);
+                    
+                    setCheckReturnResponse(checkResponse);
 
                     // After check success, show confirm modal
                     setShowReturnModal(false);
                     setShowConfirmModal(true);
                   } catch (error: any) {
                     console.error('Error checking return:', error);
+                    
+                    // Silently handle specific errors
+                    if (error?.message === 'MATERIAL_NOT_FOUND' || 
+                        error?.message?.toLowerCase().includes('material not found')) {
+                      // Silently handle - don't show alert
+                      console.warn('⚠️ Material not found - silently handled');
+                      return;
+                    }
+                    
+                    // Silently handle network errors
+                    if (error?.message?.toLowerCase().includes('network error') ||
+                        error?.code === 'NETWORK_ERROR' ||
+                        error?.response === undefined) {
+                      // Network error - silently handle
+                      console.warn('⚠️ Network error - silently handled');
+                      return;
+                    }
+                    
+                    // Show alert for other errors
                     Alert.alert('Error', error.message || 'Failed to check return');
                   } finally {
                     setCheckingReturn(false);
@@ -1414,19 +1463,93 @@ export default function TransactionProcessingScreen() {
                 />
               </View>
 
-              <View style={styles.calculationResult}>
-                <Text style={styles.calculationLabel}>Total Damage Points: {calculatedPoints}</Text>
-                <View style={[
-                  styles.conditionBadge,
-                  calculatedCondition === 'damaged' ? styles.conditionBadgeDamaged : styles.conditionBadgeGood
-                ]}>
-                  <Text style={[
-                    styles.conditionBadgeText,
-                    calculatedCondition === 'damaged' ? styles.conditionBadgeTextDamaged : styles.conditionBadgeTextGood
-                  ]}>
-                    Final Condition: {calculatedCondition.toUpperCase()}
-                  </Text>
+              {(() => {
+                // Lấy dữ liệu từ checkReturn response
+                // Response có thể có cấu trúc { preview: { ... } } hoặc trực tiếp { ... }
+                const responseData = checkReturnResponse;
+                const previewData = responseData?.preview || responseData;
+                const serverDamagePoints = previewData?.totalDamagePoints !== undefined 
+                                         ? previewData.totalDamagePoints 
+                                         : (responseData?.totalDamagePoints !== undefined 
+                                             ? responseData.totalDamagePoints 
+                                             : calculatedPoints);
+                const serverCondition = previewData?.finalCondition || responseData?.finalCondition || calculatedCondition;
+                
+                return (
+                  <View style={styles.calculationResult}>
+                    <Text style={styles.calculationLabel}>
+                      Total Damage Points: {serverDamagePoints}
+                    </Text>
+                    <View style={[
+                      styles.conditionBadge,
+                      serverCondition === 'damaged' ? styles.conditionBadgeDamaged : styles.conditionBadgeGood
+                    ]}>
+                      <Text style={[
+                        styles.conditionBadgeText,
+                        serverCondition === 'damaged' ? styles.conditionBadgeTextDamaged : styles.conditionBadgeTextGood
+                      ]}>
+                        Final Condition: {serverCondition.toUpperCase()}
+                      </Text>
+                    </View>
+                    {responseData && (
+                      <Text style={styles.serverCalculatedNote}>
+                        * Calculated by server from check return
+                      </Text>
+                    )}
+                  </View>
+                );
+              })()}
+
+              {/* Images Preview */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Uploaded Images</Text>
+                <View style={styles.imagesContainer}>
+                  {(() => {
+                    // Lấy hình ảnh từ checkReturnResponse (ưu tiên các link Cloudinary từ API check)
+                    // Response có thể có cấu trúc { preview: { tempImages: {...} } } hoặc trực tiếp { tempImages: {...} }
+                    const responseData = checkReturnResponse;
+                    const previewData = responseData?.preview || responseData;
+                    // Ưu tiên lấy từ preview.tempImages (các link Cloudinary đã được lưu)
+                    const tempImages = previewData?.tempImages || responseData?.tempImages || {};
+                    const faces = ['front', 'back', 'left', 'right', 'top', 'bottom'];
+                    
+                    return faces.map((face) => {
+                      // Ưu tiên lấy từ tempImages (URLs Cloudinary từ server), nếu không có thì lấy từ checkData (local)
+                      const imageUrl = tempImages[`${face}Image`] || 
+                                      tempImages[`${face}image`] || 
+                                      checkData[`${face}Image` as keyof typeof checkData];
+                      
+                      if (!imageUrl) return null;
+                      
+                      return (
+                        <View key={face} style={styles.confirmImageContainer}>
+                          <Text style={styles.confirmImageLabel}>{face.toUpperCase()}</Text>
+                          <Image 
+                            source={{ uri: imageUrl as string }} 
+                            style={styles.confirmImagePreview} 
+                            resizeMode="cover"
+                          />
+                        </View>
+                      );
+                    }).filter(Boolean);
+                  })()}
                 </View>
+                {(() => {
+                  // Lấy tempImages từ checkReturnResponse (các link Cloudinary)
+                  const responseData = checkReturnResponse;
+                  const previewData = responseData?.preview || responseData;
+                  const tempImages = previewData?.tempImages || responseData?.tempImages || {};
+                  const hasImages = Object.keys(tempImages).length > 0 || 
+                                   ['front', 'back', 'left', 'right', 'top', 'bottom'].some(face => 
+                                     checkData[`${face}Image` as keyof typeof checkData]
+                                   );
+                  if (!hasImages) {
+                    return (
+                      <Text style={styles.noImagesText}>No images uploaded</Text>
+                    );
+                  }
+                  return null;
+                })()}
               </View>
 
               <View style={styles.formGroup}>
@@ -1466,18 +1589,80 @@ export default function TransactionProcessingScreen() {
                       }
                     });
 
+                    // Lấy dữ liệu từ checkReturn response
+                    // Response structure có thể là:
+                    // 1. { success: 200, message: "...", preview: { tempImages: {...}, totalDamagePoints: 1, finalCondition: "good" } }
+                    // 2. { tempImages: {...}, totalDamagePoints: 0, finalCondition: "good", damageFaces: [...], note: "..." }
+                    let tempImages = {};
+                    let totalDamagePoints = calculatedPoints;
+                    let finalCondition = calculatedCondition;
+                    
+                    if (checkReturnResponse) {
+                      // checkReturnResponse đã là response.data rồi (từ service trả về response.data)
+                      const responseData = checkReturnResponse;
+                      
+                      // Kiểm tra cả 2 cấu trúc: preview.tempImages hoặc tempImages trực tiếp
+                      // Ưu tiên lấy từ preview (cấu trúc mới)
+                      const previewData = responseData?.preview || responseData;
+                      
+                      // Lấy tempImages (object chứa URLs của các hình đã upload từ Cloudinary)
+                      // Đây là các link đã được lưu trên Cloudinary từ API check
+                      tempImages = previewData?.tempImages || responseData?.tempImages || {};
+                      
+                      // Lấy totalDamagePoints và finalCondition từ server (đã tính toán)
+                      totalDamagePoints = previewData?.totalDamagePoints !== undefined 
+                                        ? previewData.totalDamagePoints 
+                                        : (responseData?.totalDamagePoints !== undefined 
+                                            ? responseData.totalDamagePoints 
+                                            : calculatedPoints);
+                      finalCondition = previewData?.finalCondition || responseData?.finalCondition || calculatedCondition;
+                      
+                      console.log('📦 Extracted from checkResponse:', {
+                        tempImages,
+                        totalDamagePoints,
+                        finalCondition,
+                        hasPreview: !!responseData?.preview,
+                        responseDataKeys: responseData ? Object.keys(responseData) : [],
+                        previewKeys: previewData ? Object.keys(previewData) : [],
+                      });
+                      
+                      // Đảm bảo tempImages chứa các link từ Cloudinary (không phải local file paths)
+                      if (Object.keys(tempImages).length > 0) {
+                        console.log('✅ Using Cloudinary URLs from checkReturn response:', tempImages);
+                      } else {
+                        console.warn('⚠️ No tempImages found in checkReturn response');
+                      }
+                    }
+                    
+                    console.log('📤 Confirm Return - Final data to send:', {
+                      note: returnNote || undefined,
+                      damageFaces,
+                      tempImages,
+                      totalDamagePoints,
+                      finalCondition,
+                    });
+
+                    console.log('📤 Confirm Return - Sending data:', {
+                      note: returnNote || undefined,
+                      damageFaces,
+                      tempImages,
+                      totalDamagePoints,
+                      finalCondition,
+                    });
+
                     await borrowTransactionsApi.confirmReturn(returnSerialNumber, {
                       note: returnNote || undefined,
                       damageFaces,
-                      tempImages: {}, // API requires tempImages to be an object (can be empty)
-                      totalDamagePoints: calculatedPoints,
-                      finalCondition: calculatedCondition,
+                      tempImages,
+                      totalDamagePoints,
+                      finalCondition,
                     });
 
                     // Close modal and reset form immediately
                     setShowConfirmModal(false);
                     setReturnSerialNumber('');
                     setReturnNote('');
+                    setCheckReturnResponse(null); // Reset check response
                     setCheckData({
                       frontImage: null,
                       frontIssue: '',
@@ -2248,5 +2433,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#0F4D3A',
+  },
+  confirmImageContainer: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  confirmImageLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 4,
+    textTransform: 'capitalize',
+  },
+  confirmImagePreview: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+  },
+  noImagesText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  serverCalculatedNote: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+    marginTop: 8,
   },
 });

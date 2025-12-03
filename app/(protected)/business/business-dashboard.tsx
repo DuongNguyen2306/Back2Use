@@ -176,6 +176,13 @@ export default function BusinessDashboard() {
           }));
         }
       } catch (error: any) {
+        // Silently handle Unauthorized errors
+        if (error?.response?.status === 401 || 
+            error?.message?.toLowerCase().includes('unauthorized')) {
+          // Silently handle - don't show error to user
+          console.log('⚠️ Unauthorized error loading data (silently handled)');
+          return;
+        }
         console.error('❌ Error loading real data:', error);
         // Silently fail - will show default values
       }

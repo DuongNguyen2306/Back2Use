@@ -115,6 +115,13 @@ export function useBusinessRoleCheck() {
           // Don't log 502 errors
           return false;
         }
+        // Silently handle Unauthorized errors (user not authenticated or no permission)
+        if (error?.response?.status === 401 || 
+            error?.message?.toLowerCase().includes('unauthorized') ||
+            error?.message?.toLowerCase().includes('unauthorized')) {
+          // Don't log or show Unauthorized errors
+          return false;
+        }
         console.error('❌ Error checking business history:', error);
       }
 
