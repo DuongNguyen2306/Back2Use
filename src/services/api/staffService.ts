@@ -34,6 +34,39 @@ export interface UpdateStaffRequest {
   staffRole?: string;
 }
 
+export interface StaffProfile {
+  _id: string;
+  businessId: {
+    _id: string;
+    businessName: string;
+    businessAddress?: string;
+    businessPhone?: string;
+    businessLogoUrl?: string;
+  };
+  userId: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  status: 'active' | 'inactive' | 'removed';
+  avatar?: string;
+  position?: string;
+  staffRole?: string;
+  createdAt: string;
+  updatedAt: string;
+  user?: {
+    _id: string;
+    username: string;
+    email: string;
+    role: string;
+  };
+}
+
+export interface StaffProfileResponse {
+  statusCode: number;
+  message: string;
+  data: StaffProfile;
+}
+
 export interface CreateStaffResponse {
   statusCode: number;
   message: string;
@@ -84,6 +117,26 @@ export const staffApi = {
     const endpoint = `${API_ENDPOINTS.STAFF.GET_BY_ID}/${staffId}`;
     return apiCall<CreateStaffResponse>(endpoint, {
       method: 'GET',
+    });
+  },
+
+  // Get current staff profile (logged-in staff)
+  getProfile: async (): Promise<StaffProfileResponse> => {
+    return apiCall<StaffProfileResponse>(API_ENDPOINTS.STAFF.PROFILE, {
+      method: 'GET',
+    });
+  },
+
+  // Update current staff profile (logged-in staff)
+  updateProfile: async (data: UpdateStaffRequest): Promise<StaffProfileResponse> => {
+    // Get current staff profile first to get the ID
+    const profileResponse = await staffApi.getProfile();
+    const staffId = profileResponse.data._id;
+    
+    const endpoint = `${API_ENDPOINTS.STAFF.UPDATE}/${staffId}`;
+    return apiCall<StaffProfileResponse>(endpoint, {
+      method: 'PATCH',
+      data,
     });
   },
 

@@ -181,8 +181,16 @@ export default function BusinessDashboard() {
       }
     };
 
-    if (!loading && businessProfile) {
-      loadRealData();
+    // For staff, load data immediately after loading is complete
+    // For business, wait for businessProfile to be loaded
+    if (!loading) {
+      if (authState.role === 'staff' as any) {
+        // Staff doesn't need businessProfile, load transactions directly
+        loadRealData();
+      } else if (businessProfile) {
+        // Business needs businessProfile to load products
+        loadRealData();
+      }
     }
   }, [authState.isHydrated, authState.accessToken, authState.isAuthenticated, authState.role, loading, businessProfile]);
   

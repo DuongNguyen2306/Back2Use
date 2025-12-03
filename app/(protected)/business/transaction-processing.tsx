@@ -709,45 +709,117 @@ export default function TransactionProcessingScreen() {
       : new Date(transaction.borrowDate);
 
     return (
-      <TouchableOpacity 
-        style={styles.transactionCard}
-        onPress={() => {
-          setSelectedTransaction(transaction);
-          setShowDetailsModal(true);
-        }}
-      >
-        {/* Left Side - Icon */}
-        <View style={styles.cardLeft}>
-          <View style={[
-            styles.iconContainer,
-            transaction.borrowTransactionType === 'borrow' ? styles.borrowIcon : styles.returnIcon
-          ]}>
-            <Ionicons 
-              name={transaction.borrowTransactionType === 'borrow' ? 'arrow-down' : 'arrow-up'} 
-              size={20} 
-              color="white" 
-            />
+      <View style={styles.transactionCard}>
+        <TouchableOpacity 
+          style={styles.transactionCardContent}
+          onPress={() => {
+            setSelectedTransaction(transaction);
+            setShowDetailsModal(true);
+          }}
+        >
+          {/* Left Side - Icon */}
+          <View style={styles.cardLeft}>
+            <View style={[
+              styles.iconContainer,
+              transaction.borrowTransactionType === 'borrow' ? styles.borrowIcon : styles.returnIcon
+            ]}>
+              <Ionicons 
+                name={transaction.borrowTransactionType === 'borrow' ? 'arrow-down' : 'arrow-up'} 
+                size={20} 
+                color="white" 
+              />
+            </View>
           </View>
-        </View>
 
-        {/* Middle - Main Info */}
-        <View style={styles.cardMiddle}>
-          <Text style={styles.productName}>{productName}</Text>
-          <Text style={styles.userName}>Borrower: {customerName}</Text>
-        </View>
+          {/* Middle - Main Info */}
+          <View style={styles.cardMiddle}>
+            <Text style={styles.productName}>{productName}</Text>
+            <Text style={styles.userName}>Borrower: {customerName}</Text>
+          </View>
 
-        {/* Right Side - Status & Date */}
-        <View style={styles.cardRight}>
-          <Text style={styles.transactionDate}>
-            {transactionDate.toLocaleDateString('en-US')}
-          </Text>
-          <View style={[styles.statusBadge, { backgroundColor: status.bgColor }]}>
-            <Text style={[styles.statusText, { color: status.color }]}>
-              {status.text}
+          {/* Right Side - Status & Date */}
+          <View style={styles.cardRight}>
+            <Text style={styles.transactionDate}>
+              {transactionDate.toLocaleDateString('en-US')}
             </Text>
+            <View style={[styles.statusBadge, { backgroundColor: status.bgColor }]}>
+              <Text style={[styles.statusText, { color: status.color }]}>
+                {status.text}
+              </Text>
+            </View>
           </View>
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+
+        {/* Action Buttons - Confirm Borrow or Check Return */}
+        {transaction.borrowTransactionType === 'borrow' && 
+         (transaction.status === 'pending' || 
+          transaction.status === 'waiting' || 
+          transaction.status === 'pending_pickup') && (
+          <TouchableOpacity
+            style={styles.cardActionButton}
+            onPress={async (e) => {
+              e.stopPropagation();
+              try {
+                await borrowTransactionsApi.confirmBorrow(transaction._id);
+                Alert.alert(
+                  'Success',
+                  'Borrow transaction confirmed successfully!',
+                  [
+                    {
+                      text: 'OK',
+                      onPress: async () => {
+                        await loadTransactions();
+                      }
+                    }
+                  ]
+                );
+              } catch (error: any) {
+                console.error('Error confirming borrow:', error);
+                Alert.alert('Error', error.message || 'Failed to confirm borrow transaction');
+              }
+            }}
+          >
+            <Ionicons name="checkmark-circle" size={18} color="#3B82F6" />
+            <Text style={styles.cardActionButtonText}>Confirm Borrow</Text>
+          </TouchableOpacity>
+        )}
+
+        {transaction.borrowTransactionType === 'borrow' && transaction.status === 'borrowing' && (
+          <TouchableOpacity
+            style={styles.cardActionButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              const serialNumber = transaction.productId?.serialNumber;
+              if (serialNumber) {
+                setReturnSerialNumber(serialNumber);
+                setCheckData({
+                  frontImage: null,
+                  frontIssue: '',
+                  backImage: null,
+                  backIssue: '',
+                  leftImage: null,
+                  leftIssue: '',
+                  rightImage: null,
+                  rightIssue: '',
+                  topImage: null,
+                  topIssue: '',
+                  bottomImage: null,
+                  bottomIssue: '',
+                });
+                setReturnNote('');
+                setReturnImages([]);
+                setCalculatedPoints(0);
+                setCalculatedCondition('good');
+              } else {
+                Alert.alert('Error', 'Serial number not found for this transaction');
+              }
+            }}
+          >
+            <Ionicons name="qr-code-outline" size={18} color="#0F4D3A" />
+            <Text style={styles.cardActionButtonText}>Check Return</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     );
   };
 
@@ -960,6 +1032,40 @@ export default function TransactionProcessingScreen() {
                       Return Date: {new Date(selectedTransaction.returnedAt).toLocaleString('en-US')}
                     </Text>
                   </View>
+                )}
+
+                {/* Confirm Borrow Button - Show for borrow transactions with pending status */}
+                {selectedTransaction.borrowTransactionType === 'borrow' && 
+                 (selectedTransaction.status === 'pending' || 
+                  selectedTransaction.status === 'waiting' || 
+                  selectedTransaction.status === 'pending_pickup') && (
+                  <TouchableOpacity
+                    style={[styles.processReturnButton, { backgroundColor: '#3B82F6' }]}
+                    onPress={async () => {
+                      try {
+                        await borrowTransactionsApi.confirmBorrow(selectedTransaction._id);
+                        Alert.alert(
+                          'Success',
+                          'Borrow transaction confirmed successfully!',
+                          [
+                            {
+                              text: 'OK',
+                              onPress: async () => {
+                                setShowDetailsModal(false);
+                                await loadTransactions();
+                              }
+                            }
+                          ]
+                        );
+                      } catch (error: any) {
+                        console.error('Error confirming borrow:', error);
+                        Alert.alert('Error', error.message || 'Failed to confirm borrow transaction');
+                      }
+                    }}
+                  >
+                    <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                    <Text style={styles.processReturnButtonText}>Confirm Borrow</Text>
+                  </TouchableOpacity>
                 )}
 
                 {/* Process Return Button - Only show for borrow transactions that haven't been returned */}
@@ -1339,16 +1445,6 @@ export default function TransactionProcessingScreen() {
               <TouchableOpacity
                 style={[styles.submitButton, confirmingReturn && styles.submitButtonDisabled]}
                 onPress={async () => {
-                  // Check if user is staff (only staff can confirm return)
-                  if (auth.state.role !== 'staff' as any) {
-                    Alert.alert(
-                      'Cannot Confirm Return',
-                      'Only staff members can confirm returns. Please log in with a staff account to perform this action.',
-                      [{ text: 'OK' }]
-                    );
-                    return;
-                  }
-
                   if (!returnSerialNumber.trim()) {
                     Alert.alert('Error', 'Serial number is required');
                     return;
@@ -1577,14 +1673,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderRadius: 12,
     marginBottom: 12,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
+    overflow: 'hidden',
+  },
+  transactionCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
   },
   cardLeft: {
     marginRight: 16,
@@ -2133,5 +2232,21 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  cardActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#F3F4F6',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    gap: 8,
+  },
+  cardActionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F4D3A',
   },
 });

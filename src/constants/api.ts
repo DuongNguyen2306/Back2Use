@@ -96,12 +96,13 @@ export const API_ENDPOINTS = {
     CUSTOMER_CANCEL: '/borrow-transactions/customer/cancel', // PATCH /borrow-transactions/customer/cancel/{id}
     CUSTOMER_EXTEND: '/borrow-transactions/customer/extend', // PATCH /borrow-transactions/customer/extend/{id}
     DAMAGE_POLICY: '/borrow-transactions/damage-policy', // GET /borrow-transactions/damage-policy
-    RETURN_CHECK: '/borrow-transactions', // POST /borrow-transactions/{serialNumber}/check
-    RETURN_CONFIRM: '/borrow-transactions', // POST /borrow-transactions/{serialNumber}/confirm
+    RETURN_CHECK: '/borrow-transactions/{serialNumber}/check', // POST /borrow-transactions/{serialNumber}/check
+    RETURN_CONFIRM: '/borrow-transactions/{serialNumber}/confirm', // POST /borrow-transactions/{serialNumber}/confirm
   },
   STAFF: {
     GET_ALL: '/staffs', // GET /staffs?search=&status=&limit=&page=
     GET_BY_ID: '/staffs', // GET /staffs/{id}
+    PROFILE: '/staffs/profile', // GET /staffs/profile
     CREATE: '/staffs', // POST /staffs
     UPDATE: '/staffs', // PATCH /staffs/{id}
     DELETE: '/staffs', // DELETE /staffs/{id}

@@ -76,6 +76,14 @@ apiClient.interceptors.request.use(
         console.log('❌ No token found, request will be unauthorized');
         console.log('⚠️ This request will likely fail with 401');
       }
+      
+      // Don't override Content-Type if it's FormData (axios will set it automatically with boundary)
+      // Only set Content-Type if it's not already set and data is not FormData
+      if (config.data instanceof FormData) {
+        // Remove Content-Type header to let axios set it automatically with boundary
+        delete config.headers['Content-Type'];
+        console.log('📦 FormData detected - letting axios set Content-Type automatically');
+      }
     } catch (error) {
       console.error('Error getting token from AsyncStorage:', error);
     }
@@ -100,10 +108,14 @@ apiClient.interceptors.response.use(
     }
     
     // Check for specific errors that should be handled silently
-    const errorMessage = error.response?.data?.message || '';
-    const isProductGroupLimitError = errorMessage.toLowerCase().includes('product group limit') || 
-                                    errorMessage.toLowerCase().includes('allows 0 product groups') ||
-                                    errorMessage.toLowerCase().includes('upgrade your subscription');
+    const errorMessage = typeof error.response?.data?.message === 'string' 
+      ? error.response.data.message 
+      : (error.response?.data?.message ? String(error.response.data.message) : '');
+    const isProductGroupLimitError = errorMessage && typeof errorMessage === 'string' && (
+      errorMessage.toLowerCase().includes('product group limit') || 
+      errorMessage.toLowerCase().includes('allows 0 product groups') ||
+      errorMessage.toLowerCase().includes('upgrade your subscription')
+    );
     
     // Only log errors that are not user-facing (avoid logging expected errors like validation)
     // Don't log product group limit errors - they're handled in UI with proper messages
@@ -156,9 +168,12 @@ async function apiCall<T>(
     // Silently handle 404 and 400 "Invalid product ID" errors for product scan endpoint
     if (endpoint.includes('/products/scan/')) {
       const is404 = error.response?.status === 404;
-      const is400InvalidId = error.response?.status === 400 && 
-                             (error.response?.data?.message?.toLowerCase().includes('invalid product') ||
-                              error.response?.data?.message?.toLowerCase().includes('product id'));
+      const errorMsg = typeof error.response?.data?.message === 'string' 
+        ? error.response.data.message 
+        : (error.response?.data?.message ? String(error.response.data.message) : '');
+      const is400InvalidId = error.response?.status === 400 && errorMsg && 
+                             (errorMsg.toLowerCase().includes('invalid product') ||
+                              errorMsg.toLowerCase().includes('product id'));
       
       if (is404 || is400InvalidId) {
         console.log('⚠️ Product scan error (404/400) - silently handled');
@@ -179,10 +194,14 @@ async function apiCall<T>(
     }
     
     // Check for specific errors that should be handled silently
-    const errorMessage = error.response?.data?.message || '';
-    const isProductGroupLimitError = errorMessage.toLowerCase().includes('product group limit') || 
-                                    errorMessage.toLowerCase().includes('allows 0 product groups') ||
-                                    errorMessage.toLowerCase().includes('upgrade your subscription');
+    const errorMessageStr = typeof error.response?.data?.message === 'string' 
+      ? error.response.data.message 
+      : (error.response?.data?.message ? String(error.response.data.message) : '');
+    const isProductGroupLimitError = errorMessageStr && typeof errorMessageStr === 'string' && (
+      errorMessageStr.toLowerCase().includes('product group limit') || 
+      errorMessageStr.toLowerCase().includes('allows 0 product groups') ||
+      errorMessageStr.toLowerCase().includes('upgrade your subscription')
+    );
     
     // Only log server errors (500+), not validation errors (400)
     // This prevents error toasts from showing for expected validation errors
@@ -195,8 +214,10 @@ async function apiCall<T>(
     }
     
     if (error.response) {
-      const errorMessage = error.response.data?.message || `HTTP error! status: ${error.response.status}`;
-      throw new Error(errorMessage);
+      const finalErrorMessage = typeof error.response.data?.message === 'string'
+        ? error.response.data.message
+        : (error.response.data?.message ? String(error.response.data.message) : `HTTP error! status: ${error.response.status}`);
+      throw new Error(finalErrorMessage);
     } else if (error.request) {
       throw new Error('Network error. Please check your connection and try again.');
     } else {

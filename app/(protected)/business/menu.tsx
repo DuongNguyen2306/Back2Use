@@ -20,6 +20,7 @@ import { useToast } from '../../../hooks/use-toast';
 import { authApi, SubscriptionPackage } from '../../../lib/api';
 import { subscriptionsApi } from '../../../src/services/api/businessService';
 import { businessesApi } from '../../../src/services/api/businessService';
+import { staffApi, StaffProfile } from '../../../src/services/api/staffService';
 import { BusinessProfile } from '../../../src/types/business.types';
 
 const { width } = Dimensions.get('window');
@@ -29,6 +30,7 @@ export default function BusinessMenu() {
   const auth = useAuth();
   const { toast } = useToast();
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
+  const [staffProfile, setStaffProfile] = useState<StaffProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedHelp, setExpandedHelp] = useState(false);
   const [expandedSettings, setExpandedSettings] = useState(false);
@@ -42,17 +44,22 @@ export default function BusinessMenu() {
   const [activatingTrial, setActivatingTrial] = useState(false);
 
   useEffect(() => {
-    const loadBusinessData = async () => {
+    const loadProfileData = async () => {
       if (!auth.state.isHydrated) {
         return;
       }
       
-      if (auth.state.accessToken && auth.state.isAuthenticated && auth.state.role === 'business') {
-        try {
+      if (!auth.state.accessToken || !auth.state.isAuthenticated) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        if (auth.state.role === 'business') {
           const profileResponse = await businessesApi.getProfileWithAutoRefresh();
           if (profileResponse.data) {
             if (profileResponse.data.business) {
-            setBusinessProfile(profileResponse.data.business);
+              setBusinessProfile(profileResponse.data.business);
             }
             // Load active subscription
             if (profileResponse.data.activeSubscription) {
@@ -64,22 +71,25 @@ export default function BusinessMenu() {
               setActiveSubscription([]);
             }
           }
-        } catch (error: any) {
-          // Silently handle 403 errors (staff trying to access business profile)
-          if (error?.response?.status === 403) {
-            console.log('⚠️ Staff role cannot access business profile API');
-          } else if (error?.response?.status && error.response.status >= 500) {
-          console.error('Error loading business profile:', error);
+        } else if (auth.state.role === 'staff') {
+          const profileResponse = await staffApi.getProfile();
+          if (profileResponse.data) {
+            setStaffProfile(profileResponse.data);
           }
-        } finally {
-          setLoading(false);
         }
-      } else {
+      } catch (error: any) {
+        // Silently handle 403 errors
+        if (error?.response?.status === 403) {
+          console.log('⚠️ Access denied (403) - silently handled');
+        } else if (error?.response?.status && error.response.status >= 500) {
+          console.error('Error loading profile:', error);
+        }
+      } finally {
         setLoading(false);
       }
     };
 
-    loadBusinessData();
+    loadProfileData();
   }, [auth.state.isHydrated, auth.state.accessToken, auth.state.isAuthenticated, auth.state.role]);
 
   const handleSwitchRole = async () => {
@@ -376,10 +386,15 @@ export default function BusinessMenu() {
   // Business: all shortcuts
   const shortcuts = auth.state.role === 'staff' as any ? [] : allShortcuts;
 
-  const userName = businessProfile?.businessName || 
-                   businessProfile?.userId?.username || 
-                   'User Name';
-  const userAvatar = businessProfile?.businessLogoUrl || null;
+  const userName = auth.state.role === 'staff'
+    ? (staffProfile?.fullName || auth.state.user?.username || 'Staff')
+    : (businessProfile?.businessName || 
+       businessProfile?.userId?.username || 
+       auth.state.user?.username || 
+       'User Name');
+  const userAvatar = auth.state.role === 'staff'
+    ? (staffProfile?.avatar || null)
+    : (businessProfile?.businessLogoUrl || null);
 
   return (
     <View style={styles.container}>

@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_ENDPOINTS, REQUEST_TIMEOUT } from '../../constants/api';
 import {
-    CreateBorrowTransactionRequest,
-    CreateBorrowTransactionResponse
+  CreateBorrowTransactionRequest,
+  CreateBorrowTransactionResponse
 } from '../../types/product.types';
 import { apiClient } from './client';
 
@@ -305,6 +305,303 @@ export const borrowTransactionsApi = {
     } catch (error: any) {
       console.error('Error canceling borrow transaction:', error);
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to cancel transaction';
+      throw new Error(errorMessage);
+    }
+  },
+
+  // Confirm borrow transaction - PATCH /borrow-transactions/confirm/{id}
+  confirmBorrow: async (id: string): Promise<any> => {
+    try {
+      // Get token
+      let accessToken: string | undefined;
+      if (getCurrentAccessToken) {
+        try {
+          accessToken = await getCurrentAccessToken() || undefined;
+        } catch (error) {
+          console.warn('Error getting token from provider:', error);
+        }
+      }
+
+      if (!accessToken) {
+        try {
+          accessToken = await AsyncStorage.getItem('ACCESS_TOKEN') || undefined;
+        } catch (error) {
+          console.warn('Error getting token from AsyncStorage:', error);
+        }
+      }
+
+      if (!accessToken) {
+        throw new Error('No access token available. Please log in first.');
+      }
+
+      if (!id) {
+        throw new Error('Transaction ID is required');
+      }
+
+      const endpoint = `${API_ENDPOINTS.BORROW_TRANSACTIONS.CONFIRM}/${id}`;
+
+      const response = await apiClient.patch(endpoint, {}, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: REQUEST_TIMEOUT,
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Error confirming borrow transaction:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to confirm borrow transaction';
+      throw new Error(errorMessage);
+    }
+  },
+
+  // Check return - POST /borrow-transactions/{serialNumber}/check
+  checkReturn: async (serialNumber: string, checkData: any): Promise<any> => {
+    try {
+      // Get token
+      let accessToken: string | undefined;
+      if (getCurrentAccessToken) {
+        try {
+          accessToken = await getCurrentAccessToken() || undefined;
+        } catch (error) {
+          console.warn('Error getting token from provider:', error);
+        }
+      }
+
+      if (!accessToken) {
+        try {
+          accessToken = await AsyncStorage.getItem('ACCESS_TOKEN') || undefined;
+        } catch (error) {
+          console.warn('Error getting token from AsyncStorage:', error);
+        }
+      }
+
+      if (!accessToken) {
+        throw new Error('No access token available. Please log in first.');
+      }
+
+      if (!serialNumber) {
+        throw new Error('Serial number is required');
+      }
+
+      const endpoint = API_ENDPOINTS.BORROW_TRANSACTIONS.RETURN_CHECK.replace('{serialNumber}', serialNumber);
+      
+      console.log('🔍 Check Return - Endpoint:', endpoint);
+      console.log('🔍 Check Return - Serial Number:', serialNumber);
+      console.log('🔍 Check Return - Check Data:', JSON.stringify(checkData, null, 2));
+
+      // Create FormData for multipart/form-data request
+      const formData = new FormData();
+
+      // Map faces to API field names (note: API has typos like "backlssue" and "rightlssue")
+      // Based on API docs, field names are lowercase for images and issues
+      const faceFieldMap: Record<string, { image: string; issue: string }> = {
+        front:  { image: 'frontImage',  issue: 'frontIssue' },
+        back:   { image: 'backImage',   issue: 'backIssue' },    // ĐÃ SỬA
+        left:   { image: 'leftImage',   issue: 'leftIssue' },
+        right:  { image: 'rightImage',  issue: 'rightIssue' },   // ĐÃ SỬA
+        top:    { image: 'topImage',    issue: 'topIssue' },
+        bottom: { image: 'bottomImage', issue: 'bottomIssue' },
+      };
+
+      // Add images and issues for each face
+      // API requires all fields to be present
+      let imageCount = 0;
+      let issueCount = 0;
+      
+      Object.keys(faceFieldMap).forEach((face) => {
+        const fieldNames = faceFieldMap[face];
+        const imageKey = `${face}Image` as keyof typeof checkData;
+        const issueKey = `${face}Issue` as keyof typeof checkData;
+
+        // Add image - only append if exists and is valid
+        const imageUri = checkData[imageKey];
+        if (imageUri && 
+            typeof imageUri === 'string' && 
+            imageUri.trim() !== '' && 
+            imageUri !== 'null' &&
+            !imageUri.startsWith('data:')) {
+          // For React Native FormData, append file with proper format
+          // Use file:// prefix if needed for local files
+          const fileUri = imageUri.startsWith('file://') ? imageUri : 
+                         imageUri.startsWith('/') ? `file://${imageUri}` : imageUri;
+          
+          formData.append(fieldNames.image, {
+            uri: fileUri,
+            type: 'image/jpeg',
+            name: `${face}.jpg`,
+          } as any);
+          imageCount++;
+          console.log(`📷 Added ${face} image:`, fileUri);
+        }
+
+        // Add issue (always required by API)
+        const issue = checkData[issueKey] || '';
+        formData.append(fieldNames.issue, typeof issue === 'string' ? issue : String(issue));
+        issueCount++;
+        console.log(`📝 Added ${face} issue:`, issue || '(empty)');
+      });
+      
+      console.log(`📦 FormData prepared: ${imageCount} images, ${issueCount} issues`);
+
+      console.log('📤 Sending FormData to:', endpoint);
+
+      // For FormData, let axios automatically set Content-Type with boundary
+      // Don't manually set 'Content-Type' header
+      const response = await apiClient.post(endpoint, formData, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          // Let axios set Content-Type automatically for FormData
+        },
+        timeout: REQUEST_TIMEOUT,
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Error checking return:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to check return';
+      throw new Error(errorMessage);
+    }
+  },
+
+  // Confirm return - POST /borrow-transactions/{serialNumber}/confirm
+  confirmReturn: async (serialNumber: string, confirmData: any): Promise<any> => {
+    try {
+      // Get token
+      let accessToken: string | undefined;
+      if (getCurrentAccessToken) {
+        try {
+          accessToken = await getCurrentAccessToken() || undefined;
+        } catch (error) {
+          console.warn('Error getting token from provider:', error);
+        }
+      }
+
+      if (!accessToken) {
+        try {
+          accessToken = await AsyncStorage.getItem('ACCESS_TOKEN') || undefined;
+        } catch (error) {
+          console.warn('Error getting token from AsyncStorage:', error);
+        }
+      }
+
+      if (!accessToken) {
+        throw new Error('No access token available. Please log in first.');
+      }
+
+      if (!serialNumber) {
+        throw new Error('Serial number is required');
+      }
+
+      const endpoint = `${API_ENDPOINTS.BORROW_TRANSACTIONS.RETURN_CONFIRM.replace('{serialNumber}', serialNumber)}`;
+
+      const response = await apiClient.post(endpoint, confirmData, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: REQUEST_TIMEOUT,
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Error confirming return:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to confirm return';
+      throw new Error(errorMessage);
+    }
+  },
+
+  // Extend borrow duration - PATCH /borrow-transactions/customer/extend/{id}
+  extend: async (id: string, additionalDays: number): Promise<any> => {
+    try {
+      // Get token
+      let accessToken: string | undefined;
+      if (getCurrentAccessToken) {
+        try {
+          accessToken = await getCurrentAccessToken() || undefined;
+        } catch (error) {
+          console.warn('Error getting token from provider:', error);
+        }
+      }
+
+      if (!accessToken) {
+        try {
+          accessToken = await AsyncStorage.getItem('ACCESS_TOKEN') || undefined;
+        } catch (error) {
+          console.warn('Error getting token from AsyncStorage:', error);
+        }
+      }
+
+      if (!accessToken) {
+        throw new Error('No access token available. Please log in first.');
+      }
+
+      if (!id) {
+        throw new Error('Transaction ID is required');
+      }
+
+      if (!additionalDays || additionalDays <= 0) {
+        throw new Error('Additional days must be greater than 0');
+      }
+
+      const endpoint = `${API_ENDPOINTS.BORROW_TRANSACTIONS.CUSTOMER_EXTEND}/${id}`;
+
+      const response = await apiClient.patch(endpoint, { additionalDays }, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: REQUEST_TIMEOUT,
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Error extending borrow transaction:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to extend borrow transaction';
+      throw new Error(errorMessage);
+    }
+  },
+
+  // Get damage policy - GET /borrow-transactions/damage-policy
+  getDamagePolicy: async (): Promise<any> => {
+    try {
+      // Get token
+      let accessToken: string | undefined;
+      if (getCurrentAccessToken) {
+        try {
+          accessToken = await getCurrentAccessToken() || undefined;
+        } catch (error) {
+          console.warn('Error getting token from provider:', error);
+        }
+      }
+
+      if (!accessToken) {
+        try {
+          accessToken = await AsyncStorage.getItem('ACCESS_TOKEN') || undefined;
+        } catch (error) {
+          console.warn('Error getting token from AsyncStorage:', error);
+        }
+      }
+
+      if (!accessToken) {
+        throw new Error('No access token available. Please log in first.');
+      }
+
+      const endpoint = API_ENDPOINTS.BORROW_TRANSACTIONS.DAMAGE_POLICY;
+
+      const response = await apiClient.get(endpoint, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: REQUEST_TIMEOUT,
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Error getting damage policy:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to get damage policy';
       throw new Error(errorMessage);
     }
   },

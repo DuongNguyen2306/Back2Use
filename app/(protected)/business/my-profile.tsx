@@ -20,6 +20,7 @@ import { useToast } from '../../../hooks/use-toast';
 import { useI18n } from '../../../hooks/useI18n';
 import { authApi, SubscriptionPackage } from '../../../lib/api';
 import { businessesApi } from '../../../src/services/api/businessService';
+import { staffApi, StaffProfile } from '../../../src/services/api/staffService';
 import { BusinessProfile } from '../../../src/types/business.types';
 
 const { width } = Dimensions.get('window');
@@ -53,6 +54,7 @@ export default function BusinessProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
+  const [staffProfile, setStaffProfile] = useState<StaffProfile | null>(null);
   const [activeSubscription, setActiveSubscription] = useState<any[]>([]);
   const [subscriptions, setSubscriptions] = useState<SubscriptionPackage[]>([]);
   const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
@@ -110,90 +112,112 @@ export default function BusinessProfileScreen() {
     return dateStr;
   };
 
-  // Load business profile data on component mount
+  // Load profile data on component mount (business or staff)
   useEffect(() => {
-    const loadBusinessData = async () => {
+    const loadProfileData = async () => {
       // Wait for auth state to be hydrated before making API calls
       if (!auth.state.isHydrated) {
         return;
       }
       
-      if (auth.state.accessToken && auth.state.isAuthenticated && auth.state.role === 'business') {
-        try {
-          setLoading(true);
+      if (!auth.state.accessToken || !auth.state.isAuthenticated) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        
+        if (auth.state.role === 'business') {
           console.log('🔍 Loading business profile for my-profile screen...');
           const profileResponse = await businessesApi.getProfileWithAutoRefresh();
           console.log('✅ Business profile loaded:', profileResponse);
           
           if (profileResponse.data) {
             if (profileResponse.data.business) {
-            const profile = profileResponse.data.business;
-            setBusinessProfile(profile);
-            
-            // Populate form with business profile data
-            setFormData({
-              name: profile.businessName || profile.userId.username || "",
-              email: profile.userId.email || profile.businessMail || "",
-              phone: profile.businessPhone || "",
-              address: profile.businessAddress || "",
-              businessName: profile.businessName || "",
-              businessAddress: profile.businessAddress || "",
-              businessPhone: profile.businessPhone || "",
-              businessType: profile.businessType || "",
-              openTime: profile.openTime || "",
-              closeTime: profile.closeTime || "",
-              notifications: true,
-              emailUpdates: true,
-              smsAlerts: false,
-            });
+              const profile = profileResponse.data.business;
+              setBusinessProfile(profile);
+              
+              // Populate form with business profile data
+              setFormData({
+                name: profile.businessName || profile.userId.username || "",
+                email: profile.userId.email || profile.businessMail || "",
+                phone: profile.businessPhone || "",
+                address: profile.businessAddress || "",
+                businessName: profile.businessName || "",
+                businessAddress: profile.businessAddress || "",
+                businessPhone: profile.businessPhone || "",
+                businessType: profile.businessType || "",
+                openTime: profile.openTime || "",
+                closeTime: profile.closeTime || "",
+                notifications: true,
+                emailUpdates: true,
+                smsAlerts: false,
+              });
             }
             
             // Load active subscription
-            console.log('📦 Active Subscription Data:', profileResponse.data.activeSubscription);
-            console.log('📦 Full Response Data:', JSON.stringify(profileResponse.data, null, 2));
-            
             if (profileResponse.data.activeSubscription) {
               const subscriptions = Array.isArray(profileResponse.data.activeSubscription) 
                 ? profileResponse.data.activeSubscription 
                 : [profileResponse.data.activeSubscription];
-              console.log('📦 Setting subscriptions:', subscriptions);
               setActiveSubscription(subscriptions);
             } else {
-              console.log('⚠️ No activeSubscription found in response');
               setActiveSubscription([]);
             }
           }
-        } catch (error: any) {
-          // Silently handle 403 errors (Access denied - role mismatch)
-          if (error?.response?.status === 403 || error?.message === 'ACCESS_DENIED_403') {
-            console.log('⚠️ Access denied (403) - silently handled');
-            // Don't show toast, just continue
-          } else {
-          // Don't show toast for network errors - they're expected when offline
+        } else if (auth.state.role === 'staff') {
+          console.log('🔍 Loading staff profile for my-profile screen...');
+          const profileResponse = await staffApi.getProfile();
+          console.log('✅ Staff profile loaded:', profileResponse);
+          
+          if (profileResponse.data) {
+            const profile = profileResponse.data;
+            setStaffProfile(profile);
+            
+            // Populate form with staff profile data
+            setFormData({
+              name: profile.fullName || "",
+              email: profile.email || "",
+              phone: profile.phone || "",
+              address: "",
+              businessName: "",
+              businessAddress: "",
+              businessPhone: "",
+              businessType: "",
+              openTime: "",
+              closeTime: "",
+              notifications: true,
+              emailUpdates: true,
+              smsAlerts: false,
+            });
+          }
+        }
+      } catch (error: any) {
+        // Silently handle 403 errors (Access denied - role mismatch)
+        if (error?.response?.status === 403 || error?.message === 'ACCESS_DENIED_403') {
+          console.log('⚠️ Access denied (403) - silently handled');
+        } else {
           const isNetworkError = error?.message?.toLowerCase().includes('network') ||
                                  error?.message?.toLowerCase().includes('timeout') ||
                                  error?.message?.toLowerCase().includes('connection');
           
           if (!isNetworkError) {
-            console.error('Error loading business profile:', error);
+            console.error('Error loading profile:', error);
             toast({
               title: "Error",
               description: "Failed to load profile data. Please try again.",
             });
           } else {
-            console.warn('⚠️ Network error loading business profile (will retry later):', error.message);
-            // Don't show toast for network errors - user can still use the form
-            }
+            console.warn('⚠️ Network error loading profile (will retry later):', error.message);
           }
-        } finally {
-          setLoading(false);
         }
-      } else {
+      } finally {
         setLoading(false);
       }
     };
 
-    loadBusinessData();
+    loadProfileData();
   }, [toast, auth.state.isHydrated, auth.state.accessToken, auth.state.isAuthenticated, auth.state.role]);
 
 
@@ -243,41 +267,73 @@ export default function BusinessProfileScreen() {
         return;
       }
 
-      // Prepare update data for business profile (only business-specific fields)
-      const updateData = {
-        businessName: formData.businessName,
-        businessAddress: formData.businessAddress,
-        businessPhone: formData.businessPhone,
-        businessType: formData.businessType,
-        openTime: formData.openTime,
-        closeTime: formData.closeTime,
-      };
+      if (auth.state.role === 'business') {
+        // Update business profile
+        const updateData = {
+          businessName: formData.businessName,
+          businessAddress: formData.businessAddress,
+          businessPhone: formData.businessPhone,
+          businessType: formData.businessType,
+          openTime: formData.openTime,
+          closeTime: formData.closeTime,
+        };
 
-      // Update business profile using dedicated API endpoint
-      await businessesApi.updateProfile(updateData);
-      
-      // Reload business profile data to get the latest information
-      const refreshedProfile = await businessesApi.getProfileWithAutoRefresh();
-      if (refreshedProfile.data && refreshedProfile.data.business) {
-        const updatedProfile = refreshedProfile.data.business;
-        setBusinessProfile(updatedProfile);
+        await businessesApi.updateProfile(updateData);
         
-        // Update form data with refreshed values
-        setFormData({
-          name: updatedProfile.businessName || updatedProfile.userId.username || "",
-          email: updatedProfile.userId.email || updatedProfile.businessMail || "",
-          phone: updatedProfile.businessPhone || "",
-          address: updatedProfile.businessAddress || "",
-          businessName: updatedProfile.businessName || "",
-          businessAddress: updatedProfile.businessAddress || "",
-          businessPhone: updatedProfile.businessPhone || "",
-          businessType: updatedProfile.businessType || "",
-          openTime: updatedProfile.openTime || "",
-          closeTime: updatedProfile.closeTime || "",
-          notifications: true,
-          emailUpdates: true,
-          smsAlerts: false,
-        });
+        // Reload business profile data
+        const refreshedProfile = await businessesApi.getProfileWithAutoRefresh();
+        if (refreshedProfile.data && refreshedProfile.data.business) {
+          const updatedProfile = refreshedProfile.data.business;
+          setBusinessProfile(updatedProfile);
+          
+          setFormData({
+            name: updatedProfile.businessName || updatedProfile.userId.username || "",
+            email: updatedProfile.userId.email || updatedProfile.businessMail || "",
+            phone: updatedProfile.businessPhone || "",
+            address: updatedProfile.businessAddress || "",
+            businessName: updatedProfile.businessName || "",
+            businessAddress: updatedProfile.businessAddress || "",
+            businessPhone: updatedProfile.businessPhone || "",
+            businessType: updatedProfile.businessType || "",
+            openTime: updatedProfile.openTime || "",
+            closeTime: updatedProfile.closeTime || "",
+            notifications: true,
+            emailUpdates: true,
+            smsAlerts: false,
+          });
+        }
+      } else if (auth.state.role === 'staff') {
+        // Update staff profile
+        const updateData = {
+          fullName: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+        };
+
+        await staffApi.updateProfile(updateData);
+        
+        // Reload staff profile data
+        const refreshedProfile = await staffApi.getProfile();
+        if (refreshedProfile.data) {
+          const updatedProfile = refreshedProfile.data;
+          setStaffProfile(updatedProfile);
+          
+          setFormData({
+            name: updatedProfile.fullName || "",
+            email: updatedProfile.email || "",
+            phone: updatedProfile.phone || "",
+            address: "",
+            businessName: "",
+            businessAddress: "",
+            businessPhone: "",
+            businessType: "",
+            openTime: "",
+            closeTime: "",
+            notifications: true,
+            emailUpdates: true,
+            smsAlerts: false,
+          });
+        }
       }
       
       setIsEditing(false);
@@ -446,7 +502,9 @@ export default function BusinessProfileScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Business Profile</Text>
+        <Text style={styles.headerTitle}>
+          {auth.state.role === 'staff' ? 'Staff Profile' : 'Business Profile'}
+        </Text>
         <TouchableOpacity 
           style={styles.settingsButton}
           onPress={() => router.push('/(protected)/business/settings')}
@@ -461,7 +519,9 @@ export default function BusinessProfileScreen() {
           <View style={styles.avatarContainer}>
             <Image 
               source={{ 
-                uri: businessProfile?.businessLogoUrl || 'https://via.placeholder.com/100' 
+                uri: auth.state.role === 'staff' 
+                  ? (staffProfile?.avatar || 'https://via.placeholder.com/100')
+                  : (businessProfile?.businessLogoUrl || 'https://via.placeholder.com/100')
               }} 
               style={styles.avatar}
             />
@@ -473,38 +533,107 @@ export default function BusinessProfileScreen() {
             </TouchableOpacity>
           </View>
           
-           <Text style={styles.name}>
-             {businessProfile?.businessName || businessProfile?.userId?.username || 'Business Name'}
-           </Text>
-           <Text style={styles.email}>{businessProfile?.userId?.email || businessProfile?.businessMail || ''}</Text>
-           <Text style={styles.role}>Business</Text>
-           
-           <TouchableOpacity 
-             style={styles.editProfileButton}
-             onPress={() => setIsEditing(true)}
-           >
-             <Ionicons name="create-outline" size={16} color="#0F4D3A" />
-             <Text style={styles.editProfileButtonText}>Edit</Text>
-           </TouchableOpacity>
+          <Text style={styles.name}>
+            {auth.state.role === 'staff'
+              ? (staffProfile?.fullName || 'Staff Name')
+              : (businessProfile?.businessName || businessProfile?.userId?.username || 'Business Name')}
+          </Text>
+          <Text style={styles.email}>
+            {auth.state.role === 'staff'
+              ? (staffProfile?.email || '')
+              : (businessProfile?.userId?.email || businessProfile?.businessMail || '')}
+          </Text>
+          <Text style={styles.role}>
+            {auth.state.role === 'staff' ? 'Staff' : 'Business'}
+          </Text>
+          
+          <TouchableOpacity 
+            style={styles.editProfileButton}
+            onPress={() => setIsEditing(true)}
+          >
+            <Ionicons name="create-outline" size={16} color="#0F4D3A" />
+            <Text style={styles.editProfileButtonText}>Edit</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Achievements Section */}
-         <View style={styles.achievementsSection}>
-          <Text style={styles.sectionTitle}>Achievements</Text>
-          <View style={styles.achievementsGrid}>
-            {achievements.map((achievement) => (
-              <View key={achievement.id} style={styles.achievementItem}>
-                <View style={[styles.achievementIcon, { backgroundColor: achievement.color }]}>
-                  <Ionicons name={achievement.icon as any} size={20} color="#FFFFFF" />
+        {/* Achievements Section - Only for business */}
+        {auth.state.role === 'business' && (
+          <View style={styles.achievementsSection}>
+            <Text style={styles.sectionTitle}>Achievements</Text>
+            <View style={styles.achievementsGrid}>
+              {achievements.map((achievement) => (
+                <View key={achievement.id} style={styles.achievementItem}>
+                  <View style={[styles.achievementIcon, { backgroundColor: achievement.color }]}>
+                    <Ionicons name={achievement.icon as any} size={20} color="#FFFFFF" />
+                  </View>
+                  <Text style={styles.achievementTitle}>{achievement.title}</Text>
                 </View>
-                <Text style={styles.achievementTitle}>{achievement.title}</Text>
-              </View>
-            ))}
+              ))}
+            </View>
           </View>
-        </View>
+        )}
+
+        {/* Staff Information Card */}
+        {auth.state.role === 'staff' && staffProfile && (
+          <View style={styles.businessInfoCard}>
+            <Text style={styles.businessInfoTitle}>Staff Information</Text>
+            <View style={styles.businessInfoRow}>
+              <Ionicons name="person" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
+              <View style={styles.businessInfoContent}>
+                <Text style={styles.businessInfoLabel}>Full Name</Text>
+                <Text style={styles.businessInfoValue}>{staffProfile.fullName || 'Not set'}</Text>
+              </View>
+            </View>
+            <View style={styles.businessInfoRow}>
+              <Ionicons name="mail" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
+              <View style={styles.businessInfoContent}>
+                <Text style={styles.businessInfoLabel}>Email</Text>
+                <Text style={styles.businessInfoValue}>{staffProfile.email || 'Not set'}</Text>
+              </View>
+            </View>
+            <View style={styles.businessInfoRow}>
+              <Ionicons name="call" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
+              <View style={styles.businessInfoContent}>
+                <Text style={styles.businessInfoLabel}>Phone Number</Text>
+                <Text style={styles.businessInfoValue}>{staffProfile.phone || 'Not set'}</Text>
+              </View>
+            </View>
+            {staffProfile.position && (
+              <View style={styles.businessInfoRow}>
+                <Ionicons name="briefcase" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
+                <View style={styles.businessInfoContent}>
+                  <Text style={styles.businessInfoLabel}>Position</Text>
+                  <Text style={styles.businessInfoValue}>{staffProfile.position}</Text>
+                </View>
+              </View>
+            )}
+            {staffProfile.businessId && (
+              <View style={styles.businessInfoRow}>
+                <Ionicons name="business" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
+                <View style={styles.businessInfoContent}>
+                  <Text style={styles.businessInfoLabel}>Business</Text>
+                  <Text style={styles.businessInfoValue}>
+                    {typeof staffProfile.businessId === 'object' 
+                      ? staffProfile.businessId.businessName 
+                      : 'Not set'}
+                  </Text>
+                </View>
+              </View>
+            )}
+            <View style={styles.businessInfoRow}>
+              <Ionicons name="checkmark-circle" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
+              <View style={styles.businessInfoContent}>
+                <Text style={styles.businessInfoLabel}>Status</Text>
+                <Text style={styles.businessInfoValue}>
+                  {staffProfile.status === 'active' ? 'Active' : staffProfile.status === 'inactive' ? 'Inactive' : 'Removed'}
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Business Information Card */}
-        {businessProfile && (
+        {auth.state.role === 'business' && businessProfile && (
           <View style={styles.businessInfoCard}>
             <Text style={styles.businessInfoTitle}>Business Information</Text>
             <View style={styles.businessInfoRow}>
@@ -565,8 +694,8 @@ export default function BusinessProfileScreen() {
           </View>
         )}
 
-        {/* Current Subscription Plan Card */}
-        {activeSubscription && activeSubscription.length > 0 ? (
+        {/* Current Subscription Plan Card - Only for business */}
+        {auth.state.role === 'business' && activeSubscription && activeSubscription.length > 0 ? (
           <View style={styles.subscriptionCard}>
             <View style={styles.subscriptionHeader}>
               <Ionicons name="card" size={24} color="#00704A" />
@@ -613,7 +742,7 @@ export default function BusinessProfileScreen() {
               );
             })}
           </View>
-        ) : (
+        ) : auth.state.role === 'business' ? (
           <View style={styles.subscriptionCard}>
             <View style={styles.subscriptionHeader}>
               <Ionicons name="card-outline" size={24} color="#9CA3AF" />
@@ -624,7 +753,7 @@ export default function BusinessProfileScreen() {
               <Text style={styles.subscriptionDate}>You don't have an active subscription plan</Text>
             </View>
           </View>
-        )}
+        ) : null}
 
         {/* Menu Sections */}
         {menuSections.map((section, sectionIndex) => (
@@ -731,87 +860,92 @@ export default function BusinessProfileScreen() {
                 />
               </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Address</Text>
-                <TextInput
-                  style={styles.input}
-                  value={formData.address}
-                  onChangeText={(text) => setFormData({ ...formData, address: text })}
-                  placeholder="Enter address"
-                  multiline
-                  numberOfLines={2}
-                />
-              </View>
-            </View>
-
-            {/* Business Info */}
-            <View style={styles.formSection}>
-              <Text style={styles.formSectionTitle}>Business Information</Text>
-              
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Business Name</Text>
-                <TextInput
-                  style={styles.input}
-                  value={formData.businessName}
-                  onChangeText={(text) => setFormData({ ...formData, businessName: text })}
-                  placeholder="Enter business name"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Business Address</Text>
-                <TextInput
-                  style={styles.input}
-                  value={formData.businessAddress}
-                  onChangeText={(text) => setFormData({ ...formData, businessAddress: text })}
-                  placeholder="Enter business address"
-                  multiline
-                  numberOfLines={2}
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Business Phone</Text>
-                <TextInput
-                  style={styles.input}
-                  value={formData.businessPhone}
-                  onChangeText={(text) => setFormData({ ...formData, businessPhone: text })}
-                  placeholder="Enter business phone"
-                  keyboardType="phone-pad"
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Business Type</Text>
-                <TextInput
-                  style={styles.input}
-                  value={formData.businessType}
-                  onChangeText={(text) => setFormData({ ...formData, businessType: text })}
-                  placeholder="Enter business type"
-                />
-              </View>
-
-              <View style={styles.timeRow}>
-                <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                  <Text style={styles.label}>Open Time</Text>
+              {/* Address - Only for business */}
+              {auth.state.role === 'business' && (
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Address</Text>
                   <TextInput
                     style={styles.input}
-                    value={formData.openTime}
-                    onChangeText={(text) => setFormData({ ...formData, openTime: text })}
-                    placeholder="08:00"
+                    value={formData.address}
+                    onChangeText={(text) => setFormData({ ...formData, address: text })}
+                    placeholder="Enter address"
+                    multiline
+                    numberOfLines={2}
                   />
                 </View>
-                <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
-                  <Text style={styles.label}>Close Time</Text>
+              )}
+            </View>
+
+            {/* Business Info - Only for business */}
+            {auth.state.role === 'business' && (
+              <View style={styles.formSection}>
+                <Text style={styles.formSectionTitle}>Business Information</Text>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Business Name</Text>
                   <TextInput
                     style={styles.input}
-                    value={formData.closeTime}
-                    onChangeText={(text) => setFormData({ ...formData, closeTime: text })}
-                    placeholder="22:00"
+                    value={formData.businessName}
+                    onChangeText={(text) => setFormData({ ...formData, businessName: text })}
+                    placeholder="Enter business name"
                   />
                 </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Business Address</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.businessAddress}
+                    onChangeText={(text) => setFormData({ ...formData, businessAddress: text })}
+                    placeholder="Enter business address"
+                    multiline
+                    numberOfLines={2}
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Business Phone</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.businessPhone}
+                    onChangeText={(text) => setFormData({ ...formData, businessPhone: text })}
+                    placeholder="Enter business phone"
+                    keyboardType="phone-pad"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Business Type</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.businessType}
+                    onChangeText={(text) => setFormData({ ...formData, businessType: text })}
+                    placeholder="Enter business type"
+                  />
+                </View>
+
+                <View style={styles.timeRow}>
+                  <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+                    <Text style={styles.label}>Open Time</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={formData.openTime}
+                      onChangeText={(text) => setFormData({ ...formData, openTime: text })}
+                      placeholder="08:00"
+                    />
+                  </View>
+                  <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
+                    <Text style={styles.label}>Close Time</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={formData.closeTime}
+                      onChangeText={(text) => setFormData({ ...formData, closeTime: text })}
+                      placeholder="22:00"
+                    />
+                  </View>
+                </View>
               </View>
-            </View>
+            )}
           </ScrollView>
         </View>
       </Modal>
