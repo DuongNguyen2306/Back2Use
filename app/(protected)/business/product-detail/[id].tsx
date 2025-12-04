@@ -30,7 +30,7 @@ export default function BusinessProductDetailScreen() {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [updateForm, setUpdateForm] = useState({
-    status: 'available' as 'available' | 'borrowed' | 'maintenance' | 'retired',
+    status: 'available' as 'available' | 'borrowed' | 'maintenance' | 'retired' | 'non-available',
     condition: '',
     lastConditionNote: '',
   });
@@ -155,17 +155,24 @@ export default function BusinessProductDetailScreen() {
         <>
           <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
             {/* Product Image */}
-            {product.images && product.images.length > 0 ? (
-              <Image
-                source={{ uri: product.images[0] }}
-                style={styles.productImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={styles.productImagePlaceholder}>
-                <Ionicons name="cube-outline" size={64} color="#9CA3AF" />
-              </View>
-            )}
+            {(() => {
+              // Priority: product.images[0] > productGroupId.imageUrl > placeholder
+              const productImageUrl = (product.images && product.images.length > 0) 
+                ? product.images[0] 
+                : (product.productGroupId as any)?.imageUrl;
+              
+              return productImageUrl ? (
+                <Image
+                  source={{ uri: productImageUrl }}
+                  style={styles.productImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.productImagePlaceholder}>
+                  <Ionicons name="cube-outline" size={64} color="#9CA3AF" />
+                </View>
+              );
+            })()}
 
             {/* Product Info */}
             <View style={styles.content}>
@@ -180,24 +187,28 @@ export default function BusinessProductDetailScreen() {
                 borrowed: '#EF4444',
                 maintenance: '#F59E0B',
                 retired: '#6B7280',
+                'non-available': '#EF4444',
               }[product.status] + '20' }]}>
                 <View style={[styles.statusDot, { backgroundColor: {
                   available: '#10B981',
                   borrowed: '#EF4444',
                   maintenance: '#F59E0B',
                   retired: '#6B7280',
+                  'non-available': '#EF4444',
                 }[product.status] }]} />
                 <Text style={[styles.statusText, { color: {
                   available: '#10B981',
                   borrowed: '#EF4444',
                   maintenance: '#F59E0B',
                   retired: '#6B7280',
+                  'non-available': '#EF4444',
                 }[product.status] }]}>
                   {{
                     available: 'Available',
                     borrowed: 'Borrowed',
                     maintenance: 'Maintenance',
                     retired: 'Retired',
+                    'non-available': 'Non-Available',
                   }[product.status] || 'Unknown'}
                 </Text>
               </View>
@@ -220,11 +231,30 @@ export default function BusinessProductDetailScreen() {
                   <Text style={styles.detailValue}>{product.serialNumber}</Text>
                 </View>
 
+                {product.qrCode && (
+                  <View style={styles.qrCodeSection}>
+                    <Text style={styles.detailLabel}>QR Code:</Text>
+                    <Image 
+                      source={{ uri: product.qrCode }} 
+                      style={styles.qrCodeImage} 
+                      resizeMode="contain"
+                    />
+                  </View>
+                )}
+
                 {product.condition && (
                   <View style={styles.detailRow}>
                     <Ionicons name="shield-checkmark" size={20} color="#6B7280" />
                     <Text style={styles.detailLabel}>Condition:</Text>
                     <Text style={styles.detailValue}>{product.condition}</Text>
+                  </View>
+                )}
+
+                {product.reuseCount !== undefined && (
+                  <View style={styles.detailRow}>
+                    <Ionicons name="repeat" size={20} color="#6B7280" />
+                    <Text style={styles.detailLabel}>Reuse Count:</Text>
+                    <Text style={styles.detailValue}>{product.reuseCount}</Text>
                   </View>
                 )}
               </View>
@@ -263,6 +293,120 @@ export default function BusinessProductDetailScreen() {
                   </Text>
                 </View>
               )}
+
+              {/* Last Condition Images */}
+              {product.lastConditionImages && (
+                <View style={styles.conditionImagesSection}>
+                  <Text style={styles.sectionTitle}>Last Condition Images</Text>
+                  <View style={styles.imageGrid}>
+                    {product.lastConditionImages.frontImage && (
+                      <View style={styles.imageItem}>
+                        <Text style={styles.imageLabel}>Front</Text>
+                        <Image 
+                          source={{ uri: product.lastConditionImages.frontImage }} 
+                          style={styles.conditionImage} 
+                          resizeMode="cover"
+                        />
+                      </View>
+                    )}
+                    {product.lastConditionImages.backImage && (
+                      <View style={styles.imageItem}>
+                        <Text style={styles.imageLabel}>Back</Text>
+                        <Image 
+                          source={{ uri: product.lastConditionImages.backImage }} 
+                          style={styles.conditionImage} 
+                          resizeMode="cover"
+                        />
+                      </View>
+                    )}
+                    {product.lastConditionImages.leftImage && (
+                      <View style={styles.imageItem}>
+                        <Text style={styles.imageLabel}>Left</Text>
+                        <Image 
+                          source={{ uri: product.lastConditionImages.leftImage }} 
+                          style={styles.conditionImage} 
+                          resizeMode="cover"
+                        />
+                      </View>
+                    )}
+                    {product.lastConditionImages.rightImage && (
+                      <View style={styles.imageItem}>
+                        <Text style={styles.imageLabel}>Right</Text>
+                        <Image 
+                          source={{ uri: product.lastConditionImages.rightImage }} 
+                          style={styles.conditionImage} 
+                          resizeMode="cover"
+                        />
+                      </View>
+                    )}
+                    {product.lastConditionImages.topImage && (
+                      <View style={styles.imageItem}>
+                        <Text style={styles.imageLabel}>Top</Text>
+                        <Image 
+                          source={{ uri: product.lastConditionImages.topImage }} 
+                          style={styles.conditionImage} 
+                          resizeMode="cover"
+                        />
+                      </View>
+                    )}
+                    {product.lastConditionImages.bottomImage && (
+                      <View style={styles.imageItem}>
+                        <Text style={styles.imageLabel}>Bottom</Text>
+                        <Image 
+                          source={{ uri: product.lastConditionImages.bottomImage }} 
+                          style={styles.conditionImage} 
+                          resizeMode="cover"
+                        />
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              {/* Last Damage Faces */}
+              <View style={styles.damageFacesSection}>
+                <Text style={styles.sectionTitle}>Last Damage Assessment</Text>
+                {(() => {
+                  // Check if lastDamageFaces exists and has items
+                  if (!product.lastDamageFaces || product.lastDamageFaces.length === 0) {
+                    return (
+                      <View style={styles.emptyDamageFaces}>
+                        <Ionicons name="information-circle-outline" size={24} color="#9CA3AF" />
+                        <Text style={styles.emptyDamageFacesText}>This product has never been borrowed</Text>
+                      </View>
+                    );
+                  }
+                  
+                  // Check if all faces have "none" issue
+                  const hasRealDamage = product.lastDamageFaces.some((face: any) => 
+                    face.issue && face.issue.toLowerCase() !== 'none'
+                  );
+                  
+                  if (!hasRealDamage) {
+                    return (
+                      <View style={styles.emptyDamageFaces}>
+                        <Ionicons name="information-circle-outline" size={24} color="#9CA3AF" />
+                        <Text style={styles.emptyDamageFacesText}>This product has never been borrowed</Text>
+                      </View>
+                    );
+                  }
+                  
+                  // Show damage faces if there's real damage
+                  return product.lastDamageFaces
+                    .filter((face: any) => face.issue && face.issue.toLowerCase() !== 'none')
+                    .map((face: any, index: number) => (
+                      <View key={index} style={styles.damageFaceItem}>
+                        <View style={styles.damageFaceRow}>
+                          <Ionicons name="warning" size={20} color="#EF4444" />
+                          <Text style={styles.damageFaceLabel}>
+                            {face.face.charAt(0).toUpperCase() + face.face.slice(1)}:
+                          </Text>
+                          <Text style={styles.damageFaceValue}>{face.issue}</Text>
+                        </View>
+                      </View>
+                    ));
+                })()}
+              </View>
 
               {/* Last Condition Note */}
               {product.lastConditionNote && (
@@ -320,7 +464,7 @@ export default function BusinessProductDetailScreen() {
               <View style={styles.formGroup}>
                 <Text style={styles.formLabel}>Status *</Text>
                 <View style={styles.statusOptions}>
-                  {['available', 'borrowed', 'maintenance', 'retired'].map((status) => (
+                  {['available', 'borrowed', 'maintenance', 'retired', 'non-available'].map((status) => (
                     <TouchableOpacity
                       key={status}
                       style={[
@@ -335,7 +479,8 @@ export default function BusinessProductDetailScreen() {
                       ]}>
                         {status === 'available' ? 'Available' :
                          status === 'borrowed' ? 'Borrowed' :
-                         status === 'maintenance' ? 'Maintenance' : 'Retired'}
+                         status === 'maintenance' ? 'Maintenance' :
+                         status === 'retired' ? 'Retired' : 'Non-Available'}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -691,5 +836,87 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontSize: 16,
     fontWeight: '600',
+  },
+  conditionImagesSection: {
+    marginBottom: 24,
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  imageGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 12,
+  },
+  imageItem: {
+    width: '30%',
+    alignItems: 'center',
+  },
+  imageLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 8,
+    textTransform: 'capitalize',
+  },
+  conditionImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+  },
+  damageFacesSection: {
+    marginBottom: 24,
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  damageFaceItem: {
+    marginBottom: 12,
+  },
+  damageFaceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  damageFaceLabel: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginLeft: 8,
+    marginRight: 8,
+    fontWeight: '600',
+  },
+  damageFaceValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#EF4444',
+    textTransform: 'capitalize',
+  },
+  emptyDamageFaces: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    gap: 8,
+  },
+  emptyDamageFacesText: {
+    fontSize: 16,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+  },
+  qrCodeSection: {
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  qrCodeImage: {
+    width: 200,
+    height: 200,
+    marginTop: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
   },
 });

@@ -81,6 +81,8 @@ export default function TransactionProcessingScreen() {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('all');
   const [selectedTransaction, setSelectedTransaction] = useState<BusinessTransaction | null>(null);
+  const [transactionDetail, setTransactionDetail] = useState<any>(null);
+  const [loadingTransactionDetail, setLoadingTransactionDetail] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [showUserModal, setShowUserModal] = useState(false);
@@ -367,6 +369,15 @@ export default function TransactionProcessingScreen() {
     }
   }, [params?.transactionId, transactions]);
 
+  // Load transaction detail when modal opens
+  useEffect(() => {
+    if (showDetailsModal && selectedTransaction?._id) {
+      loadTransactionDetail(selectedTransaction._id);
+    } else {
+      setTransactionDetail(null);
+    }
+  }, [showDetailsModal, selectedTransaction?._id]);
+
   const loadBusinessData = async () => {
     // Wait for auth state to be hydrated before making API calls
     if (!auth.state.isHydrated) {
@@ -412,6 +423,26 @@ export default function TransactionProcessingScreen() {
       }
     } else {
       setLoading(false);
+    }
+  };
+
+  const loadTransactionDetail = async (transactionId: string) => {
+    try {
+      setLoadingTransactionDetail(true);
+      const response = await borrowTransactionsApi.getBusinessDetail(transactionId);
+      
+      if (response.statusCode === 200 && response.data) {
+        setTransactionDetail(response.data);
+      } else {
+        console.warn('Failed to load transaction detail:', response);
+        setTransactionDetail(null);
+      }
+    } catch (error: any) {
+      console.error('Error loading transaction detail:', error);
+      // Silently handle errors - don't show alert
+      setTransactionDetail(null);
+    } finally {
+      setLoadingTransactionDetail(false);
     }
   };
 
@@ -963,21 +994,27 @@ export default function TransactionProcessingScreen() {
               </TouchableOpacity>
             </View>
             
-            {selectedTransaction && (
+            {loadingTransactionDetail ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#0F4D3A" />
+                <Text style={styles.loadingText}>Loading transaction details...</Text>
+              </View>
+            ) : selectedTransaction && (
               <ScrollView style={styles.modalBody}>
+                {/* Basic Information */}
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Transaction ID</Text>
-                  <Text style={styles.detailValue}>{selectedTransaction._id}</Text>
+                  <Text style={styles.detailValue}>{transactionDetail?._id || selectedTransaction._id}</Text>
                 </View>
                 
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Type</Text>
                   <View style={[
                     styles.typeBadge,
-                    selectedTransaction.borrowTransactionType === 'borrow' ? styles.borrowBadge : styles.returnBadge
+                    (transactionDetail?.borrowTransactionType || selectedTransaction.borrowTransactionType) === 'borrow' ? styles.borrowBadge : styles.returnBadge
                   ]}>
                     <Text style={styles.typeText}>
-                      {selectedTransaction.borrowTransactionType === 'borrow' ? 'BORROW' : 'RETURN'}
+                      {(transactionDetail?.borrowTransactionType || selectedTransaction.borrowTransactionType) === 'borrow' ? 'BORROW' : 'RETURN'}
                     </Text>
                   </View>
                 </View>
@@ -985,70 +1022,293 @@ export default function TransactionProcessingScreen() {
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Product</Text>
                   <Text style={styles.detailValue}>
-                    {selectedTransaction.productId?.productGroupId?.name || 'N/A'} - {selectedTransaction.productId?.productSizeId?.sizeName || 'N/A'}
+                    {transactionDetail?.productId?.productGroupId?.name || selectedTransaction.productId?.productGroupId?.name || 'N/A'} - {transactionDetail?.productId?.productSizeId?.sizeName || selectedTransaction.productId?.productSizeId?.sizeName || 'N/A'}
+                  </Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Material</Text>
+                  <Text style={styles.detailValue}>
+                    {transactionDetail?.productId?.productGroupId?.materialId?.materialName || 'N/A'}
                   </Text>
                 </View>
                 
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Serial Number</Text>
                   <Text style={styles.detailValue}>
-                    {selectedTransaction.productId?.serialNumber || 'N/A'}
+                    {transactionDetail?.productId?.serialNumber || selectedTransaction.productId?.serialNumber || 'N/A'}
                   </Text>
                 </View>
                 
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Borrow Date</Text>
                   <Text style={styles.detailValue}>
-                    {new Date(selectedTransaction.borrowDate).toLocaleDateString('en-US')}
+                    {new Date(transactionDetail?.borrowDate || selectedTransaction.borrowDate).toLocaleString('en-US')}
                   </Text>
                 </View>
                 
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Due Date</Text>
                   <Text style={styles.detailValue}>
-                    {new Date(selectedTransaction.dueDate).toLocaleDateString('en-US')}
+                    {new Date(transactionDetail?.dueDate || selectedTransaction.dueDate).toLocaleString('en-US')}
                   </Text>
                 </View>
+                
+                {transactionDetail?.returnDate && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Return Date</Text>
+                    <Text style={styles.detailValue}>
+                      {new Date(transactionDetail.returnDate).toLocaleString('en-US')}
+                    </Text>
+                  </View>
+                )}
                 
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Deposit Amount</Text>
                   <Text style={styles.detailValue}>
-                    {selectedTransaction.depositAmount.toLocaleString('en-US')} VND
+                    {(transactionDetail?.depositAmount || selectedTransaction.depositAmount)?.toLocaleString('en-US')} VND
                   </Text>
                 </View>
                 
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Customer</Text>
+                  <Text style={styles.detailLabel}>Status</Text>
                   <Text style={styles.detailValue}>
-                    {typeof selectedTransaction.customerId === 'object' 
-                      ? selectedTransaction.customerId.fullName 
-                      : 'N/A'}
+                    {transactionDetail?.status || selectedTransaction.status}
+                  </Text>
+                </View>
+
+                {/* Customer Information */}
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Customer Information</Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Customer Name</Text>
+                  <Text style={styles.detailValue}>
+                    {transactionDetail?.customerId?.fullName || (typeof selectedTransaction.customerId === 'object' ? selectedTransaction.customerId.fullName : 'N/A')}
                   </Text>
                 </View>
 
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Phone Number</Text>
                   <Text style={styles.detailValue}>
-                    {typeof selectedTransaction.customerId === 'object' 
-                      ? selectedTransaction.customerId.phone || 'N/A'
-                      : 'N/A'}
+                    {transactionDetail?.customerId?.phone || (typeof selectedTransaction.customerId === 'object' ? selectedTransaction.customerId.phone || 'N/A' : 'N/A')}
                   </Text>
                 </View>
 
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Status</Text>
-                  <Text style={styles.detailValue}>
-                    {selectedTransaction.status}
-                  </Text>
-                </View>
+                {/* Condition Information */}
+                {transactionDetail && (
+                  <>
+                    {transactionDetail.totalConditionPoints !== undefined && (
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Total Condition Points</Text>
+                        <Text style={styles.detailValue}>{transactionDetail.totalConditionPoints}</Text>
+                      </View>
+                    )}
 
-                {selectedTransaction.returnedAt && (
-                  <View style={styles.returnInfo}>
-                    <Text style={styles.returnInfoTitle}>Return Information</Text>
-                    <Text style={styles.returnInfoText}>
-                      Return Date: {new Date(selectedTransaction.returnedAt).toLocaleString('en-US')}
-                    </Text>
-                  </View>
+                    {/* Previous Condition Images */}
+                    {transactionDetail.previousConditionImages && (
+                      <>
+                        <View style={styles.sectionHeader}>
+                          <Text style={styles.sectionTitle}>Previous Condition Images</Text>
+                        </View>
+                        <View style={styles.imageGrid}>
+                          {transactionDetail.previousConditionImages.frontImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Front</Text>
+                              <Image source={{ uri: transactionDetail.previousConditionImages.frontImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {transactionDetail.previousConditionImages.backImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Back</Text>
+                              <Image source={{ uri: transactionDetail.previousConditionImages.backImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {transactionDetail.previousConditionImages.leftImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Left</Text>
+                              <Image source={{ uri: transactionDetail.previousConditionImages.leftImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {transactionDetail.previousConditionImages.rightImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Right</Text>
+                              <Image source={{ uri: transactionDetail.previousConditionImages.rightImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {transactionDetail.previousConditionImages.topImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Top</Text>
+                              <Image source={{ uri: transactionDetail.previousConditionImages.topImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {transactionDetail.previousConditionImages.bottomImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Bottom</Text>
+                              <Image source={{ uri: transactionDetail.previousConditionImages.bottomImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                        </View>
+                      </>
+                    )}
+
+                    {/* Current Condition Images */}
+                    {transactionDetail.currentConditionImages && (
+                      <>
+                        <View style={styles.sectionHeader}>
+                          <Text style={styles.sectionTitle}>Current Condition Images</Text>
+                        </View>
+                        <View style={styles.imageGrid}>
+                          {transactionDetail.currentConditionImages.frontImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Front</Text>
+                              <Image source={{ uri: transactionDetail.currentConditionImages.frontImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {transactionDetail.currentConditionImages.backImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Back</Text>
+                              <Image source={{ uri: transactionDetail.currentConditionImages.backImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {transactionDetail.currentConditionImages.leftImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Left</Text>
+                              <Image source={{ uri: transactionDetail.currentConditionImages.leftImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {transactionDetail.currentConditionImages.rightImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Right</Text>
+                              <Image source={{ uri: transactionDetail.currentConditionImages.rightImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {transactionDetail.currentConditionImages.topImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Top</Text>
+                              <Image source={{ uri: transactionDetail.currentConditionImages.topImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {transactionDetail.currentConditionImages.bottomImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Bottom</Text>
+                              <Image source={{ uri: transactionDetail.currentConditionImages.bottomImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                        </View>
+                      </>
+                    )}
+
+                    {/* Previous Damage Faces */}
+                    {transactionDetail.previousDamageFaces && transactionDetail.previousDamageFaces.length > 0 && (
+                      <>
+                        <View style={styles.sectionHeader}>
+                          <Text style={styles.sectionTitle}>Previous Damage Assessment</Text>
+                        </View>
+                        {transactionDetail.previousDamageFaces.map((face: any, index: number) => (
+                          <View key={index} style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>{face.face.charAt(0).toUpperCase() + face.face.slice(1)}</Text>
+                            <Text style={styles.detailValue}>{face.issue}</Text>
+                          </View>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Current Damage Faces */}
+                    {transactionDetail.currentDamageFaces && transactionDetail.currentDamageFaces.length > 0 && (
+                      <>
+                        <View style={styles.sectionHeader}>
+                          <Text style={styles.sectionTitle}>Current Damage Assessment</Text>
+                        </View>
+                        {transactionDetail.currentDamageFaces.map((face: any, index: number) => (
+                          <View key={index} style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>{face.face.charAt(0).toUpperCase() + face.face.slice(1)}</Text>
+                            <Text style={styles.detailValue}>{face.issue}</Text>
+                          </View>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Points and Changes */}
+                    {(transactionDetail.co2Changed !== undefined || transactionDetail.ecoPointChanged !== undefined || 
+                      transactionDetail.rankingPointChanged !== undefined || transactionDetail.rewardPointChanged !== undefined) && (
+                      <>
+                        <View style={styles.sectionHeader}>
+                          <Text style={styles.sectionTitle}>Points & Changes</Text>
+                        </View>
+                        {transactionDetail.co2Changed !== undefined && (
+                          <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>CO2 Changed</Text>
+                            <Text style={[styles.detailValue, transactionDetail.co2Changed < 0 && { color: '#ef4444' }, transactionDetail.co2Changed > 0 && { color: '#16a34a' }]}>
+                              {transactionDetail.co2Changed > 0 ? '+' : ''}{transactionDetail.co2Changed}
+                            </Text>
+                          </View>
+                        )}
+                        {transactionDetail.ecoPointChanged !== undefined && (
+                          <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>Eco Point Changed</Text>
+                            <Text style={[styles.detailValue, transactionDetail.ecoPointChanged < 0 && { color: '#ef4444' }, transactionDetail.ecoPointChanged > 0 && { color: '#16a34a' }]}>
+                              {transactionDetail.ecoPointChanged > 0 ? '+' : ''}{transactionDetail.ecoPointChanged}
+                            </Text>
+                          </View>
+                        )}
+                        {transactionDetail.rankingPointChanged !== undefined && (
+                          <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>Ranking Point Changed</Text>
+                            <Text style={[styles.detailValue, transactionDetail.rankingPointChanged < 0 && { color: '#ef4444' }, transactionDetail.rankingPointChanged > 0 && { color: '#16a34a' }]}>
+                              {transactionDetail.rankingPointChanged > 0 ? '+' : ''}{transactionDetail.rankingPointChanged}
+                            </Text>
+                          </View>
+                        )}
+                        {transactionDetail.rewardPointChanged !== undefined && (
+                          <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>Reward Point Changed</Text>
+                            <Text style={[styles.detailValue, transactionDetail.rewardPointChanged < 0 && { color: '#ef4444' }, transactionDetail.rewardPointChanged > 0 && { color: '#16a34a' }]}>
+                              {transactionDetail.rewardPointChanged > 0 ? '+' : ''}{transactionDetail.rewardPointChanged}
+                            </Text>
+                          </View>
+                        )}
+                      </>
+                    )}
+
+                    {/* Wallet Transactions */}
+                    {transactionDetail.walletTransactions && transactionDetail.walletTransactions.length > 0 && (
+                      <>
+                        <View style={styles.sectionHeader}>
+                          <Text style={styles.sectionTitle}>Wallet Transactions</Text>
+                        </View>
+                        {transactionDetail.walletTransactions.map((walletTx: any, index: number) => (
+                          <View key={index} style={styles.walletTransactionCard}>
+                            <View style={styles.detailRow}>
+                              <Text style={styles.detailLabel}>Type</Text>
+                              <Text style={styles.detailValue}>{walletTx.transactionType}</Text>
+                            </View>
+                            <View style={styles.detailRow}>
+                              <Text style={styles.detailLabel}>Amount</Text>
+                              <Text style={[styles.detailValue, walletTx.direction === 'in' ? { color: '#16a34a' } : { color: '#ef4444' }]}>
+                                {walletTx.direction === 'in' ? '+' : '-'}{walletTx.amount.toLocaleString('en-US')} VND
+                              </Text>
+                            </View>
+                            <View style={styles.detailRow}>
+                              <Text style={styles.detailLabel}>Description</Text>
+                              <Text style={styles.detailValue}>{walletTx.description}</Text>
+                            </View>
+                            <View style={styles.detailRow}>
+                              <Text style={styles.detailLabel}>Status</Text>
+                              <Text style={styles.detailValue}>{walletTx.status}</Text>
+                            </View>
+                            <View style={styles.detailRow}>
+                              <Text style={styles.detailLabel}>Date</Text>
+                              <Text style={styles.detailValue}>
+                                {new Date(walletTx.createdAt).toLocaleString('en-US')}
+                              </Text>
+                            </View>
+                          </View>
+                        ))}
+                      </>
+                    )}
+                  </>
                 )}
 
                 {/* Confirm Borrow Button - Show for borrow transactions with pending status */}
@@ -2463,5 +2723,48 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontStyle: 'italic',
     marginTop: 8,
+  },
+  sectionHeader: {
+    marginTop: 20,
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  imageGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 16,
+  },
+  imageItem: {
+    width: '30%',
+    alignItems: 'center',
+  },
+  imageLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 8,
+    textTransform: 'capitalize',
+  },
+  conditionImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+  },
+  walletTransactionCard: {
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
 });

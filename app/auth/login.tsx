@@ -111,7 +111,11 @@ export default function LoginScreen() {
                                    errorMessage.toLowerCase().includes('invalid password') ||
                                    errorMessage.toLowerCase().includes('invalid username or password');
       
-      if (isInvalidCredentials) {
+      // Silently handle "SERVER_UNAVAILABLE" errors - don't log or show alert
+      const isServerUnavailable = errorMessage === 'SERVER_UNAVAILABLE' || 
+                                  errorMessage.toLowerCase().includes('server unavailable');
+      
+      if (isInvalidCredentials || isServerUnavailable) {
         // Silently handle - don't log or show alert
         return;
       }

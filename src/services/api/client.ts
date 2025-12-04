@@ -64,17 +64,9 @@ apiClient.interceptors.request.use(
   async (config) => {
     try {
       const token = await AsyncStorage.getItem('ACCESS_TOKEN');
-      console.log('🔑 Token from AsyncStorage:', token ? 'Present' : 'Missing');
-      console.log('🌐 Making request to:', config.url);
-      console.log('📝 Request method:', config.method?.toUpperCase());
-      
+      // Reduced logging - only log important info
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
-        console.log('✅ Token added to request headers');
-        console.log('🔐 Authorization header:', `Bearer ${token.substring(0, 20)}...`);
-      } else {
-        console.log('❌ No token found, request will be unauthorized');
-        console.log('⚠️ This request will likely fail with 401');
       }
       
       // Don't override Content-Type if it's FormData (axios will set it automatically with boundary)

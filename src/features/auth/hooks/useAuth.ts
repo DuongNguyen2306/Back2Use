@@ -396,7 +396,11 @@ export function useAuthCore() {
                                    errorMessage.toLowerCase().includes('invalid password') ||
                                    errorMessage.toLowerCase().includes('invalid username or password');
       
-      if (!isInvalidCredentials) {
+      // Silently handle "SERVER_UNAVAILABLE" errors - don't log
+      const isServerUnavailable = errorMessage === 'SERVER_UNAVAILABLE' || 
+                                  errorMessage.toLowerCase().includes('server unavailable');
+      
+      if (!isInvalidCredentials && !isServerUnavailable) {
         console.error("❌ Login failed:", error);
       }
       

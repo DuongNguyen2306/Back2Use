@@ -26,9 +26,26 @@ export interface Product {
   productGroupId: ProductGroup;
   productSizeId: ProductSize;
   businessId: ProductBusiness | string;
-  status: 'available' | 'borrowed' | 'maintenance' | 'retired';
+  status: 'available' | 'borrowed' | 'maintenance' | 'retired' | 'non-available';
   condition?: string;
   images?: string[];
+  qrCode?: string;
+  reuseCount?: number;
+  lastConditionImages?: {
+    frontImage?: string;
+    backImage?: string;
+    leftImage?: string;
+    rightImage?: string;
+    topImage?: string;
+    bottomImage?: string;
+    _id?: string;
+  };
+  lastDamageFaces?: Array<{
+    face: string;
+    issue: string;
+    _id?: string;
+  }>;
+  lastConditionNote?: string;
   createdAt: string;
   updatedAt: string;
 }
