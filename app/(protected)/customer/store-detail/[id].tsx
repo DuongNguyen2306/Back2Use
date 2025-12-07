@@ -1442,7 +1442,10 @@ export default function StoreDetailScreen() {
                             HSD: {endDate ? endDate.toLocaleDateString('vi-VN') : 'N/A'}
                           </Text>
                           {isRedeemed ? (
-                            <Text style={styles.ownedLabel}>Đã nhận</Text>
+                            <View style={styles.redeemedBadge}>
+                              <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                              <Text style={styles.redeemedBadgeText}>Đã nhận</Text>
+                            </View>
                           ) : canRedeem ? (
                             <TouchableOpacity
                               style={[styles.useButton, isRedeeming && styles.useButtonDisabled]}
@@ -1458,9 +1461,7 @@ export default function StoreDetailScreen() {
                                 <Text style={styles.useButtonText}>Nhận ngay</Text>
                               )}
                             </TouchableOpacity>
-                          ) : (
-                            <Text style={styles.ownedLabel}>Đã nhận</Text>
-                          )}
+                          ) : null}
                         </View>
                       </View>
                     </View>

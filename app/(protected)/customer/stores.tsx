@@ -8,19 +8,21 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
+  Animated,
   Dimensions,
+  FlatList,
   Image,
   Linking,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import MapView, { Marker, Region } from 'react-native-maps';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../../context/AuthProvider';
 import { useI18n } from '../../../hooks/useI18n';
 
@@ -32,7 +34,10 @@ export default function Stores() {
   const { t } = useI18n();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState<'all' | 'nearby' | 'top-rated' | 'closest'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'open-now' | 'nearest' | 'top-rated'>('all');
+  const [selectedStoreIndex, setSelectedStoreIndex] = useState(0);
+  const carouselRef = React.useRef<FlatList>(null);
+  const pulseAnim = React.useRef(new Animated.Value(1)).current;
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const router = useRouter();
   const [businessesLoading, setBusinessesLoading] = useState(false);
@@ -186,6 +191,26 @@ export default function Stores() {
     getCurrentLocation();
   }, []);
 
+  // Pulsing animation for user location
+  useEffect(() => {
+    const pulseAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.3,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulseAnimation.start();
+    return () => pulseAnimation.stop();
+  }, []);
+
 
 
   // Calculate distance between two coordinates (Haversine formula)
@@ -309,11 +334,21 @@ export default function Stores() {
       return stores.sort((a, b) => (a.distance || 0) - (b.distance || 0));
     }
     
-    if (activeFilter === 'nearby') {
-      // Within 5km, sorted by distance
+    if (activeFilter === 'open-now') {
+      // Filter open stores only, sorted by distance
+      const currentHour = new Date().getHours();
       return stores
-        .filter(store => (store.distance || 0) <= 5)
+        .filter(store => {
+          const openHour = parseInt(store.openTime.split(':')[0]);
+          const closeHour = parseInt(store.closeTime.split(':')[0]);
+          return currentHour >= openHour && currentHour < closeHour;
+        })
         .sort((a, b) => (a.distance || 0) - (b.distance || 0));
+    }
+    
+    if (activeFilter === 'nearest') {
+      // Sort by distance (closest first)
+      return stores.sort((a, b) => (a.distance || 0) - (b.distance || 0));
     }
     
     if (activeFilter === 'top-rated') {
@@ -328,162 +363,196 @@ export default function Stores() {
       });
     }
     
-    if (activeFilter === 'closest') {
-      // Sort by distance and return closest ones
-      return stores
-        .sort((a, b) => (a.distance || 0) - (b.distance || 0))
-        .slice(0, 10); // Top 10 closest
-    }
-    
     return stores;
   }, [businesses, activeFilter, userLocation, searchQuery]);
 
-  const renderStoreCard = (store: Business & { distance?: number }) => {
-    const [longitude, latitude] = store.location.coordinates;
-    const currentHour = new Date().getHours();
-    const openHour = parseInt(store.openTime.split(':')[0]);
-    const closeHour = parseInt(store.closeTime.split(':')[0]);
-    const isOpen = currentHour >= openHour && currentHour < closeHour;
-    
-    // Get distance from store object (calculated in filteredStores)
-    // If distance is not available, calculate it
-    const distance = store.distance !== undefined 
-      ? store.distance 
-      : (userLocation 
-          ? calculateDistance(userLocation.latitude, userLocation.longitude, latitude, longitude)
-          : null);
-    
-    return (
-      <TouchableOpacity 
-        key={store._id} 
-        style={styles.storeCard}
-        onPress={() => router.push(`/(protected)/customer/store-detail/${store._id}`)}
-      >
-        {/* Logo - Left Side */}
-        <View style={styles.storeLogoContainer}>
-          {store.businessLogoUrl ? (
-            <Image 
-              source={{ uri: store.businessLogoUrl }} 
-              style={styles.storeLogoImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.storeLogoFallback}>
-              <Ionicons name="storefront" size={32} color="#0F4D3A" />
-            </View>
-          )}
-        </View>
-        
-        {/* Information - Middle */}
-        <View style={styles.storeInfoContainer}>
-          <Text style={styles.storeName} numberOfLines={1}>
-            {store.businessName}
-          </Text>
-          <Text style={styles.storeType} numberOfLines={1}>
-            {store.businessType}
-          </Text>
-          <Text style={styles.storeAddress} numberOfLines={2}>
-            {store.businessAddress}
-          </Text>
-          
-          {/* Rating & Products Count */}
-          <View style={styles.storeMetaRow}>
-            <View style={styles.ratingContainer}>
-              <Ionicons name="star" size={14} color="#F59E0B" />
-              <Text style={styles.ratingText}>
-                {store.averageRating ? store.averageRating.toFixed(1) : '0.0'}
-              </Text>
-              {store.totalReviews !== undefined && store.totalReviews > 0 && (
-                <Text style={styles.ratingCount}>({store.totalReviews})</Text>
-              )}
-            </View>
-            <View style={styles.productsCountContainer}>
-              <Ionicons name="cube-outline" size={14} color="#6B7280" />
-              <Text style={styles.productsCountText}>Products</Text>
-            </View>
-          </View>
-          
-          {/* Status & Distance Row */}
-          <View style={styles.storeStatusRow}>
-            {distance !== null && (
-              <Text style={styles.distanceText}>
-                {distance < 1 ? `${Math.round(distance * 1000)} m` : `${distance.toFixed(1)} km`}
-              </Text>
-            )}
-            <View style={[styles.statusBadge, { backgroundColor: isOpen ? '#10B981' : '#EF4444' }]}>
-              <Text style={styles.statusText}>
-                {isOpen ? 'Open' : 'Closed'}
-              </Text>
-            </View>
-          </View>
-        </View>
-        
-        {/* Action Buttons - Right Side */}
-        <View style={styles.storeActionsContainer}>
-          <TouchableOpacity 
-            style={styles.directionsButton}
-            onPress={(e) => {
-              e.stopPropagation();
-              handleDirections(store);
-            }}
-          >
-            <Ionicons name="navigate" size={18} color="#FFFFFF" />
-            <Text style={styles.directionsButtonText}>Directions</Text>
-          </TouchableOpacity>
-          
-          <View style={styles.secondaryButtonsRow}>
-            <TouchableOpacity 
-              style={[styles.secondaryIconButton, { marginLeft: 0 }]}
-              onPress={(e) => {
-                e.stopPropagation();
-                if (store.businessPhone) {
-                  Linking.openURL(`tel:${store.businessPhone}`);
-                }
-              }}
-            >
-              <Ionicons name="call-outline" size={20} color="#6B7280" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </TouchableOpacity>
-    );
+
+  const insets = useSafeAreaInsets();
+
+  // Handle carousel scroll to highlight marker
+  const handleCarouselScroll = (event: any) => {
+    const index = Math.round(event.nativeEvent.contentOffset.x / (width - 40));
+    setSelectedStoreIndex(index);
+    if (filteredStores[index]) {
+      const store = filteredStores[index];
+      const [longitude, latitude] = store.location.coordinates;
+      if (mapRef.current) {
+        mapRef.current.animateToRegion({
+          latitude,
+          longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        }, 500);
+      }
+    }
   };
 
   if (loading) {
     return (
       <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#00704A" />
-        <SafeAreaView style={styles.headerSafeArea}>
-          <View style={styles.header}>
-            <View style={styles.headerTitleContainer}>
-              <Text style={styles.headerTitle}>Stores</Text>
-            </View>
-          </View>
-        </SafeAreaView>
+        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
-      <SafeAreaView style={styles.headerSafeArea}>
-        <View style={styles.header}>
-          <View style={styles.headerLeft} />
-          <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Stores</Text>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      
+      {/* Full Screen Map */}
+      <View style={styles.mapContainer}>
+        {businessesLoading ? (
+          <View style={styles.mapLoadingContainer}>
+            <Text style={styles.mapLoadingText}>Loading map...</Text>
           </View>
-          <View style={styles.headerRight} />
-        </View>
-      </SafeAreaView>
+        ) : (
+          <>
+            <MapView
+              ref={mapRef}
+              style={styles.map}
+              initialRegion={mapRegion || {
+                latitude: 10.7769,
+                longitude: 106.7009,
+                latitudeDelta: 0.05,
+                longitudeDelta: 0.05,
+              }}
+              region={mapRegion || undefined}
+              onRegionChangeComplete={setMapRegion}
+              showsUserLocation={false}
+              showsMyLocationButton={false}
+              showsCompass={true}
+              showsScale={true}
+              scrollEnabled={true}
+              zoomEnabled={true}
+              rotateEnabled={true}
+              pitchEnabled={true}
+            >
+              {/* User location marker with pulsing animation */}
+              {userLocation && (
+                <Marker
+                  coordinate={userLocation}
+                  title="Your Location"
+                  description="This is your current location"
+                >
+                  <Animated.View
+                    style={[
+                      styles.userLocationMarker,
+                      {
+                        transform: [{ scale: pulseAnim }],
+                      },
+                    ]}
+                  >
+                    <View style={styles.userLocationDot} />
+                    <View style={styles.userLocationPulse} />
+                  </Animated.View>
+                </Marker>
+              )}
+              
+              {/* Business markers with custom brand icons */}
+              {filteredStores.map((store, index) => {
+                const [longitude, latitude] = store.location.coordinates;
+                const currentHour = new Date().getHours();
+                const openHour = parseInt(store.openTime.split(':')[0]);
+                const closeHour = parseInt(store.closeTime.split(':')[0]);
+                const isOpen = currentHour >= openHour && currentHour < closeHour;
+                const isSelected = index === selectedStoreIndex;
+                
+                return (
+                  <Marker
+                    key={store._id}
+                    coordinate={{
+                      latitude,
+                      longitude,
+                    }}
+                    title={store.businessName}
+                    description={store.businessAddress}
+                    onPress={() => {
+                      setSelectedStoreIndex(index);
+                      if (carouselRef.current) {
+                        carouselRef.current.scrollToIndex({ index, animated: true });
+                      }
+                    }}
+                  >
+                    <View style={styles.markerContainer}>
+                      {store.businessLogoUrl ? (
+                        <View style={[
+                          styles.markerLogoContainer,
+                          isSelected && styles.markerLogoContainerSelected
+                        ]}>
+                          <Image 
+                            source={{ uri: store.businessLogoUrl }} 
+                            style={styles.markerLogo}
+                            resizeMode="cover"
+                          />
+                          <View style={[
+                            styles.markerStatusDot, 
+                            { backgroundColor: isOpen ? '#10B981' : '#EF4444' }
+                          ]} />
+                          <View style={[
+                            styles.markerPointer,
+                            { borderTopColor: isOpen ? '#10B981' : '#EF4444' }
+                          ]} />
+                        </View>
+                      ) : (
+                        <View style={[
+                          styles.markerIcon,
+                          { backgroundColor: isOpen ? '#10B981' : '#EF4444' },
+                          isSelected && styles.markerIconSelected
+                        ]}>
+                          <Ionicons name="storefront" size={16} color="#FFFFFF" />
+                          <View style={[
+                            styles.markerPointer,
+                            { borderTopColor: isOpen ? '#10B981' : '#EF4444' }
+                          ]} />
+                        </View>
+                      )}
+                    </View>
+                  </Marker>
+                );
+              })}
+            </MapView>
+            
+            {/* Map Controls */}
+            <View style={styles.mapControls}>
+              <View style={styles.zoomControls}>
+                <TouchableOpacity 
+                  style={styles.zoomButton}
+                  onPress={handleZoomIn}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="add" size={20} color="#00704A" />
+                </TouchableOpacity>
+                <View style={styles.zoomDivider} />
+                <TouchableOpacity 
+                  style={styles.zoomButton}
+                  onPress={handleZoomOut}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="remove" size={20} color="#00704A" />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={{ marginTop: 12 }}>
+                <TouchableOpacity 
+                  style={styles.locationButton}
+                  onPress={handleGetCurrentLocation}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="locate" size={18} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </>
+        )}
+      </View>
 
-      {/* Search Bar - Floating below header */}
-      <View style={styles.searchBarContainer}>
+      {/* Floating Search Bar */}
+      <View style={[styles.searchBarContainer, { paddingTop: insets.top + 12 }]}>
         <View style={styles.searchBar}>
           <Ionicons name="search" size={20} color="#6B7280" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search stores..."
+            placeholder="Search location or store..."
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholderTextColor="#9CA3AF"
@@ -493,179 +562,167 @@ export default function Stores() {
               <Ionicons name="close-circle" size={20} color="#6B7280" />
             </TouchableOpacity>
           )}
+          <TouchableOpacity style={styles.filterIconButton}>
+            <Ionicons name="options-outline" size={20} color="#6B7280" />
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Main ScrollView - Contains Map and Store List */}
-      <ScrollView 
-        style={styles.mainScrollView}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.mainScrollContent}
-      >
-      {/* Map View - Large (40% of screen) */}
-      <View style={styles.mapSection}>
-          <View style={styles.mapContainer}>
-            {businessesLoading ? (
-              <View style={styles.mapLoadingContainer}>
-                <Text style={styles.mapLoadingText}>Loading map...</Text>
-              </View>
-            ) : (
-              <>
-                <MapView
-                  ref={mapRef}
-                  style={styles.map}
-                  initialRegion={mapRegion || {
-                    latitude: 10.7769,
-                    longitude: 106.7009,
-                    latitudeDelta: 0.05,
-                    longitudeDelta: 0.05,
-                  }}
-                  region={mapRegion || undefined}
-                  onRegionChangeComplete={setMapRegion}
-                  showsUserLocation={true}
-                  showsMyLocationButton={false}
-                  showsCompass={true}
-                  showsScale={true}
-                  scrollEnabled={true}
-                  zoomEnabled={true}
-                  rotateEnabled={true}
-                  pitchEnabled={true}
+      {/* Floating Filter Chips */}
+      <View style={[styles.filterChipsContainer, { top: insets.top + 70 }]}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterChipsScroll}
+        >
+          <TouchableOpacity
+            style={[styles.filterChip, activeFilter === 'all' && styles.filterChipActive]}
+            onPress={() => setActiveFilter('all')}
+          >
+            <Text style={[styles.filterChipText, activeFilter === 'all' && styles.filterChipTextActive]}>
+              All
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, activeFilter === 'open-now' && styles.filterChipActive]}
+            onPress={() => setActiveFilter('open-now')}
+          >
+            <Text style={[styles.filterChipText, activeFilter === 'open-now' && styles.filterChipTextActive]}>
+              Open Now
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, activeFilter === 'nearest' && styles.filterChipActive]}
+            onPress={() => setActiveFilter('nearest')}
+          >
+            <Text style={[styles.filterChipText, activeFilter === 'nearest' && styles.filterChipTextActive]}>
+              Nearest
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, activeFilter === 'top-rated' && styles.filterChipActive]}
+            onPress={() => setActiveFilter('top-rated')}
+          >
+            <Text style={[styles.filterChipText, activeFilter === 'top-rated' && styles.filterChipTextActive]}>
+              Top Rated
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {/* Horizontal Store Carousel at Bottom */}
+      {filteredStores.length > 0 && (
+        <View style={[styles.carouselContainer, { paddingBottom: insets.bottom }]}>
+          <FlatList
+            ref={carouselRef}
+            data={filteredStores}
+            renderItem={({ item, index }) => {
+              const [longitude, latitude] = item.location.coordinates;
+              const currentHour = new Date().getHours();
+              const openHour = parseInt(item.openTime.split(':')[0]);
+              const closeHour = parseInt(item.closeTime.split(':')[0]);
+              const isOpen = currentHour >= openHour && currentHour < closeHour;
+              const distance = item.distance !== undefined 
+                ? item.distance 
+                : (userLocation 
+                    ? calculateDistance(userLocation.latitude, userLocation.longitude, latitude, longitude)
+                    : null);
+              
+              return (
+                <TouchableOpacity 
+                  style={styles.carouselCard}
+                  onPress={() => router.push(`/(protected)/customer/store-detail/${item._id}`)}
+                  activeOpacity={0.9}
                 >
-                  {/* User location marker */}
-                  {userLocation && (
-                    <Marker
-                      coordinate={userLocation}
-                      title="Your Location"
-                      description="This is your current location"
-                      pinColor="#3B82F6"
-                    />
-                  )}
+                  {/* Store Thumbnail */}
+                  <View style={styles.carouselThumbnail}>
+                    {item.businessLogoUrl ? (
+                      <Image 
+                        source={{ uri: item.businessLogoUrl }} 
+                        style={styles.carouselThumbnailImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={styles.carouselThumbnailFallback}>
+                        <Ionicons name="storefront" size={24} color="#00704A" />
+                      </View>
+                    )}
+                  </View>
                   
-                  {/* Business markers */}
-                  {filteredStores.map((store) => {
-                    // API returns [longitude, latitude] so we need to reverse
-                    const [longitude, latitude] = store.location.coordinates;
-                    const isOpen = new Date().getHours() >= parseInt(store.openTime.split(':')[0]) && 
-                                   new Date().getHours() < parseInt(store.closeTime.split(':')[0]);
+                  {/* Store Info */}
+                  <View style={styles.carouselInfo}>
+                    <Text style={styles.carouselStoreName} numberOfLines={1}>
+                      {item.businessName}
+                    </Text>
                     
-                    return (
-                      <Marker
-                        key={store._id}
-                        coordinate={{
-                          latitude,
-                          longitude,
-                        }}
-                        title={store.businessName}
-                        description={store.businessAddress}
-                      >
-                        <View style={styles.markerContainer}>
-                          {store.businessLogoUrl ? (
-                            <View style={styles.markerLogoContainer}>
-                              <Image 
-                                source={{ uri: store.businessLogoUrl }} 
-                                style={styles.markerLogo}
-                                resizeMode="cover"
-                              />
-                              <View style={[styles.markerStatusDot, { backgroundColor: isOpen ? '#10B981' : '#EF4444' }]} />
-                            </View>
-                          ) : (
-                            <View style={[styles.markerIcon, { backgroundColor: isOpen ? '#10B981' : '#EF4444' }]}>
-                              <Ionicons name="storefront" size={16} color="#FFFFFF" />
-                            </View>
-                          )}
+                    {/* Rating */}
+                    <View style={styles.carouselRatingRow}>
+                      <Ionicons name="star" size={14} color="#F59E0B" />
+                      <Text style={styles.carouselRatingText}>
+                        {item.averageRating ? item.averageRating.toFixed(1) : '0.0'}
+                      </Text>
+                      {item.totalReviews !== undefined && item.totalReviews > 0 && (
+                        <Text style={styles.carouselRatingCount}>
+                          ({item.totalReviews})
+                        </Text>
+                      )}
+                    </View>
+                    
+                    {/* Distance and Hours */}
+                    <View style={styles.carouselMetaRow}>
+                      {distance !== null && (
+                        <View style={styles.carouselMetaItem}>
+                          <Ionicons name="location-outline" size={12} color="#6B7280" />
+                          <Text style={styles.carouselMetaText}>
+                            {distance < 1 ? `${Math.round(distance * 1000)} m` : `${distance.toFixed(1)} km`}
+                          </Text>
                         </View>
-                      </Marker>
-                    );
-                  })}
-                </MapView>
-                
-                {/* Map Controls */}
-                <View style={styles.mapControls}>
-                  {/* Zoom Controls */}
-                  <View style={styles.zoomControls}>
-                    <TouchableOpacity 
-                      style={styles.zoomButton}
-                      onPress={handleZoomIn}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="add" size={20} color="#0F4D3A" />
-                    </TouchableOpacity>
-                    <View style={styles.zoomDivider} />
-                    <TouchableOpacity 
-                      style={styles.zoomButton}
-                      onPress={handleZoomOut}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="remove" size={20} color="#0F4D3A" />
-                    </TouchableOpacity>
+                      )}
+                      <View style={styles.carouselMetaItem}>
+                        <Ionicons name="time-outline" size={12} color="#6B7280" />
+                        <Text style={styles.carouselMetaText}>
+                          {item.openTime} - {item.closeTime}
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    {/* Status Badge */}
+                    <View style={[styles.carouselStatusBadge, { backgroundColor: isOpen ? '#10B981' : '#EF4444' }]}>
+                      <Text style={styles.carouselStatusText}>
+                        {isOpen ? 'Open' : 'Closed'}
+                      </Text>
+                    </View>
                   </View>
                   
-                  {/* Location Button */}
-                  <View style={{ marginTop: 12 }}>
-                    <TouchableOpacity 
-                      style={styles.locationButton}
-                      onPress={handleGetCurrentLocation}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="locate" size={18} color="#FFFFFF" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </>
-            )}
-          </View>
+                  {/* Directions Button */}
+                  <TouchableOpacity 
+                    style={styles.carouselDirectionsButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleDirections(item);
+                    }}
+                  >
+                    <Ionicons name="navigate" size={20} color="#00704A" />
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              );
+            }}
+            keyExtractor={(item) => item._id}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.carouselContent}
+            onScroll={handleCarouselScroll}
+            scrollEventThrottle={16}
+            snapToInterval={width - 40}
+            decelerationRate="fast"
+            getItemLayout={(data, index) => ({
+              length: width - 40,
+              offset: (width - 40) * index,
+              index,
+            })}
+          />
         </View>
-
-        {/* Store List Section */}
-        <View style={styles.storeListSection}>
-          {/* Filter Tabs */}
-          <View style={styles.filterTabs}>
-            <TouchableOpacity
-              style={[styles.filterTab, activeFilter === 'all' && styles.activeFilterTab]}
-              onPress={() => setActiveFilter('all')}
-            >
-              <Text style={[styles.filterTabText, activeFilter === 'all' && styles.activeFilterTabText]}>
-                All
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.filterTab, activeFilter === 'nearby' && styles.activeFilterTab]}
-              onPress={() => setActiveFilter('nearby')}
-            >
-              <Text style={[styles.filterTabText, activeFilter === 'nearby' && styles.activeFilterTabText]}>
-                Nearby
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.filterTab, activeFilter === 'top-rated' && styles.activeFilterTab]}
-              onPress={() => setActiveFilter('top-rated')}
-            >
-              <Text style={[styles.filterTabText, activeFilter === 'top-rated' && styles.activeFilterTabText]}>
-                Top Rated
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.filterTab, activeFilter === 'closest' && styles.activeFilterTab]}
-              onPress={() => setActiveFilter('closest')}
-            >
-              <Text style={[styles.filterTabText, activeFilter === 'closest' && styles.activeFilterTabText]}>
-                Closest
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Store Cards */}
-          <View style={styles.storeList}>
-            {filteredStores.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateText}>No stores found</Text>
-              </View>
-            ) : (
-              filteredStores.map(renderStoreCard)
-            )}
-          </View>
-        </View>
-      </ScrollView>
+      )}
     </View>
   );
 }
@@ -677,80 +734,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-  // Header Styles
-  headerSafeArea: {
-    backgroundColor: '#00704A',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#00704A',
-    borderBottomLeftRadius: 20,
-  },
-  headerLeft: {
-    width: 40,
-  },
-  headerTitleContainer: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  headerRight: {
-    width: 40,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  // Search Bar
-  searchBarContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  searchIcon: {
-    marginRight: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: '#111827',
-  },
-  // Main ScrollView
-  mainScrollView: {
-    flex: 1,
-  },
-  mainScrollContent: {
-    flexGrow: 1,
-  },
-  // Map Section - Fixed height
-  mapSection: {
-    height: screenHeight * 0.4,
-    paddingHorizontal: 0,
-    paddingTop: 0,
-    paddingBottom: 0,
-  },
+  // Full Screen Map
   mapContainer: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: '#F3F4F6',
   },
   map: {
-    flex: 1,
-    width: '100%',
+    ...StyleSheet.absoluteFillObject,
   },
   mapLoadingContainer: {
     flex: 1,
@@ -765,23 +755,24 @@ const styles = StyleSheet.create({
   // Map Controls
   mapControls: {
     position: 'absolute',
-    right: 12,
-    top: 12,
+    right: 16,
+    bottom: 200,
+    zIndex: 10,
   },
   zoomControls: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 8,
+    borderRadius: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
     overflow: 'hidden',
     marginBottom: 12,
   },
   zoomButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
@@ -791,36 +782,64 @@ const styles = StyleSheet.create({
     backgroundColor: '#E5E7EB',
   },
   locationButton: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#0F4D3A',
-    borderRadius: 22,
+    backgroundColor: '#00704A',
+    borderRadius: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  // Map Markers
+  // User Location Marker with Pulsing
+  userLocationMarker: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userLocationDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#3B82F6',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    zIndex: 2,
+  },
+  userLocationPulse: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(59, 130, 246, 0.3)',
+    zIndex: 1,
+  },
+  // Map Markers - Custom Brand Icons
   markerContainer: {
     alignItems: 'center',
     justifyContent: 'center',
   },
   markerLogoContainer: {
     position: 'relative',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     overflow: 'hidden',
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowRadius: 6,
+    elevation: 5,
+    backgroundColor: '#FFFFFF',
+  },
+  markerLogoContainerSelected: {
+    borderColor: '#00704A',
+    borderWidth: 4,
+    transform: [{ scale: 1.15 }],
   },
   markerLogo: {
     width: '100%',
@@ -828,214 +847,220 @@ const styles = StyleSheet.create({
   },
   markerStatusDot: {
     position: 'absolute',
-    bottom: -2,
+    top: -2,
     right: -2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     borderWidth: 2,
     borderColor: '#FFFFFF',
   },
+  markerPointer: {
+    position: 'absolute',
+    bottom: -8,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 8,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+  },
   markerIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowRadius: 6,
+    elevation: 5,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
   },
-  // Store List Section
-  storeListSection: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
+  markerIconSelected: {
+    borderColor: '#00704A',
+    borderWidth: 4,
+    transform: [{ scale: 1.15 }],
   },
-  // Filter Tabs
-  filterTabs: {
+  // Floating Search Bar
+  searchBarContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    zIndex: 100,
+  },
+  searchBar: {
     flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 20,
-  },
-  filterTab: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 8,
     alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  activeFilterTab: {
-    backgroundColor: '#0F4D3A',
+  searchIcon: {
+    marginRight: 12,
   },
-  filterTabText: {
-    fontSize: 13,
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#111827',
+  },
+  filterIconButton: {
+    marginLeft: 12,
+    padding: 4,
+  },
+  // Floating Filter Chips
+  filterChipsContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 99,
+    paddingHorizontal: 16,
+  },
+  filterChipsScroll: {
+    paddingRight: 16,
+  },
+  filterChip: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  filterChipActive: {
+    backgroundColor: '#00704A',
+  },
+  filterChipText: {
+    fontSize: 14,
     fontWeight: '600',
     color: '#6B7280',
   },
-  activeFilterTabText: {
+  filterChipTextActive: {
     color: '#FFFFFF',
   },
-  // Store List
-  storeList: {
-    marginTop: 4,
+  // Horizontal Store Carousel
+  carouselContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 180,
+    zIndex: 100,
+    backgroundColor: 'transparent',
   },
-  emptyState: {
-    paddingVertical: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+  carouselContent: {
+    paddingHorizontal: 20,
   },
-  emptyStateText: {
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  // Store Card
-  storeCard: {
-    flexDirection: 'row',
+  carouselCard: {
+    width: width - 40,
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 12,
+    marginRight: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  // Store Logo (Left)
-  storeLogoContainer: {
+  carouselThumbnail: {
     width: 80,
     height: 80,
     borderRadius: 12,
     overflow: 'hidden',
-    marginRight: 12,
     backgroundColor: '#F3F4F6',
+    marginRight: 16,
   },
-  storeLogoImage: {
+  carouselThumbnailImage: {
     width: '100%',
     height: '100%',
   },
-  storeLogoFallback: {
+  carouselThumbnailFallback: {
     width: '100%',
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#F3F4F6',
   },
-  // Store Info (Middle)
-  storeInfoContainer: {
+  carouselInfo: {
     flex: 1,
-    justifyContent: 'space-between',
-    paddingRight: 8,
+    justifyContent: 'center',
   },
-  storeName: {
+  carouselStoreName: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#1F2937',
-    marginBottom: 4,
+    marginBottom: 6,
   },
-  storeType: {
-    fontSize: 13,
-    color: '#00704A',
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  storeAddress: {
-    fontSize: 13,
-    color: '#6B7280',
-    lineHeight: 18,
-    marginBottom: 8,
-  },
-  storeMetaRow: {
+  carouselRatingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-    gap: 16,
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    marginBottom: 6,
     gap: 4,
   },
-  ratingText: {
+  carouselRatingText: {
     fontSize: 13,
     fontWeight: '600',
     color: '#1F2937',
+    marginLeft: 2,
   },
-  ratingCount: {
-    fontSize: 11,
+  carouselRatingCount: {
+    fontSize: 12,
     color: '#6B7280',
     marginLeft: 2,
   },
-  productsCountContainer: {
+  carouselMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  carouselMetaItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  productsCountText: {
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  storeStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  distanceText: {
-    fontSize: 13,
+  carouselMetaText: {
+    fontSize: 12,
     color: '#6B7280',
     fontWeight: '500',
-    marginRight: 8,
   },
-  statusBadge: {
-    paddingHorizontal: 8,
+  carouselStatusBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 6,
+    borderRadius: 12,
   },
-  statusText: {
-    fontSize: 11,
+  carouselStatusText: {
+    fontSize: 12,
     fontWeight: '600',
     color: '#FFFFFF',
   },
-  // Store Actions (Right)
-  storeActionsContainer: {
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-  },
-  directionsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0F4D3A',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    marginBottom: 8,
-    minWidth: 100,
-    justifyContent: 'center',
-  },
-  directionsButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  secondaryButtonsRow: {
-    flexDirection: 'row',
-  },
-  secondaryIconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: '#F3F4F6',
+  carouselDirectionsButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F0FDF4',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginLeft: 12,
   },
 });

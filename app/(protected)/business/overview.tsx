@@ -13,7 +13,7 @@ import BusinessHeader from "../../../components/BusinessHeader";
 import { useAuth } from "../../../context/AuthProvider";
 import { useTokenRefresh } from "../../../hooks/useTokenRefresh";
 import { borrowTransactionsApi } from "../../../src/services/api/borrowTransactionService";
-import { businessesApi } from "../../../src/services/api/businessService";
+import { businessesApi, productsApi } from "../../../src/services/api/businessService";
 import { BusinessProfile } from "../../../src/types/business.types";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -27,6 +27,10 @@ export default function BusinessOverview() {
     orders: 0,
     customers: 0,
     rating: 0,
+    available: 0,
+    borrowed: 0,
+    overdue: 0,
+    damaged: 0,
   });
 
   useTokenRefresh();
@@ -69,15 +73,15 @@ export default function BusinessOverview() {
     loadBusinessData();
   }, [state.accessToken, state.isAuthenticated, state.isHydrated, state.role]);
 
-  // Load real transaction statistics
+  // Load real transaction and product statistics
   useEffect(() => {
-    const loadTransactionStats = async () => {
+    const loadStats = async () => {
       if (!state.isHydrated || !state.accessToken || !state.isAuthenticated || state.role !== 'business') {
         return;
       }
 
       try {
-        console.log('📊 Loading transaction statistics...');
+        console.log('📊 Loading statistics...');
         
         // Load all transactions to calculate stats
         const response = await borrowTransactionsApi.getBusinessHistory({
@@ -113,29 +117,77 @@ export default function BusinessOverview() {
         );
         const customers = uniqueCustomers.size;
 
-        console.log('📊 Calculated stats:', { revenue, orders, customers });
+        // Calculate borrowed items
+        const borrowed = transactions.filter((t: any) => t.status === 'borrowing').length;
+
+        // Calculate overdue items from transactions
+        const overdue = transactions.filter((t: any) => {
+          if (t.status !== 'borrowing') return false;
+          if (!t.expectedReturnDate) return false;
+          return new Date(t.expectedReturnDate) < new Date();
+        }).length;
+
+        console.log('📊 Calculated transaction stats:', { revenue, orders, customers, borrowed, overdue });
+
+        // Load products from all product groups
+        let available = 0;
+        let damaged = 0;
+
+        if (businessProfile && businessProfile.productGroups && businessProfile.productGroups.length > 0) {
+          console.log('📦 Loading products from product groups...');
+          const allProducts: any[] = [];
+          
+          for (const group of businessProfile.productGroups) {
+            try {
+              const productsResponse = await productsApi.getAll(group._id, {
+                page: 1,
+                limit: 1000,
+              });
+              
+              if (productsResponse.data?.items) {
+                allProducts.push(...productsResponse.data.items);
+              } else if (Array.isArray(productsResponse.data)) {
+                allProducts.push(...productsResponse.data);
+              }
+            } catch (error) {
+              console.error(`Error loading products for group ${group._id}:`, error);
+            }
+          }
+
+          console.log('✅ Loaded products:', allProducts.length);
+
+          // Calculate stats from products
+          available = allProducts.filter((p: any) => p.status === 'available').length;
+          damaged = allProducts.filter((p: any) => p.condition === 'damaged' || p.status === 'damaged').length;
+
+          console.log('📊 Calculated product stats:', { available, damaged });
+        }
 
         setStats({
           revenue,
           orders,
           customers,
           rating: 0, // Rating not available from transactions
+          available,
+          borrowed,
+          overdue,
+          damaged,
         });
       } catch (error: any) {
         // Silently handle Unauthorized errors
         if (error?.response?.status === 401 || 
             error?.message?.toLowerCase().includes('unauthorized')) {
           // Silently handle - don't show error to user
-          console.log('⚠️ Unauthorized error loading transaction stats (silently handled)');
+          console.log('⚠️ Unauthorized error loading stats (silently handled)');
           return;
         }
-        console.error('❌ Error loading transaction stats:', error);
+        console.error('❌ Error loading stats:', error);
         // Silently fail - will show default values
       }
     };
 
-    loadTransactionStats();
-  }, [state.isHydrated, state.accessToken, state.isAuthenticated, state.role]);
+    loadStats();
+  }, [state.isHydrated, state.accessToken, state.isAuthenticated, state.role, businessProfile]);
 
   // Get user info from business profile
   const businessOwnerName = businessProfile?.userId?.username || businessProfile?.userId?.email || "Business Owner";
@@ -186,29 +238,33 @@ export default function BusinessOverview() {
 
             <View style={styles.sectionPad}>
               <View style={styles.statsGrid}>
-                <View style={styles.statCard}>
-                  <Ionicons name="trending-up" size={24} color="#00704A" />
-                  <Text style={styles.statValue}>
-                    {stats.revenue > 0 
-                      ? `₫${(stats.revenue / 1000000).toFixed(1)}M` 
-                      : '₫0'}
-                  </Text>
-                  <Text style={styles.statLabel}>Revenue</Text>
+                <View style={[styles.statCard, styles.availableCard]}>
+                  <View style={styles.statIconContainer}>
+                    <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+                  </View>
+                  <Text style={[styles.statValue, styles.availableValue]}>{stats.available}</Text>
+                  <Text style={styles.statLabel}>Available</Text>
                 </View>
-                <View style={styles.statCard}>
-                  <Ionicons name="receipt" size={24} color="#00704A" />
-                  <Text style={styles.statValue}>{stats.orders}</Text>
-                  <Text style={styles.statLabel}>Orders</Text>
+                <View style={[styles.statCard, styles.borrowedCard]}>
+                  <View style={styles.statIconContainer}>
+                    <Ionicons name="people" size={24} color="#F59E0B" />
+                  </View>
+                  <Text style={[styles.statValue, styles.borrowedValue]}>{stats.borrowed}</Text>
+                  <Text style={styles.statLabel}>Borrowed</Text>
                 </View>
-                <View style={styles.statCard}>
-                  <Ionicons name="people" size={24} color="#00704A" />
-                  <Text style={styles.statValue}>{stats.customers}</Text>
-                  <Text style={styles.statLabel}>Customers</Text>
+                <View style={[styles.statCard, styles.overdueCard]}>
+                  <View style={styles.statIconContainer}>
+                    <Ionicons name="alert-circle" size={24} color="#EF4444" />
+                  </View>
+                  <Text style={[styles.statValue, styles.overdueValue]}>{stats.overdue}</Text>
+                  <Text style={styles.statLabel}>Overdue</Text>
                 </View>
-                <View style={styles.statCard}>
-                  <Ionicons name="star" size={24} color="#00704A" />
-                  <Text style={styles.statValue}>-</Text>
-                  <Text style={styles.statLabel}>Rating</Text>
+                <View style={[styles.statCard, styles.damagedCard]}>
+                  <View style={styles.statIconContainer}>
+                    <Ionicons name="close-circle" size={24} color="#6B7280" />
+                  </View>
+                  <Text style={[styles.statValue, styles.damagedValue]}>{stats.damaged}</Text>
+                  <Text style={styles.statLabel}>Damaged</Text>
                 </View>
               </View>
             </View>
@@ -286,7 +342,43 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB'
   },
-  statValue: { fontSize: 24, fontWeight: '800', color: '#111827', marginTop: 8, marginBottom: 4 },
+  statIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  availableCard: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#D1FAE5',
+  },
+  availableValue: {
+    color: '#10B981',
+  },
+  borrowedCard: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FEF3C7',
+  },
+  borrowedValue: {
+    color: '#F59E0B',
+  },
+  overdueCard: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FEE2E2',
+  },
+  overdueValue: {
+    color: '#EF4444',
+  },
+  damagedCard: {
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+  },
+  damagedValue: {
+    color: '#6B7280',
+  },
+  statValue: { fontSize: 24, fontWeight: '800', color: '#111827', marginTop: 4, marginBottom: 4 },
   statLabel: { fontSize: 12, color: '#6B7280', fontWeight: '600' },
   actionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   actionCard: { 

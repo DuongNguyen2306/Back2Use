@@ -1,24 +1,22 @@
 "use client"
 
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  RefreshControl,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import SimpleHeader from "../../../components/SimpleHeader";
 import { useAuth } from "../../../context/AuthProvider";
-import { notificationApi, Notification } from "../../../src/services/api/notificationService";
 import { businessesApi } from "../../../src/services/api/businessService";
+import { Notification, notificationApi } from "../../../src/services/api/notificationService";
 
 export default function BusinessNotificationsScreen() {
   const { top, bottom } = useSafeAreaInsets();
@@ -34,10 +32,10 @@ export default function BusinessNotificationsScreen() {
   }, []);
 
   useEffect(() => {
-    if (businessId || authState.userId) {
+    if (businessId || authState.user?._id) {
       loadNotifications();
     }
-  }, [filter, businessId, authState.userId]);
+  }, [filter, businessId, authState.user?._id]);
 
   const loadBusinessProfile = async () => {
     // Staff doesn't need business profile
@@ -67,7 +65,7 @@ export default function BusinessNotificationsScreen() {
       if (showLoading) setLoading(true);
       
       // Get receiver ID: businessId for business owner, userId for staff
-      const receiverId = businessId || authState.userId || authState.user?.id;
+      const receiverId = businessId || authState.user?._id;
       if (!receiverId) {
         console.warn('No receiver ID found');
         setNotifications([]);
@@ -87,8 +85,9 @@ export default function BusinessNotificationsScreen() {
       const response = await notificationApi.getByReceiver(receiverId, params);
       
       if (response.statusCode === 200) {
-        const notificationData = response.data?.data || response.data || [];
-        setNotifications(Array.isArray(notificationData) ? notificationData : []);
+        // response.data is Notification[] according to NotificationListResponse
+        const notificationData = Array.isArray(response.data) ? response.data : [];
+        setNotifications(notificationData);
       } else {
         setNotifications([]);
       }
@@ -167,7 +166,7 @@ export default function BusinessNotificationsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const receiverId = businessId || authState.userId || authState.user?.id;
+              const receiverId = businessId || authState.user?._id;
               if (receiverId) {
                 await notificationApi.deleteByReceiver(receiverId);
                 setNotifications([]);
