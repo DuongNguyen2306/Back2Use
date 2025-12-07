@@ -437,12 +437,12 @@ export default function CustomerDashboard() {
 
   const handleBorrow = async () => {
     if (!scannedItem || !scannedItem.product) {
-      Alert.alert('Error', 'Thông tin sản phẩm không hợp lệ');
+      Alert.alert('Error', 'Invalid product information');
       return;
     }
 
     if (scannedItem.status !== 'available') {
-      Alert.alert('Thông báo', 'Sản phẩm này hiện không có sẵn để mượn.');
+      Alert.alert('Notification', 'This product is currently unavailable for borrowing.');
       return;
     }
 
@@ -472,7 +472,7 @@ export default function CustomerDashboard() {
     // Kiểm tra số ngày mượn trước
     const days = parseInt(durationInDays, 10);
     if (isNaN(days) || days <= 0) {
-      Alert.alert('Lỗi', 'Vui lòng nhập số ngày mượn hợp lệ (lớn hơn 0)');
+      Alert.alert('Error', 'Please enter a valid number of days (greater than 0)');
       return;
     }
     
@@ -520,15 +520,15 @@ export default function CustomerDashboard() {
       const shortage = depositValue - walletBalance;
       console.log('⚠️ Insufficient balance - Shortage:', shortage);
       Alert.alert(
-        'Số dư không đủ',
-        `Số dư ví của bạn không đủ để đặt mượn sản phẩm này.\n\n` +
-        `Số dư hiện tại: ${walletBalance.toLocaleString('vi-VN')} VNĐ\n` +
-        `Tiền cọc cần: ${depositValue.toLocaleString('vi-VN')} VNĐ\n` +
-        `Còn thiếu: ${shortage.toLocaleString('vi-VN')} VNĐ\n\n` +
-        `Vui lòng nạp thêm tiền vào ví để tiếp tục.`,
+        'Insufficient Balance',
+        `Your wallet balance is insufficient to borrow this product.\n\n` +
+        `Current balance: ${walletBalance.toLocaleString('vi-VN')} VND\n` +
+        `Required deposit: ${depositValue.toLocaleString('vi-VN')} VND\n` +
+        `Shortage: ${shortage.toLocaleString('vi-VN')} VND\n\n` +
+        `Please top up your wallet to continue.`,
         [
           {
-            text: 'Hủy',
+            text: 'Cancel',
             style: 'cancel',
           },
           {
@@ -559,20 +559,20 @@ export default function CustomerDashboard() {
 
     // Confirm borrow
     Alert.alert(
-      'Xác nhận đặt mượn',
-      `Bạn có chắc chắn muốn đặt mượn sản phẩm này?\n\n` +
-      `Tiền cọc: ${realtimeDeposit.toLocaleString('vi-VN')} VNĐ\n` +
-      `(= ${realtimePricePerDay.toLocaleString('vi-VN')} VNĐ/ngày × ${realtimeDays} ngày)\n\n` +
-      `Số dư hiện tại: ${walletBalance.toLocaleString('vi-VN')} VNĐ\n` +
-      `Số dư sau khi trừ: ${(walletBalance - realtimeDeposit).toLocaleString('vi-VN')} VNĐ\n` +
-      `Thời gian mượn: ${realtimeDays} ngày`,
+      'Confirm Borrowing',
+      `Are you sure you want to borrow this product?\n\n` +
+      `Deposit: ${realtimeDeposit.toLocaleString('vi-VN')} VND\n` +
+      `(= ${realtimePricePerDay.toLocaleString('vi-VN')} VND/day × ${realtimeDays} days)\n\n` +
+      `Current balance: ${walletBalance.toLocaleString('vi-VN')} VND\n` +
+      `Balance after deduction: ${(walletBalance - realtimeDeposit).toLocaleString('vi-VN')} VND\n` +
+      `Borrow duration: ${realtimeDays} days`,
       [
         {
-          text: 'Hủy',
+          text: 'Cancel',
           style: 'cancel',
         },
         {
-          text: 'Xác nhận',
+          text: 'Confirm',
           onPress: async () => {
             try {
               setBorrowing(true);
@@ -666,7 +666,6 @@ export default function CustomerDashboard() {
                 businessId,
                 depositValue: backendDepositValue, // Dùng giá trị cố định từ product, không tính toán
                 durationInDays: realtimeDays,
-                type: "online" as const, // ← CỨ ĐỂ CỨNG THẾ NÀY LÀ CHẮC ĂN NHẤT
               };
 
               console.log('📦 FINAL borrowDto gửi đi:', {
@@ -675,7 +674,6 @@ export default function CustomerDashboard() {
                 depositValue: backendDepositValue, // Giá trị cố định từ product
                 depositValueType: typeof backendDepositValue,
                 durationInDays: realtimeDays,
-                type: 'online',
                 uiCalculated: realtimeDeposit, // Giá trị tính toán chỉ để hiển thị UI
               });
               console.log('📦 Borrow DTO (full):', JSON.stringify(borrowDto, null, 2));
@@ -685,8 +683,8 @@ export default function CustomerDashboard() {
               console.log('✅ Borrow transaction created:', response);
 
               Alert.alert(
-                'Thành công',
-                'Yêu cầu mượn đã được gửi! Vui lòng đến cửa hàng để nhận sản phẩm.',
+                'Success',
+                'Borrow request has been sent! Please visit the store to receive the product.',
                 [
                   {
                     text: 'OK',
@@ -707,8 +705,15 @@ export default function CustomerDashboard() {
               
               // Xử lý lỗi cụ thể
               const errorMessage = error?.response?.data?.message || error?.message || '';
+              const errorStatus = error?.response?.status;
               
-              console.log('❌ Borrow Error:', errorMessage);
+              // Silently handle 400 validation errors (e.g., "property type should not exist")
+              const isValidationError = errorStatus === 400;
+              
+              if (isValidationError) {
+                setBorrowing(false);
+                return; // Silently return without showing error
+              }
               
               // Check for insufficient balance
               const isInsufficientBalance = errorMessage.toLowerCase().includes('insufficient') || 
@@ -731,18 +736,18 @@ export default function CustomerDashboard() {
                 );
               } else if (isLimitReached) {
                 Alert.alert(
-                  'Đã đạt giới hạn mượn',
-                  'Bạn đã đạt giới hạn số lượng sản phẩm có thể mượn đồng thời (tối đa 3 sản phẩm).\n\nVui lòng trả một số sản phẩm đang mượn trước khi mượn thêm.',
+                  'Borrow Limit Reached',
+                  'You have reached the maximum number of products you can borrow simultaneously (maximum 3 products).\n\nPlease return some borrowed products before borrowing more.',
                   [
                     {
-                      text: 'Xem lịch sử mượn',
+                      text: 'View Borrow History',
                       onPress: () => {
                         setShowProductModal(false);
                         router.push('/(protected)/customer/transaction-history');
                       },
                     },
                     {
-                      text: 'Đóng',
+                      text: 'Close',
                       style: 'cancel',
                     },
                   ]
@@ -754,19 +759,19 @@ export default function CustomerDashboard() {
                                      0;
                 const shortage = depositValue - currentBalance;
                 Alert.alert(
-                  'Số dư không đủ',
-                  `Số dư ví của bạn không đủ để đặt mượn sản phẩm này.\n\n` +
-                  `Số dư hiện tại: ${currentBalance.toLocaleString('vi-VN')} VNĐ\n` +
-                  `Tiền cọc cần: ${depositValue.toLocaleString('vi-VN')} VNĐ\n` +
-                  `Còn thiếu: ${shortage.toLocaleString('vi-VN')} VNĐ\n\n` +
-                  `Vui lòng nạp thêm tiền vào ví để tiếp tục.`,
+                  'Insufficient Balance',
+                  `Your wallet balance is insufficient to borrow this product.\n\n` +
+                  `Current balance: ${currentBalance.toLocaleString('vi-VN')} VND\n` +
+                  `Required deposit: ${depositValue.toLocaleString('vi-VN')} VND\n` +
+                  `Shortage: ${shortage.toLocaleString('vi-VN')} VND\n\n` +
+                  `Please top up your wallet to continue.`,
                   [
                     {
-                      text: 'Đóng',
+                      text: 'Close',
                       style: 'cancel',
                     },
                     {
-                      text: 'Nạp tiền',
+                      text: 'Top Up',
                       onPress: () => {
                         setShowProductModal(false);
                         router.push('/(protected)/customer/customer-wallet');
@@ -776,8 +781,8 @@ export default function CustomerDashboard() {
                 );
               } else {
                 Alert.alert(
-                  'Lỗi',
-                  'Không thể tạo yêu cầu mượn. Vui lòng thử lại sau.'
+                  'Error',
+                  'Unable to create borrow request. Please try again later.'
                 );
               }
             } finally {
@@ -1064,7 +1069,7 @@ export default function CustomerDashboard() {
                <TouchableOpacity onPress={() => setShowProductModal(false)}>
                  <Ionicons name="close" size={24} color="#FFFFFF" />
                </TouchableOpacity>
-               <Text style={styles.productModalTitle}>Thông tin sản phẩm</Text>
+               <Text style={styles.productModalTitle}>Product Information</Text>
                <View style={{ width: 24 }} />
              </View>
 
@@ -1082,7 +1087,7 @@ export default function CustomerDashboard() {
                <View style={styles.productInfoCard}>
                  <Text style={styles.productName}>{scannedItem.name}</Text>
                  {scannedItem.size && (
-                   <Text style={styles.productSize}>Kích thước: {scannedItem.size}</Text>
+                   <Text style={styles.productSize}>Size: {scannedItem.size}</Text>
                  )}
                  
                  {(() => {
@@ -1104,12 +1109,12 @@ export default function CustomerDashboard() {
                    <View style={styles.depositInfo}>
                      <Ionicons name="cash-outline" size={20} color="#059669" />
                      <View style={{ flex: 1 }}>
-                       <Text style={styles.depositLabel}>Tiền cọc:</Text>
+                       <Text style={styles.depositLabel}>Deposit:</Text>
                        <Text style={styles.depositValue}>
-                           {depositValue.toLocaleString('vi-VN')} VNĐ
+                           {depositValue.toLocaleString('vi-VN')} VND
                          </Text>
                          <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
-                           ({pricePerDay.toLocaleString('vi-VN')} VNĐ/ngày × {days} ngày)
+                           ({pricePerDay.toLocaleString('vi-VN')} VND/day × {days} days)
                        </Text>
                      </View>
                    </View>
@@ -1120,7 +1125,7 @@ export default function CustomerDashboard() {
                  <View style={styles.balanceInfo}>
                    <Ionicons name="wallet-outline" size={20} color="#3B82F6" />
                    <View style={{ flex: 1 }}>
-                     <Text style={styles.balanceLabel}>Số dư ví hiện tại:</Text>
+                     <Text style={styles.balanceLabel}>Current Wallet Balance:</Text>
                      {(() => {
                        // Handle both balance and availableBalance fields
                        const walletBalance = (userData as any)?.wallet?.availableBalance ?? 
@@ -1146,11 +1151,11 @@ export default function CustomerDashboard() {
                              styles.balanceValue,
                              isInsufficient && styles.balanceInsufficient
                            ]}>
-                             {walletBalance.toLocaleString('vi-VN')} VNĐ
+                             {walletBalance.toLocaleString('vi-VN')} VND
                            </Text>
                            {isInsufficient && (
                              <Text style={styles.insufficientWarning}>
-                               ⚠️ Số dư không đủ. Vui lòng nạp thêm tiền.
+                               ⚠️ Insufficient balance. Please top up your wallet.
                              </Text>
                            )}
                          </>
@@ -1169,28 +1174,184 @@ export default function CustomerDashboard() {
                          styles.statusText,
                          scannedItem.status !== 'available' && { color: '#DC2626' }
                        ]}>
-                         {scannedItem.status === 'available' ? 'Có sẵn' : 'Không có sẵn'}
+                         {scannedItem.status === 'available' ? 'Available' : 'Unavailable'}
                        </Text>
                      </View>
                    </View>
                  )}
 
+                 {/* Product Description */}
                  {scannedItem.product?.productGroupId?.description && (
-                   <Text style={styles.productDescription}>
-                     {scannedItem.product.productGroupId.description}
-                   </Text>
+                   <View style={styles.productDescriptionSection}>
+                     <Text style={styles.sectionTitle}>Description</Text>
+                     <Text style={styles.productDescription}>
+                       {scannedItem.product.productGroupId.description}
+                     </Text>
+                   </View>
                  )}
 
-                 {scannedItem.data && (
-                   <View style={styles.serialInfo}>
-                     <Text style={styles.serialLabel}>Serial Number:</Text>
-                     <Text style={styles.serialValue}>{scannedItem.data}</Text>
+                 {/* Product Details */}
+                 <View style={styles.productDetailsSection}>
+                   <Text style={styles.sectionTitle}>Product Details</Text>
+                   
+                   {scannedItem.data && (
+                     <View style={styles.detailRow}>
+                       <Ionicons name="barcode-outline" size={18} color="#6B7280" />
+                       <Text style={styles.detailLabel}>Serial Number:</Text>
+                       <Text style={styles.detailValue}>{scannedItem.data}</Text>
+                     </View>
+                   )}
+
+                   {scannedItem.product?.productSizeId?.description && (
+                     <View style={styles.detailRow}>
+                       <Ionicons name="resize-outline" size={18} color="#6B7280" />
+                       <Text style={styles.detailLabel}>Size Description:</Text>
+                       <Text style={styles.detailValue}>
+                         {scannedItem.product.productSizeId.description}
+                       </Text>
+                     </View>
+                   )}
+
+                   {scannedItem.product?.condition && (
+                     <View style={styles.detailRow}>
+                       <Ionicons name="shield-checkmark-outline" size={18} color="#6B7280" />
+                       <Text style={styles.detailLabel}>Condition:</Text>
+                       <Text style={styles.detailValue}>
+                         {scannedItem.product.condition}
+                       </Text>
+                     </View>
+                   )}
+
+                   {scannedItem.product?.reuseCount !== undefined && (
+                     <View style={styles.detailRow}>
+                       <Ionicons name="repeat-outline" size={18} color="#6B7280" />
+                       <Text style={styles.detailLabel}>Reuse Count:</Text>
+                       <Text style={styles.detailValue}>
+                         {scannedItem.product.reuseCount}
+                       </Text>
+                     </View>
+                   )}
+                 </View>
+
+                 {/* Last Condition Images */}
+                 {scannedItem.product?.lastConditionImages && (
+                   <View style={styles.conditionImagesSection}>
+                     <Text style={styles.sectionTitle}>Last Condition Images</Text>
+                     <View style={styles.imageGrid}>
+                       {scannedItem.product.lastConditionImages.frontImage && (
+                         <View style={styles.imageItem}>
+                           <Text style={styles.imageLabel}>Front</Text>
+                           <Image 
+                             source={{ uri: scannedItem.product.lastConditionImages.frontImage }} 
+                             style={styles.conditionImage} 
+                             resizeMode="cover"
+                           />
+                         </View>
+                       )}
+                       {scannedItem.product.lastConditionImages.backImage && (
+                         <View style={styles.imageItem}>
+                           <Text style={styles.imageLabel}>Back</Text>
+                           <Image 
+                             source={{ uri: scannedItem.product.lastConditionImages.backImage }} 
+                             style={styles.conditionImage} 
+                             resizeMode="cover"
+                           />
+                         </View>
+                       )}
+                       {scannedItem.product.lastConditionImages.leftImage && (
+                         <View style={styles.imageItem}>
+                           <Text style={styles.imageLabel}>Left</Text>
+                           <Image 
+                             source={{ uri: scannedItem.product.lastConditionImages.leftImage }} 
+                             style={styles.conditionImage} 
+                             resizeMode="cover"
+                           />
+                         </View>
+                       )}
+                       {scannedItem.product.lastConditionImages.rightImage && (
+                         <View style={styles.imageItem}>
+                           <Text style={styles.imageLabel}>Right</Text>
+                           <Image 
+                             source={{ uri: scannedItem.product.lastConditionImages.rightImage }} 
+                             style={styles.conditionImage} 
+                             resizeMode="cover"
+                           />
+                         </View>
+                       )}
+                       {scannedItem.product.lastConditionImages.topImage && (
+                         <View style={styles.imageItem}>
+                           <Text style={styles.imageLabel}>Top</Text>
+                           <Image 
+                             source={{ uri: scannedItem.product.lastConditionImages.topImage }} 
+                             style={styles.conditionImage} 
+                             resizeMode="cover"
+                           />
+                         </View>
+                       )}
+                       {scannedItem.product.lastConditionImages.bottomImage && (
+                         <View style={styles.imageItem}>
+                           <Text style={styles.imageLabel}>Bottom</Text>
+                           <Image 
+                             source={{ uri: scannedItem.product.lastConditionImages.bottomImage }} 
+                             style={styles.conditionImage} 
+                             resizeMode="cover"
+                           />
+                         </View>
+                       )}
+                     </View>
+                   </View>
+                 )}
+
+                 {/* Last Damage Assessment */}
+                 {scannedItem.product?.lastDamageFaces && (
+                   <View style={styles.damageFacesSection}>
+                     <Text style={styles.sectionTitle}>Last Damage Assessment</Text>
+                     {(() => {
+                       // Check if lastDamageFaces exists and has items
+                       if (!scannedItem.product.lastDamageFaces || scannedItem.product.lastDamageFaces.length === 0) {
+                         return (
+                           <View style={styles.emptyDamageFaces}>
+                             <Ionicons name="information-circle-outline" size={20} color="#9CA3AF" />
+                             <Text style={styles.emptyDamageFacesText}>This product has never been borrowed</Text>
+                           </View>
+                         );
+                       }
+                       
+                       // Check if all faces have "none" issue
+                       const hasRealDamage = scannedItem.product.lastDamageFaces.some((face: any) => 
+                         face.issue && face.issue.toLowerCase() !== 'none'
+                       );
+                       
+                       if (!hasRealDamage) {
+                         return (
+                           <View style={styles.emptyDamageFaces}>
+                             <Ionicons name="information-circle-outline" size={20} color="#9CA3AF" />
+                             <Text style={styles.emptyDamageFacesText}>This product has never been borrowed</Text>
+                           </View>
+                         );
+                       }
+                       
+                       // Show damage faces if there's real damage
+                       return scannedItem.product.lastDamageFaces
+                         .filter((face: any) => face.issue && face.issue.toLowerCase() !== 'none')
+                         .map((face: any, index: number) => (
+                           <View key={index} style={styles.damageFaceItem}>
+                             <View style={styles.damageFaceRow}>
+                               <Ionicons name="warning" size={18} color="#EF4444" />
+                               <Text style={styles.damageFaceLabel}>
+                                 {face.face.charAt(0).toUpperCase() + face.face.slice(1)}:
+                               </Text>
+                               <Text style={styles.damageFaceValue}>{face.issue}</Text>
+                             </View>
+                           </View>
+                         ));
+                     })()}
                    </View>
                  )}
 
                  {/* Duration Input */}
                  <View style={styles.durationInputContainer}>
-                   <Text style={styles.durationLabel}>Thời gian mượn (ngày) *</Text>
+                   <Text style={styles.durationLabel}>Borrow Duration (days) *</Text>
                    <TextInput
                      style={styles.durationInput}
                      value={durationInDays}
@@ -1212,7 +1373,7 @@ export default function CustomerDashboard() {
                          setDurationInDays('1');
                        }
                      }}
-                     placeholder="Nhập số ngày mượn"
+                     placeholder="Enter number of days"
                      keyboardType="numeric"
                      placeholderTextColor="#9CA3AF"
                    />
@@ -1231,7 +1392,7 @@ export default function CustomerDashboard() {
                    ) : (
                      <>
                        <Ionicons name="cube-outline" size={20} color="#FFFFFF" />
-                       <Text style={styles.borrowButtonText}>Mượn sản phẩm</Text>
+                       <Text style={styles.borrowButtonText}>Borrow Product</Text>
                      </>
                    )}
                  </TouchableOpacity>
@@ -1241,7 +1402,7 @@ export default function CustomerDashboard() {
                  <View style={styles.unavailableMessage}>
                    <Ionicons name="alert-circle-outline" size={24} color="#F59E0B" />
                    <Text style={styles.unavailableText}>
-                     Sản phẩm này hiện không có sẵn để mượn
+                     This product is currently unavailable for borrowing
                    </Text>
                  </View>
                )}
@@ -1842,5 +2003,108 @@ const styles = StyleSheet.create({
     color: '#DC2626',
     marginTop: 8,
     fontWeight: '600',
+  },
+  productDescriptionSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  productDetailsSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
+  detailLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginRight: 8,
+  },
+  detailValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+    flex: 1,
+    textTransform: 'capitalize',
+  },
+  conditionImagesSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  imageGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 12,
+  },
+  imageItem: {
+    width: '30%',
+    alignItems: 'center',
+  },
+  imageLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 8,
+    textTransform: 'capitalize',
+  },
+  conditionImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+  },
+  damageFacesSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  damageFaceItem: {
+    marginBottom: 12,
+  },
+  damageFaceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  damageFaceLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginRight: 8,
+    fontWeight: '600',
+  },
+  damageFaceValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#EF4444',
+    textTransform: 'capitalize',
+  },
+  emptyDamageFaces: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    gap: 8,
+  },
+  emptyDamageFacesText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
   },
 });

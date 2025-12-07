@@ -310,21 +310,6 @@ export default function CustomerTransactionHistory() {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Search Bar */}
-      <View style={styles.searchSection}>
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color="#6b7280" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search orders..."
-            value={searchTerm}
-            onChangeText={setSearchTerm}
-            placeholderTextColor="#9ca3af"
-            onSubmitEditing={loadHistory}
-          />
-        </View>
-      </View>
-
       {/* Filter Chips - Horizontal Scrollable */}
       <View style={styles.filterSection}>
         <ScrollView 
@@ -435,12 +420,16 @@ export default function CustomerTransactionHistory() {
                     <View style={[
                       styles.statusBadge,
                       isPendingPickup ? styles.statusBadgePending : 
+                      isBorrowing ? styles.statusBadgeActive :
+                      transaction.status === 'completed' ? styles.statusBadgeCompleted :
                       isCancelled ? styles.statusBadgeCancelled :
                       styles.statusBadgeDefault
                     ]}>
                       <Text style={[
                         styles.statusBadgeText,
                         isPendingPickup ? styles.statusBadgeTextPending : 
+                        isBorrowing ? styles.statusBadgeTextActive :
+                        transaction.status === 'completed' ? styles.statusBadgeTextCompleted :
                         isCancelled ? styles.statusBadgeTextCancelled :
                         styles.statusBadgeTextDefault
                       ]}>
@@ -476,7 +465,7 @@ export default function CustomerTransactionHistory() {
                 {/* Cancel Button - Only show for pending transactions (not cancelled) */}
                 {canCancel && !isCancelled && (
                   <TouchableOpacity
-                    style={[styles.cancelButton, isCanceling && styles.cancelButtonDisabled]}
+                    style={[styles.cancelButtonOutlined, isCanceling && styles.cancelButtonDisabled]}
                     onPress={(e) => {
                       e.stopPropagation();
                       handleCancel(transaction._id);
@@ -484,12 +473,9 @@ export default function CustomerTransactionHistory() {
                     disabled={isCanceling}
                   >
                     {isCanceling ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
+                      <ActivityIndicator size="small" color="#EF4444" />
                     ) : (
-                      <>
-                        <Ionicons name="close-circle-outline" size={18} color="#FFFFFF" />
-                        <Text style={styles.cancelButtonText}>Cancel Order</Text>
-                      </>
+                      <Text style={styles.cancelButtonOutlinedText}>Cancel</Text>
                     )}
                   </TouchableOpacity>
                 )}
@@ -601,45 +587,23 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "center",
   },
-  searchSection: {
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-  },
-  searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F3F4F6",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  searchIcon: {
-    marginRight: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: "#111827",
-  },
   filterSection: {
     backgroundColor: "#FFFFFF",
-    paddingVertical: 12,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
   },
   filterChipsContainer: {
     paddingHorizontal: 16,
-    gap: 8,
+    gap: 12,
   },
   filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: "#F3F4F6",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
+    backgroundColor: "transparent",
+    borderWidth: 1.5,
+    borderColor: "#D1D5DB",
   },
   filterChipActive: {
     backgroundColor: "#0F4D3A",
@@ -655,7 +619,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 100,
   },
   loadingContainer: {
     alignItems: "center",
@@ -686,15 +650,15 @@ const styles = StyleSheet.create({
   },
   transactionCard: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     marginBottom: 12,
-    marginHorizontal: 16,
+    marginHorizontal: 0,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
   actionButtonsContainer: {
     flexDirection: 'row',
@@ -720,23 +684,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  cancelButton: {
-    flexDirection: 'row',
+  cancelButtonOutlined: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EF4444',
-    paddingVertical: 10,
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: '#EF4444',
+    paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 8,
-    marginTop: 12,
-    gap: 6,
+    minWidth: 80,
   },
   cancelButtonDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
-  cancelButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+  cancelButtonOutlinedText: {
+    color: '#EF4444',
+    fontSize: 13,
     fontWeight: '600',
   },
   cardContent: {
@@ -744,20 +708,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   productThumbnail: {
-    width: 64,
-    height: 64,
-    borderRadius: 8,
-    marginRight: 12,
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    marginRight: 16,
     backgroundColor: "#F3F4F6",
   },
   productThumbnailPlaceholder: {
-    width: 64,
-    height: 64,
-    borderRadius: 8,
+    width: 72,
+    height: 72,
+    borderRadius: 12,
     backgroundColor: "#F3F4F6",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 12,
+    marginRight: 16,
   },
   productInfo: {
     flex: 1,
@@ -784,59 +748,47 @@ const styles = StyleSheet.create({
   priceText: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#111827",
+    color: "#0F4D3A",
     marginBottom: 8,
   },
   statusBadge: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
   },
   statusBadgePending: {
+    backgroundColor: "#FEF3C7",
+  },
+  statusBadgeActive: {
     backgroundColor: "#DBEAFE",
+  },
+  statusBadgeCompleted: {
+    backgroundColor: "#D1FAE5",
   },
   statusBadgeDefault: {
     backgroundColor: "#F3F4F6",
+  },
+  statusBadgeCancelled: {
+    backgroundColor: "#FEE2E2",
   },
   statusBadgeText: {
     fontSize: 12,
     fontWeight: "600",
   },
   statusBadgeTextPending: {
-    color: "#3B82F6",
+    color: "#D97706",
+  },
+  statusBadgeTextActive: {
+    color: "#1E40AF",
+  },
+  statusBadgeTextCompleted: {
+    color: "#059669",
   },
   statusBadgeTextDefault: {
     color: "#6B7280",
   },
-  statusBadgeCancelled: {
-    backgroundColor: "#FEE2E2",
-  },
   statusBadgeTextCancelled: {
-    color: "#EF4444",
-  },
-  actionButtonsContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-  },
-  extendButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#3B82F6',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    gap: 6,
-  },
-  extendButtonDisabled: {
-    opacity: 0.6,
-  },
-  extendButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
+    color: "#DC2626",
   },
   modalOverlay: {
     flex: 1,

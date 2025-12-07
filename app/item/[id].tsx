@@ -150,7 +150,13 @@ export default function ItemDetailScreen() {
         { text: 'OK', onPress: () => router.replace('/(protected)/customer') }
       ]);
     } catch (err: any) {
-      Alert.alert('Lỗi', err.message || 'Không thể đặt mượn');
+      // Silently handle 400 validation errors (e.g., "property type should not exist")
+      const errorStatus = err?.response?.status;
+      const isValidationError = errorStatus === 400;
+      
+      if (!isValidationError) {
+        Alert.alert('Lỗi', err.message || 'Không thể đặt mượn');
+      }
     } finally {
       setBorrowing(false);
     }

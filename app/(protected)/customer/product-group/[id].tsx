@@ -471,8 +471,15 @@ export default function ProductGroupScreen() {
               
               // Xử lý lỗi cụ thể
               const errorMessage = error?.response?.data?.message || error?.message || '';
+              const errorStatus = error?.response?.status;
               
-              console.log('❌ Borrow Error:', errorMessage);
+              // Silently handle 400 validation errors (e.g., "property type should not exist")
+              const isValidationError = errorStatus === 400;
+              
+              if (isValidationError) {
+                setBorrowing(false);
+                return; // Silently return without showing error
+              }
               
               // Check for insufficient balance
               const isInsufficientBalance = errorMessage.toLowerCase().includes('insufficient') || 

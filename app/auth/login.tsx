@@ -106,16 +106,11 @@ export default function LoginScreen() {
     } catch (error: any) {
       const errorMessage = error?.message || "Login failed. Please check your credentials and try again.";
       
-      // Silently handle "Invalid username or password" errors - don't log or show alert
-      const isInvalidCredentials = errorMessage.toLowerCase().includes('invalid username') || 
-                                   errorMessage.toLowerCase().includes('invalid password') ||
-                                   errorMessage.toLowerCase().includes('invalid username or password');
-      
       // Silently handle "SERVER_UNAVAILABLE" errors - don't log or show alert
       const isServerUnavailable = errorMessage === 'SERVER_UNAVAILABLE' || 
                                   errorMessage.toLowerCase().includes('server unavailable');
       
-      if (isInvalidCredentials || isServerUnavailable) {
+      if (isServerUnavailable) {
         // Silently handle - don't log or show alert
         return;
       }
@@ -142,8 +137,8 @@ export default function LoginScreen() {
           { cancelable: false }
         );
       } else {
-        // Show generic error for other login failures
-        Alert.alert("Lỗi", errorMessage);
+        // Show error alert for all other errors including invalid credentials
+        Alert.alert("Error", errorMessage);
       }
     } finally {
       setIsLoading(false);

@@ -1,11 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
+  Animated,
+  Dimensions,
   Image,
+  ImageBackground,
   Modal,
   ScrollView,
   StatusBar,
@@ -15,11 +18,13 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../../../context/AuthProvider';
 import { borrowTransactionsApi } from '../../../../src/services/api/borrowTransactionService';
 import { businessesApi } from '../../../../src/services/api/businessService';
 import { productsApi } from '../../../../src/services/api/productService';
 import { getCurrentUserProfileWithAutoRefresh } from '../../../../src/services/api/userService';
+import { voucherApi } from '../../../../src/services/api/voucherService';
 import { Business } from '../../../../src/types/business.types';
 import { Product } from '../../../../src/types/product.types';
 
@@ -56,6 +61,64 @@ export default function StoreDetailScreen() {
   const [userBusinessProfile, setUserBusinessProfile] = useState<any>(null);
   const [isStoreOwner, setIsStoreOwner] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [storeVouchers, setStoreVouchers] = useState<any[]>([]);
+  const [loadingVouchers, setLoadingVouchers] = useState(false);
+  const [myVoucherIds, setMyVoucherIds] = useState<Set<string>>(new Set());
+  const [redeemingId, setRedeemingId] = useState<string | null>(null);
+  
+  // New states for redesigned UI
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [scrollY] = useState(new Animated.Value(0));
+  const [cartItems, setCartItems] = useState<any[]>([]); // For future cart functionality
+  const scrollViewRef = useRef<ScrollView>(null);
+  const insets = useSafeAreaInsets();
+  
+  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+  const COVER_IMAGE_HEIGHT = screenHeight * 0.3; // 30% of screen height
+
+  // Get user location
+  useEffect(() => {
+    const getCurrentLocation = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          console.log('📍 Location permission denied');
+          return;
+        }
+
+        const location = await Location.getCurrentPositionAsync({});
+        setUserLocation({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+        console.log('📍 User location obtained:', {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+      } catch (error) {
+        console.error('❌ Error getting location:', error);
+      }
+    };
+
+    getCurrentLocation();
+  }, []);
+
+  // Calculate distance between two coordinates (Haversine formula)
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c;
+    
+    return distance;
+  };
 
   // Fetch store details and products
   useEffect(() => {
@@ -134,6 +197,9 @@ export default function StoreDetailScreen() {
         
         setProductGroups(groupsToUse);
         await loadStoreProducts(storeBusinessId, groupsToUse, true);
+        
+        // Load vouchers for this store
+        await loadStoreVouchers(storeBusinessId);
       } catch (error: any) {
         console.error('❌ Error loading store:', error);
         Alert.alert('Lỗi', error.message || 'Không thể tải thông tin cửa hàng.');
@@ -144,6 +210,201 @@ export default function StoreDetailScreen() {
 
     loadStoreData();
   }, [id]);
+  
+  // Load my vouchers to check which ones are already redeemed
+  const loadMyVouchers = async () => {
+    try {
+      const response = await voucherApi.getMy({ page: 1, limit: 100 });
+      if (response.statusCode === 200 && response.data?.items) {
+        const redeemedIds = new Set<string>();
+        response.data.items.forEach((voucher: any) => {
+          // Get voucher ID from different possible fields
+          const voucherId = voucher._id || voucher.voucherId || voucher.id;
+          if (voucherId) {
+            redeemedIds.add(voucherId);
+          }
+        });
+        setMyVoucherIds(redeemedIds);
+        console.log(`✅ Loaded ${redeemedIds.size} redeemed vouchers`);
+      }
+    } catch (error: any) {
+      console.error('❌ Error loading my vouchers:', error);
+      // Silently fail
+    }
+  };
+
+  // Load vouchers for the store
+  const loadStoreVouchers = async (storeBusinessId: string) => {
+    try {
+      setLoadingVouchers(true);
+      console.log('🎫 ===== Loading vouchers for store =====');
+      console.log('🎫 Store Business ID:', storeBusinessId);
+      
+      // Load my vouchers first to check which ones are already redeemed
+      await loadMyVouchers();
+      
+      // Step 1: Get all active vouchers from API (limit 100)
+      console.log('📡 Step 1: Calling voucherApi với status=active...');
+      const response = await voucherApi.getAll({ 
+        page: 1, 
+        limit: 100,
+        status: 'active'
+      });
+      
+      // ✅ SỬA: Check response.data.data thay vì response.data.items
+      // Response structure: { statusCode: 200, data: [...], total: 6 }
+      if (response.statusCode === 200) {
+        // ✅ SỬA: Lấy từ response.data.data hoặc response.data (tùy structure)
+        // Handle both cases: data is array directly OR data.items is array
+        const responseData = response.data as any;
+        const allVouchers = Array.isArray(responseData) 
+          ? responseData 
+          : (responseData?.data || responseData?.items || []);
+        
+        console.log(`📦 Step 2: Received ${allVouchers.length} vouchers from API`);
+        console.log('📦 Vouchers structure:', JSON.stringify(allVouchers.slice(0, 1), null, 2));
+        
+        if (allVouchers.length === 0) {
+          console.log('⚠️ No vouchers returned from API');
+          setStoreVouchers([]);
+          return;
+        }
+        
+        // Step 2: Filter vouchers by businessId (client-side filtering)
+        console.log('🔍 Step 3: Filtering vouchers by businessId...');
+        const filteredVouchers = allVouchers.filter((voucher: any) => {
+          // ✅ Filter loại bỏ leaderboard vouchers
+          if (voucher.voucherType === 'leaderboard') {
+            console.log(`⏭️ Skipping leaderboard voucher: ${voucher._id}`);
+            return false;
+          }
+          
+          // ✅ Chỉ lấy active vouchers
+          if (voucher.status !== 'active') {
+            return false;
+          }
+          
+          // Extract businessId from voucher
+          // ✅ Thứ tự ưu tiên giống web: businessInfo.businessId trước
+          let voucherBusinessId: string | null = null;
+          
+          // Priority 1: Check businessInfo.businessId (giống web)
+          if (voucher.businessInfo?.businessId) {
+            voucherBusinessId = String(voucher.businessInfo.businessId);
+          }
+          // Priority 2: Check businessId directly (có thể là string)
+          else if (voucher.businessId) {
+            voucherBusinessId = String(voucher.businessId);
+          }
+          // Priority 3: Check businessInfo._id
+          else if (voucher.businessInfo?._id) {
+            voucherBusinessId = String(voucher.businessInfo._id);
+          }
+          // Priority 4: Check business object
+          else if (voucher.business) {
+            if (typeof voucher.business === 'string') {
+              voucherBusinessId = voucher.business;
+            } else if (typeof voucher.business === 'object') {
+              voucherBusinessId = String(voucher.business._id || voucher.business.id || '');
+            }
+          }
+          
+          // Compare with store businessId
+          const matches = voucherBusinessId && String(voucherBusinessId) === String(storeBusinessId);
+          
+          if (matches) {
+            console.log(`✅ Match found - Voucher ID: ${voucher._id}, Business ID: ${voucherBusinessId}, Name: ${voucher.customName}`);
+          } else {
+            console.log(`❌ No match - Voucher ID: ${voucher._id}, Business ID: ${voucherBusinessId}, Store ID: ${storeBusinessId}`);
+          }
+          
+          return matches;
+        });
+        
+        console.log(`✅ Step 4: Filtered ${filteredVouchers.length} vouchers matching businessId ${storeBusinessId}`);
+        
+        // Step 3: Filter only active vouchers (double check)
+        console.log('🔍 Step 5: Final filtering active vouchers only...');
+        const activeVouchers = filteredVouchers.filter((voucher: any) => {
+          // Check status
+          const status = String(voucher.status || '').toLowerCase();
+          const isActiveStatus = status === 'active';
+          
+          // Check isPublished
+          const isPublished = voucher.isPublished !== false;
+          
+          // Check expiration date
+          let isNotExpired = true;
+          if (voucher.endDate) {
+            try {
+              const endDate = new Date(voucher.endDate);
+              const now = new Date();
+              isNotExpired = endDate >= now;
+            } catch (e) {
+              console.warn('⚠️ Invalid endDate format:', voucher.endDate);
+            }
+          }
+          
+          const isActive = isActiveStatus && isPublished && isNotExpired;
+          
+          if (!isActive) {
+            console.log(`⏭️ Skipping inactive voucher: ${voucher._id}`, {
+              status,
+              isPublished,
+              isNotExpired,
+              endDate: voucher.endDate
+            });
+          }
+          
+          return isActive;
+        });
+        
+        console.log(`✅ Step 6: Found ${activeVouchers.length} active vouchers for store ${storeBusinessId}`);
+        console.log('🎫 ===== Finished loading vouchers =====');
+        
+        setStoreVouchers(activeVouchers);
+      } else {
+        console.log('⚠️ Invalid status code:', response.statusCode);
+        console.log('⚠️ Response:', response);
+        setStoreVouchers([]);
+      }
+    } catch (error: any) {
+      console.error('❌ Error loading store vouchers:', error);
+      console.error('❌ Error details:', {
+        message: error?.message,
+        response: error?.response?.data,
+        status: error?.response?.status
+      });
+      setStoreVouchers([]);
+    } finally {
+      setLoadingVouchers(false);
+    }
+  };
+
+  // Handle redeem voucher
+  const handleRedeemVoucher = async (voucherId: string) => {
+    if (redeemingId) return; // Prevent multiple clicks
+
+    try {
+      setRedeemingId(voucherId);
+      const response = await voucherApi.redeem(voucherId);
+      
+      if (response.statusCode === 200) {
+        // Reload vouchers to update status
+        if (store?._id) {
+          await loadStoreVouchers(store._id);
+        }
+        Alert.alert('Success', 'Voucher redeemed successfully!');
+      } else {
+        Alert.alert('Error', response.message || 'Failed to redeem voucher. Please try again.');
+      }
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to redeem voucher. Please try again.';
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setRedeemingId(null);
+    }
+  };
 
   // Load user data and business profile
   useEffect(() => {
@@ -664,7 +925,6 @@ export default function StoreDetailScreen() {
                 businessId,
                 depositValue: backendDepositValue, // Dùng giá trị cố định từ backend
                 durationInDays: realtimeDays,
-                type: "online" as const, // ← CỨ ĐỂ CỨNG THẾ NÀY LÀ CHẮC ĂN NHẤT
               };
 
               console.log('📦 FINAL borrowDto gửi đi:', {
@@ -673,7 +933,6 @@ export default function StoreDetailScreen() {
                 depositValue: backendDepositValue, // Giá trị cố định từ backend
                 depositValueType: typeof backendDepositValue,
                 durationInDays: realtimeDays,
-                type: 'online',
                 uiCalculated: realtimeDeposit, // Giá trị tính toán chỉ để hiển thị UI
                 pricePerDay: realtimePricePerDay,
                 days: realtimeDays
@@ -702,9 +961,15 @@ export default function StoreDetailScreen() {
             } catch (error: any) {
               // Xử lý lỗi cụ thể
               const errorMessage = error?.response?.data?.message || error?.message || '';
+              const errorStatus = error?.response?.status;
               
-              // Comment log để tránh hiển thị error notification trên UI
-              // console.log('❌ Borrow Error:', errorMessage);
+              // Silently handle 400 validation errors (e.g., "property type should not exist")
+              const isValidationError = errorStatus === 400;
+              
+              if (isValidationError) {
+                setBorrowing(false);
+                return; // Silently return without showing error
+              }
               
               // Check for insufficient balance
               const isInsufficientBalance = errorMessage.toLowerCase().includes('insufficient') || 
@@ -889,226 +1154,479 @@ export default function StoreDetailScreen() {
   const closeHour = parseInt(store.closeTime.split(':')[0]);
   const isOpen = currentHour >= openHour && currentHour < closeHour;
 
+  // Calculate distance
+  let distance = 0;
+  if (userLocation && store.location?.coordinates) {
+    const [longitude, latitude] = store.location.coordinates;
+    distance = calculateDistance(
+      userLocation.latitude,
+      userLocation.longitude,
+      latitude,
+      longitude
+    );
+  }
+
+  // Calculate estimated time (rough estimate: 1km = 3 minutes)
+  const estimatedTime = Math.round(distance * 3);
+
+  // Animated header opacity
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, COVER_IMAGE_HEIGHT - 100, COVER_IMAGE_HEIGHT],
+    outputRange: [0, 0, 1],
+    extrapolate: 'clamp',
+  });
+
+  // Cover image opacity (fade out on scroll)
+  const coverImageOpacity = scrollY.interpolate({
+    inputRange: [0, COVER_IMAGE_HEIGHT - 100, COVER_IMAGE_HEIGHT],
+    outputRange: [1, 0.3, 0],
+    extrapolate: 'clamp',
+  });
+
+  // Cover image translate (parallax effect)
+  const coverImageTranslate = scrollY.interpolate({
+    inputRange: [0, COVER_IMAGE_HEIGHT],
+    outputRange: [0, -COVER_IMAGE_HEIGHT * 0.3],
+    extrapolate: 'clamp',
+  });
+
+  // Cart total calculation
+  const cartTotal = cartItems.reduce((sum, item) => {
+    const depositValue = (item.product?.productSizeId as any)?.depositValue || 0;
+    return sum + depositValue;
+  }, 0);
+
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0F4D3A" />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButtonHeader}
-          onPress={() => router.back()}
+      {/* Cover Image with Parallax */}
+      <Animated.View
+        style={[
+          styles.coverImageContainer,
+          {
+            opacity: coverImageOpacity,
+            transform: [{ translateY: coverImageTranslate }],
+          },
+        ]}
+      >
+        <ImageBackground
+          source={
+            store.businessLogoUrl
+              ? { uri: store.businessLogoUrl }
+              : require('../../../../assets/images/logo.jpg')
+          }
+          style={styles.coverImage}
+          resizeMode="cover"
         >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+          {/* Overlay gradient */}
+          <View style={styles.coverOverlay} />
+        </ImageBackground>
+      </Animated.View>
+
+      {/* Header buttons overlay - Outside ImageBackground, at top level */}
+      <View style={styles.headerOverlay} pointerEvents="box-none">
+        <TouchableOpacity
+          style={styles.headerBackButton}
+          onPress={() => {
+            console.log('🔙 Back button pressed - navigating to stores');
+            router.push('/(protected)/customer/stores');
+          }}
+          activeOpacity={0.7}
+          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+        >
+          <View style={styles.headerButtonBackground}>
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </View>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Store Details</Text>
-        <View style={styles.placeholder} />
       </View>
 
-      {/* Main FlatList with ListHeaderComponent for infinite scroll */}
-      <FlatList
-        data={displayedProducts}
-        numColumns={2}
-        keyExtractor={(item) => item._id}
-        columnWrapperStyle={styles.productRow}
-        contentContainerStyle={styles.productsListContent}
+      {/* Animated Header (appears on scroll) */}
+      <Animated.View
+        style={[
+          styles.animatedHeader,
+          {
+            opacity: headerOpacity,
+          },
+        ]}
+        pointerEvents="box-none"
+      >
+        <TouchableOpacity
+          style={styles.animatedHeaderBackButton}
+          onPress={() => {
+            console.log('🔙 Animated header back button pressed - navigating to stores');
+            router.push('/(protected)/customer/stores');
+          }}
+          activeOpacity={0.7}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.animatedHeaderTitle}>{store.businessName}</Text>
+        <View style={styles.animatedHeaderPlaceholder} />
+      </Animated.View>
+
+      {/* Main ScrollView with redesigned layout */}
+      <Animated.ScrollView
+        ref={scrollViewRef}
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            // Động tính padding bottom = safeArea dưới + tab bar + cart bar (nếu có)
+            paddingBottom: insets.bottom + 80 + (cartItems.length > 0 ? 80 : 20),
+          },
+        ]}
         showsVerticalScrollIndicator={false}
-        onEndReached={loadMoreProducts}
-        onEndReachedThreshold={0.5}
-        ListHeaderComponent={
-          <View>
-        {/* Store Info Section */}
-        <View style={styles.storeInfoSection}>
-          {/* Store Logo & Name */}
-          <View style={styles.storeHeader}>
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+        scrollEventThrottle={16}
+        bounces={true}
+      >
+        {/* Store Info Card (Floating Overlay) */}
+        <View style={styles.storeInfoCard}>
+          {/* Store Header with Logo */}
+          <View style={styles.storeInfoHeader}>
             {store.businessLogoUrl ? (
-              <Image 
-                source={{ uri: store.businessLogoUrl }} 
-                style={styles.storeLogo}
+              <Image
+                source={{ uri: store.businessLogoUrl }}
+                style={styles.storeInfoLogo}
                 resizeMode="cover"
               />
             ) : (
-              <View style={styles.storeLogoPlaceholder}>
-                <Ionicons name="storefront" size={48} color="#0F4D3A" />
+              <View style={styles.storeInfoLogoPlaceholder}>
+                <Ionicons name="storefront" size={32} color="#0F4D3A" />
               </View>
             )}
-            <View style={styles.storeHeaderInfo}>
-              <Text style={styles.storeName}>{store.businessName}</Text>
-              <Text style={styles.storeType}>{store.businessType}</Text>
-              <View style={styles.storeMeta}>
-                <View style={styles.ratingContainer}>
-                  <Ionicons name="star" size={16} color="#F59E0B" />
-                  <Text style={styles.ratingText}>4.5</Text>
-                  <Text style={styles.ratingCount}>(120)</Text>
+            <View style={styles.storeInfoHeaderText}>
+              <Text style={styles.storeInfoName}>{store.businessName}</Text>
+              <View style={styles.storeInfoMeta}>
+                <View style={styles.storeInfoMetaItem}>
+                  <Ionicons name="star" size={14} color="#F59E0B" />
+                  <Text style={styles.storeInfoMetaText}>
+                    {store.averageRating ? store.averageRating.toFixed(1) : '0.0'}
+                  </Text>
                 </View>
-                <View style={styles.productsCountBadge}>
-                  <Ionicons name="cube-outline" size={14} color="#0F4D3A" />
-                  <Text style={styles.productsCountText}>{productCount} products</Text>
-                </View>
+                {estimatedTime > 0 && (
+                  <>
+                    <Text style={styles.storeInfoMetaSeparator}>•</Text>
+                    <View style={styles.storeInfoMetaItem}>
+                      <Ionicons name="time-outline" size={14} color="#6B7280" />
+                      <Text style={styles.storeInfoMetaText}>{estimatedTime} min</Text>
+                    </View>
+                  </>
+                )}
+                {distance > 0 && (
+                  <>
+                    <Text style={styles.storeInfoMetaSeparator}>•</Text>
+                    <View style={styles.storeInfoMetaItem}>
+                      <Ionicons name="location-outline" size={14} color="#6B7280" />
+                      <Text style={styles.storeInfoMetaText}>
+                        {distance < 1 ? `${Math.round(distance * 1000)}m` : `${distance.toFixed(1)}km`}
+                      </Text>
+                    </View>
+                  </>
+                )}
               </View>
             </View>
           </View>
 
-          {/* Store Details */}
-          <View style={styles.storeDetails}>
-            <View style={styles.detailRow}>
-              <Ionicons name="location" size={20} color="#6B7280" />
-              <Text style={styles.detailText}>{store.businessAddress}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Ionicons name="call" size={20} color="#6B7280" />
-              <Text style={styles.detailText}>{store.businessPhone}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Ionicons name="time" size={20} color="#6B7280" />
-              <Text style={styles.detailText}>
-                {store.openTime} - {store.closeTime}
-                    <Text style={[styles.storeStatusText, { color: isOpen ? '#10B981' : '#EF4444' }]}>
-                  {' '}({isOpen ? 'Open' : 'Closed'})
-                </Text>
-              </Text>
-            </View>
+          {/* Store Address (Collapsible) */}
+          <View style={styles.storeInfoAddress}>
+            <Ionicons name="location-outline" size={16} color="#6B7280" />
+            <Text style={styles.storeInfoAddressText} numberOfLines={2}>
+              {store.businessAddress}
+            </Text>
           </View>
         </View>
 
-        {/* Product Groups Section - Horizontal Category Bar */}
-        {/* Hiển thị danh sách categories từ productGroups và filter sản phẩm theo productGroupId */}
-        {productGroups.length > 0 && (
-          <View style={styles.productGroupsSection}>
-            <Text style={styles.sectionTitle}>Categories</Text>
-            <FlatList
-              data={[{ _id: 'all', name: 'All' }, ...productGroups]}
-              horizontal
+        {/* Vouchers Section */}
+        <View style={styles.vouchersSection}>
+          <Text style={styles.sectionTitle}>Available Vouchers</Text>
+          {loadingVouchers ? (
+            <View style={styles.vouchersLoadingContainer}>
+              <ActivityIndicator size="small" color="#0F4D3A" />
+              <Text style={styles.vouchersLoadingText}>Loading vouchers...</Text>
+            </View>
+          ) : storeVouchers.length > 0 ? (
+            <ScrollView 
+              horizontal 
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categoryListContent}
-              keyExtractor={(item) => item._id}
-              renderItem={({ item }) => {
-                const isSelected = selectedCategory === item._id || (item._id === 'all' && selectedCategory === null);
-                const iconName = item._id === 'all' ? 'grid' : getCategoryIcon(item.name);
+              contentContainerStyle={styles.vouchersList}
+            >
+              {storeVouchers.map((voucher, index) => {
+                const discountPercent = voucher.discountPercent || 0;
+                const rewardPointCost = voucher.rewardPointCost || 0;
+                const endDate = voucher.endDate ? new Date(voucher.endDate) : null;
+                const isExpired = endDate ? endDate < new Date() : false;
+                const voucherId = voucher._id || voucher.id;
+                const isRedeemed = myVoucherIds.has(voucherId);
+                const isRedeeming = redeemingId === voucherId;
+                const canRedeem = !isRedeemed && !isExpired && voucher.status === 'active' && !isRedeeming;
+                
+                // Gradient colors for vouchers (same as rewards screen)
+                const GRADIENT_COLORS = [
+                  ['#FF6B35', '#F7931E'],
+                  ['#0F4D3A', '#1F2937'],
+                  ['#DC2626', '#7C2D12'],
+                  ['#059669', '#0D9488'],
+                  ['#7C3AED', '#A855F7'],
+                  ['#EA580C', '#F97316'],
+                ];
+                const gradient = GRADIENT_COLORS[index % GRADIENT_COLORS.length];
+                const baseCode = voucher.baseCode || voucher.code || 'N/A';
                 
                 return (
                   <TouchableOpacity
+                    key={voucherId}
+                    style={[styles.voucherCardNew, isRedeemed && styles.usedVoucherCard]}
+                    onPress={() => {
+                      router.push({
+                        pathname: '/(protected)/customer/voucher-detail/[id]',
+                        params: { id: voucherId }
+                      });
+                    }}
+                    disabled={isRedeeming}
+                  >
+                    <View style={[
+                      styles.voucherGradient,
+                      { backgroundColor: gradient[0] },
+                      isRedeemed && styles.usedVoucherGradient
+                    ]}>
+                      {/* Status Badge */}
+                      {(isRedeemed || isExpired) && (
+                        <View style={[styles.voucherStatusBadgeNew, { 
+                          backgroundColor: (isExpired ? '#EF4444' : '#10B981') + '20' 
+                        }]}>
+                          <View style={[styles.voucherStatusDot, { 
+                            backgroundColor: isExpired ? '#EF4444' : '#10B981' 
+                          }]} />
+                          <Text style={[styles.voucherStatusTextNew, { 
+                            color: isExpired ? '#EF4444' : '#10B981' 
+                          }]}>
+                            {isRedeemed ? 'Redeemed' : 'Expired'}
+                          </Text>
+                        </View>
+                      )}
+                      
+                      {/* Watermark Graphics */}
+                      <View style={styles.watermarkContainer}>
+                        <View style={styles.watermark}>
+                          <Text style={styles.watermarkText}>%</Text>
+                          <View style={styles.watermarkDots}>
+                            <View style={styles.watermarkDot} />
+                            <View style={styles.watermarkDot} />
+                          </View>
+                        </View>
+                      </View>
+                      
+                      <View style={styles.voucherContent}>
+                        <View style={styles.voucherHeader}>
+                          <Text style={[styles.voucherTitle, isRedeemed && styles.usedVoucherText]}>
+                            Up to
+                          </Text>
+                        </View>
+                        <Text style={[styles.voucherDiscount, isRedeemed && styles.usedVoucherText]}>
+                          {discountPercent}% OFF
+                        </Text>
+                        <Text style={[styles.voucherDescription, isRedeemed && styles.usedVoucherText]}>
+                          {voucher.customDescription || voucher.customName || 'Special discount voucher'}
+                        </Text>
+                        <View style={styles.voucherCodeContainer}>
+                          <Text style={styles.voucherCode}>{baseCode}</Text>
+                        </View>
+                        <View style={styles.voucherFooter}>
+                          <Text style={[styles.validUntil, isRedeemed && styles.usedVoucherText]}>
+                            HSD: {endDate ? endDate.toLocaleDateString('vi-VN') : 'N/A'}
+                          </Text>
+                          {isRedeemed ? (
+                            <Text style={styles.ownedLabel}>Đã nhận</Text>
+                          ) : canRedeem ? (
+                            <TouchableOpacity
+                              style={[styles.useButton, isRedeeming && styles.useButtonDisabled]}
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                handleRedeemVoucher(voucherId);
+                              }}
+                              disabled={isRedeeming}
+                            >
+                              {isRedeeming ? (
+                                <ActivityIndicator size="small" color="#0F4D3A" />
+                              ) : (
+                                <Text style={styles.useButtonText}>Nhận ngay</Text>
+                              )}
+                            </TouchableOpacity>
+                          ) : (
+                            <Text style={styles.ownedLabel}>Đã nhận</Text>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          ) : (
+            <View style={styles.vouchersEmptyContainer}>
+              <Ionicons name="ticket-outline" size={32} color="#9CA3AF" />
+              <Text style={styles.vouchersEmptyText}>No vouchers available</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Menu Navigation - Pill-shaped Tabs */}
+        {productGroups.length > 0 && (
+          <View style={styles.menuNavigationContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.menuNavigationContent}
+            >
+              {[{ _id: 'all', name: 'All' }, ...productGroups].map((item) => {
+                const isSelected = selectedCategory === item._id || (item._id === 'all' && selectedCategory === null);
+                
+                return (
+                  <TouchableOpacity
+                    key={item._id}
                     style={[
-                      styles.categoryItem,
-                      isSelected && styles.categoryItemActive
+                      styles.menuTab,
+                      isSelected && styles.menuTabActive
                     ]}
                     onPress={() => {
                       if (item._id === 'all') {
-                        // Hiển thị tất cả sản phẩm
                         setSelectedCategory(null);
                       } else {
-                        // Lưu _id của product group để filter sản phẩm
                         setSelectedCategory(item._id);
                       }
                     }}
                   >
-                    <View style={[
-                      styles.categoryIconBox,
-                      isSelected && styles.categoryIconBoxActive
-                    ]}>
-                      <Ionicons 
-                        name={iconName} 
-                        size={24} 
-                        color={isSelected ? '#006241' : '#B0B0B0'} 
-                      />
-                    </View>
                     <Text style={[
-                      styles.categoryName,
-                      isSelected && styles.categoryNameActive
-                    ]} numberOfLines={1}>
+                      styles.menuTabText,
+                      isSelected && styles.menuTabTextActive
+                    ]}>
                       {item.name}
                     </Text>
                   </TouchableOpacity>
                 );
-              }}
-            />
+              })}
+            </ScrollView>
           </View>
         )}
 
-            {/* Products Section Header */}
-            <View style={styles.productsSectionHeader}>
-              <Text style={styles.sectionTitle}>Products ({filteredProducts.length})</Text>
+        {/* Products List - Vertical List */}
+        <View style={styles.productsListContainer}>
+          {productsLoading && filteredProducts.length === 0 ? (
+            <View style={styles.loadingProductsContainer}>
+              <ActivityIndicator size="large" color="#0F4D3A" />
+              <Text style={styles.loadingProductsText}>Loading products...</Text>
             </View>
+          ) : filteredProducts.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="cube-outline" size={64} color="#D1D5DB" />
+              <Text style={styles.emptyStateText}>No products found</Text>
+            </View>
+          ) : (
+            displayedProducts.map((product) => {
+              const groupName = (product.productGroupId as any)?.name || 'Product';
+              const groupDescription = (product.productGroupId as any)?.description || '';
+              const depositValue = (product.productSizeId as any)?.depositValue || 0;
+              const imageUrl = (product.productGroupId as any)?.imageUrl || product.images?.[0];
 
-            {/* Loading State */}
-            {productsLoading && filteredProducts.length === 0 && (
-              <View style={styles.loadingProductsContainer}>
-                <ActivityIndicator size="large" color="#006241" />
-                <Text style={styles.loadingProductsText}>Loading products...</Text>
-              </View>
-            )}
+              return (
+                <TouchableOpacity
+                  key={product._id}
+                  style={styles.productCardNew}
+                  onPress={() => handleProductPress(product)}
+                  activeOpacity={0.7}
+                >
+                  {/* Product Image - Left */}
+                  <View style={styles.productCardImageContainer}>
+                    {imageUrl && imageUrl.trim() !== '' ? (
+                      <Image
+                        source={{ uri: imageUrl }}
+                        style={styles.productCardImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={styles.productCardImagePlaceholder}>
+                        <Ionicons name="cube-outline" size={32} color="#9CA3AF" />
+                      </View>
+                    )}
+                  </View>
 
-            {/* Empty State */}
-            {!productsLoading && filteredProducts.length === 0 && (
-              <View style={styles.emptyState}>
-                <Ionicons name="cube-outline" size={64} color="#D1D5DB" />
-                <Text style={styles.emptyStateText}>No products found</Text>
-              </View>
-            )}
-          </View>
-        }
-        ListFooterComponent={
-          loadingMore ? (
+                  {/* Product Info - Middle */}
+                  <View style={styles.productCardInfo}>
+                    <Text style={styles.productCardName} numberOfLines={1}>
+                      {groupName}
+                    </Text>
+                    <Text style={styles.productCardDescription} numberOfLines={2}>
+                      {groupDescription || 'No description available'}
+                    </Text>
+                    <Text style={styles.productCardPrice}>
+                      {depositValue > 0 ? `${depositValue.toLocaleString('vi-VN')} VNĐ` : 'Free'}
+                    </Text>
+                  </View>
+
+                  {/* Add Button - Right */}
+                  <TouchableOpacity
+                    style={styles.productCardAddButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleProductPress(product);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="add" size={24} color="#0F4D3A" />
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              );
+            })
+          )}
+
+          {/* Load More Button */}
+          {hasMoreProducts && !loadingMore && displayedProducts.length < filteredProducts.length && (
+            <TouchableOpacity
+              style={styles.loadMoreButton}
+              onPress={loadMoreProducts}
+            >
+              <Text style={styles.loadMoreButtonText}>Load More Products</Text>
+            </TouchableOpacity>
+          )}
+
+          {loadingMore && (
             <View style={styles.loadingMoreContainer}>
-              <ActivityIndicator size="small" color="#006241" />
+              <ActivityIndicator size="small" color="#0F4D3A" />
               <Text style={styles.loadingMoreText}>Loading more...</Text>
             </View>
-          ) : null
-        }
-        renderItem={({ item: product }) => {
-          const groupName = (product.productGroupId as any)?.name || 'Product';
-          const depositValue = (product.productSizeId as any)?.depositValue || 0;
-          const imageUrl = (product.productGroupId as any)?.imageUrl || product.images?.[0];
+          )}
+        </View>
+      </Animated.ScrollView>
 
-          return (
-            <TouchableOpacity
-              style={styles.productCard}
-              onPress={() => handleProductPress(product)}
-              activeOpacity={0.7}
-            >
-              {/* Product Image - Top 60-65% of card */}
-              <View style={styles.productImageContainer}>
-                {imageUrl && imageUrl.trim() !== '' ? (
-                  <Image 
-                    source={{ uri: imageUrl }} 
-                    style={styles.productImage}
-                    resizeMode="contain"
-                    onError={() => {
-                      // Image load error - will show placeholder
-                    }}
-                  />
-                ) : (
-                  <View style={styles.productImagePlaceholder}>
-                    <Ionicons name="cube-outline" size={32} color="#9CA3AF" />
-                  </View>
-                )}
-              </View>
-              
-              {/* Product Info - Bottom on white background */}
-              <View style={styles.productInfo}>
-                <Text style={styles.productName} numberOfLines={2}>
-                  {groupName}
-                </Text>
-                <Text style={styles.productPrice}>
-                  {depositValue > 0 ? `${depositValue.toLocaleString('vi-VN')} VNĐ` : 'Free'}
-                </Text>
-              </View>
-
-              {/* Add Button (+) - Bottom right corner */}
-              <TouchableOpacity
-                style={styles.addButton}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  handleProductPress(product);
-                }}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="add" size={20} color="#FFFFFF" />
-              </TouchableOpacity>
-            </TouchableOpacity>
-          );
-        }}
-      />
+      {/* Bottom Floating Bar (Cart) */}
+      {cartItems.length > 0 && (
+        <View style={styles.bottomFloatingBar}>
+          <View style={styles.cartInfo}>
+            <Text style={styles.cartItemsText}>
+              {cartItems.length} {cartItems.length === 1 ? 'item' : 'items'}
+            </Text>
+            <Text style={styles.cartTotalText}>
+              {cartTotal.toLocaleString('vi-VN')} VNĐ
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.viewCartButton}
+            onPress={() => {
+              // TODO: Navigate to cart screen
+              Alert.alert('Cart', 'Cart functionality coming soon');
+            }}
+          >
+            <Text style={styles.viewCartButtonText}>View Cart</Text>
+            <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Product Modal - Copy từ customer-dashboard.tsx */}
       {showProductModal && selectedProduct && (
@@ -1124,7 +1642,7 @@ export default function StoreDetailScreen() {
               <TouchableOpacity onPress={() => setShowProductModal(false)}>
                 <Ionicons name="close" size={24} color="#FFFFFF" />
               </TouchableOpacity>
-              <Text style={styles.productModalTitle}>Thông tin sản phẩm</Text>
+              <Text style={styles.productModalTitle}>Product Information</Text>
               <View style={{ width: 24 }} />
             </View>
 
@@ -1142,7 +1660,7 @@ export default function StoreDetailScreen() {
               <View style={styles.productInfoCard}>
                 <Text style={styles.productModalName}>{selectedProduct.name}</Text>
                 {selectedProduct.size && (
-                  <Text style={styles.productModalSize}>Kích thước: {selectedProduct.size}</Text>
+                  <Text style={styles.productModalSize}>Size: {selectedProduct.size}</Text>
                 )}
                 
                 {(() => {
@@ -1165,12 +1683,12 @@ export default function StoreDetailScreen() {
                     <View style={styles.depositInfo}>
                       <Ionicons name="cash-outline" size={20} color="#059669" />
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.depositLabel}>Tiền cọc:</Text>
+                        <Text style={styles.depositLabel}>Deposit:</Text>
                         <Text style={styles.depositValue}>
-                          {depositValue.toLocaleString('vi-VN')} VNĐ
+                          {depositValue.toLocaleString('vi-VN')} VND
                         </Text>
                         <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
-                          ({pricePerDay.toLocaleString('vi-VN')} VNĐ/ngày × {days} ngày)
+                          ({pricePerDay.toLocaleString('vi-VN')} VND/day × {days} days)
                         </Text>
                       </View>
                     </View>
@@ -1181,7 +1699,7 @@ export default function StoreDetailScreen() {
                 <View style={styles.balanceInfo}>
                   <Ionicons name="wallet-outline" size={20} color="#3B82F6" />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.balanceLabel}>Số dư ví hiện tại:</Text>
+                    <Text style={styles.balanceLabel}>Current Wallet Balance:</Text>
                     {(() => {
                       // Handle both balance and availableBalance fields
                       const walletBalance = (userData as any)?.wallet?.availableBalance ?? 
@@ -1208,11 +1726,11 @@ export default function StoreDetailScreen() {
                             styles.balanceValue,
                             isInsufficient && styles.balanceInsufficient
                           ]}>
-                            {walletBalance.toLocaleString('vi-VN')} VNĐ
+                            {walletBalance.toLocaleString('vi-VN')} VND
                           </Text>
                           {isInsufficient && (
                             <Text style={styles.insufficientWarning}>
-                              ⚠️ Số dư không đủ. Vui lòng nạp thêm tiền.
+                              ⚠️ Insufficient balance. Please top up your wallet.
                             </Text>
                           )}
                         </>
@@ -1231,28 +1749,184 @@ export default function StoreDetailScreen() {
                         styles.statusText,
                         selectedProduct.status !== 'available' && { color: '#DC2626' }
                       ]}>
-                        {selectedProduct.status === 'available' ? 'Có sẵn' : 'Không có sẵn'}
+                        {selectedProduct.status === 'available' ? 'Available' : 'Unavailable'}
                       </Text>
                     </View>
                   </View>
                 )}
 
+                {/* Product Description */}
                 {selectedProduct.product?.productGroupId?.description && (
-                  <Text style={styles.productDescription}>
-                    {selectedProduct.product.productGroupId.description}
-                  </Text>
+                  <View style={styles.productDescriptionSection}>
+                    <Text style={styles.sectionTitle}>Description</Text>
+                    <Text style={styles.productDescription}>
+                      {selectedProduct.product.productGroupId.description}
+                    </Text>
+                  </View>
                 )}
 
-                {selectedProduct.data && (
-                  <View style={styles.serialInfo}>
-                    <Text style={styles.serialLabel}>Serial Number:</Text>
-                    <Text style={styles.serialValue}>{selectedProduct.data}</Text>
+                {/* Product Details */}
+                <View style={styles.productDetailsSection}>
+                  <Text style={styles.sectionTitle}>Product Details</Text>
+                  
+                  {selectedProduct.data && (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="barcode-outline" size={18} color="#6B7280" />
+                      <Text style={styles.detailLabel}>Serial Number:</Text>
+                      <Text style={styles.detailValue}>{selectedProduct.data}</Text>
+                    </View>
+                  )}
+
+                  {selectedProduct.product?.productSizeId?.description && (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="resize-outline" size={18} color="#6B7280" />
+                      <Text style={styles.detailLabel}>Size Description:</Text>
+                      <Text style={styles.detailValue}>
+                        {selectedProduct.product.productSizeId.description}
+                      </Text>
+                    </View>
+                  )}
+
+                  {selectedProduct.product?.condition && (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="shield-checkmark-outline" size={18} color="#6B7280" />
+                      <Text style={styles.detailLabel}>Condition:</Text>
+                      <Text style={styles.detailValue}>
+                        {selectedProduct.product.condition}
+                      </Text>
+                    </View>
+                  )}
+
+                  {selectedProduct.product?.reuseCount !== undefined && (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="repeat-outline" size={18} color="#6B7280" />
+                      <Text style={styles.detailLabel}>Reuse Count:</Text>
+                      <Text style={styles.detailValue}>
+                        {selectedProduct.product.reuseCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Last Condition Images */}
+                {selectedProduct.product?.lastConditionImages && (
+                  <View style={styles.conditionImagesSection}>
+                    <Text style={styles.sectionTitle}>Last Condition Images</Text>
+                    <View style={styles.imageGrid}>
+                      {selectedProduct.product.lastConditionImages.frontImage && (
+                        <View style={styles.imageItem}>
+                          <Text style={styles.imageLabel}>Front</Text>
+                          <Image 
+                            source={{ uri: selectedProduct.product.lastConditionImages.frontImage }} 
+                            style={styles.conditionImage} 
+                            resizeMode="cover"
+                          />
+                        </View>
+                      )}
+                      {selectedProduct.product.lastConditionImages.backImage && (
+                        <View style={styles.imageItem}>
+                          <Text style={styles.imageLabel}>Back</Text>
+                          <Image 
+                            source={{ uri: selectedProduct.product.lastConditionImages.backImage }} 
+                            style={styles.conditionImage} 
+                            resizeMode="cover"
+                          />
+                        </View>
+                      )}
+                      {selectedProduct.product.lastConditionImages.leftImage && (
+                        <View style={styles.imageItem}>
+                          <Text style={styles.imageLabel}>Left</Text>
+                          <Image 
+                            source={{ uri: selectedProduct.product.lastConditionImages.leftImage }} 
+                            style={styles.conditionImage} 
+                            resizeMode="cover"
+                          />
+                        </View>
+                      )}
+                      {selectedProduct.product.lastConditionImages.rightImage && (
+                        <View style={styles.imageItem}>
+                          <Text style={styles.imageLabel}>Right</Text>
+                          <Image 
+                            source={{ uri: selectedProduct.product.lastConditionImages.rightImage }} 
+                            style={styles.conditionImage} 
+                            resizeMode="cover"
+                          />
+                        </View>
+                      )}
+                      {selectedProduct.product.lastConditionImages.topImage && (
+                        <View style={styles.imageItem}>
+                          <Text style={styles.imageLabel}>Top</Text>
+                          <Image 
+                            source={{ uri: selectedProduct.product.lastConditionImages.topImage }} 
+                            style={styles.conditionImage} 
+                            resizeMode="cover"
+                          />
+                        </View>
+                      )}
+                      {selectedProduct.product.lastConditionImages.bottomImage && (
+                        <View style={styles.imageItem}>
+                          <Text style={styles.imageLabel}>Bottom</Text>
+                          <Image 
+                            source={{ uri: selectedProduct.product.lastConditionImages.bottomImage }} 
+                            style={styles.conditionImage} 
+                            resizeMode="cover"
+                          />
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                {/* Last Damage Assessment */}
+                {selectedProduct.product?.lastDamageFaces && (
+                  <View style={styles.damageFacesSection}>
+                    <Text style={styles.sectionTitle}>Last Damage Assessment</Text>
+                    {(() => {
+                      // Check if lastDamageFaces exists and has items
+                      if (!selectedProduct.product.lastDamageFaces || selectedProduct.product.lastDamageFaces.length === 0) {
+                        return (
+                          <View style={styles.emptyDamageFaces}>
+                            <Ionicons name="information-circle-outline" size={20} color="#9CA3AF" />
+                            <Text style={styles.emptyDamageFacesText}>This product has never been borrowed</Text>
+                          </View>
+                        );
+                      }
+                      
+                      // Check if all faces have "none" issue
+                      const hasRealDamage = selectedProduct.product.lastDamageFaces.some((face: any) => 
+                        face.issue && face.issue.toLowerCase() !== 'none'
+                      );
+                      
+                      if (!hasRealDamage) {
+                        return (
+                          <View style={styles.emptyDamageFaces}>
+                            <Ionicons name="information-circle-outline" size={20} color="#9CA3AF" />
+                            <Text style={styles.emptyDamageFacesText}>This product has never been borrowed</Text>
+                          </View>
+                        );
+                      }
+                      
+                      // Show damage faces if there's real damage
+                      return selectedProduct.product.lastDamageFaces
+                        .filter((face: any) => face.issue && face.issue.toLowerCase() !== 'none')
+                        .map((face: any, index: number) => (
+                          <View key={index} style={styles.damageFaceItem}>
+                            <View style={styles.damageFaceRow}>
+                              <Ionicons name="warning" size={18} color="#EF4444" />
+                              <Text style={styles.damageFaceLabel}>
+                                {face.face.charAt(0).toUpperCase() + face.face.slice(1)}:
+                              </Text>
+                              <Text style={styles.damageFaceValue}>{face.issue}</Text>
+                            </View>
+                          </View>
+                        ));
+                    })()}
                   </View>
                 )}
 
                 {/* Duration Input */}
                 <View style={styles.durationInputContainer}>
-                  <Text style={styles.durationLabel}>Thời gian mượn (ngày) *</Text>
+                  <Text style={styles.durationLabel}>Borrow Duration (days) *</Text>
                   <TextInput
                     style={styles.durationInput}
                     value={durationInDays}
@@ -1274,7 +1948,7 @@ export default function StoreDetailScreen() {
                         setDurationInDays('1');
                       }
                     }}
-                    placeholder="Nhập số ngày mượn"
+                    placeholder="Enter number of days"
                     keyboardType="numeric"
                     placeholderTextColor="#9CA3AF"
                   />
@@ -1293,7 +1967,7 @@ export default function StoreDetailScreen() {
                   ) : (
                     <>
                       <Ionicons name="cube-outline" size={20} color="#FFFFFF" />
-                      <Text style={styles.borrowButtonText}>Mượn sản phẩm</Text>
+                      <Text style={styles.borrowButtonText}>Borrow Product</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -1304,7 +1978,7 @@ export default function StoreDetailScreen() {
                 <View style={styles.ownerMessage}>
                   <Ionicons name="information-circle-outline" size={24} color="#3B82F6" />
                   <Text style={styles.ownerText}>
-                    Bạn không thể mượn sản phẩm của chính cửa hàng mình
+                    You cannot borrow products from your own store
                   </Text>
                 </View>
               )}
@@ -1313,7 +1987,7 @@ export default function StoreDetailScreen() {
                 <View style={styles.unavailableMessage}>
                   <Ionicons name="alert-circle-outline" size={24} color="#F59E0B" />
                   <Text style={styles.unavailableText}>
-                    Sản phẩm này hiện không có sẵn để mượn
+                    This product is currently unavailable for borrowing
                   </Text>
                 </View>
               )}
@@ -1352,6 +2026,7 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+    zIndex: 2,
   },
   loadingContainer: {
     flex: 1,
@@ -1923,6 +2598,679 @@ const styles = StyleSheet.create({
     color: '#DC2626',
     marginTop: 4,
     fontWeight: '600',
+  },
+  productDescriptionSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  productDetailsSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  vouchersSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  vouchersList: {
+    paddingRight: 16,
+    gap: 12,
+  },
+  // Old voucher styles (kept for backward compatibility)
+  voucherCard: {
+    width: 280,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+    marginRight: 12,
+  },
+  voucherCardContent: {
+    padding: 16,
+  },
+  voucherHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  // Old voucher styles (kept for backward compatibility)
+  voucherStatusBadge: {
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  voucherStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#059669',
+  },
+  voucherName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 6,
+  },
+  voucherPoints: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  voucherPointsText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#F59E0B',
+  },
+  voucherExpiry: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 4,
+  },
+  // New voucher styles (matching rewards screen)
+  voucherCardNew: {
+    width: 240,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    marginRight: 12,
+  },
+  voucherGradient: {
+    padding: 16,
+    borderRadius: 16,
+    minHeight: 160,
+  },
+  voucherContent: {
+    flex: 1,
+  },
+  voucherTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  voucherDiscount: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  voucherDescription: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginBottom: 10,
+    lineHeight: 16,
+  },
+  voucherFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  validUntil: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  useButton: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  useButtonText: {
+    color: '#0F4D3A',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  useButtonDisabled: {
+    opacity: 0.6,
+  },
+  usedVoucherCard: {
+    opacity: 0.6,
+  },
+  usedVoucherGradient: {
+    backgroundColor: '#9CA3AF',
+  },
+  usedVoucherText: {
+    color: '#6B7280',
+  },
+  ownedLabel: {
+    color: '#10B981',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  voucherStatusBadgeNew: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    zIndex: 10,
+    gap: 4,
+  },
+  voucherStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  voucherStatusTextNew: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  watermarkContainer: {
+    position: 'absolute',
+    right: 20,
+    top: 20,
+    opacity: 0.3,
+  },
+  watermark: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  watermarkText: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: 'rgba(255, 255, 255, 0.4)',
+  },
+  watermarkDots: {
+    flexDirection: 'row',
+    marginTop: 4,
+  },
+  watermarkDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    marginHorizontal: 2,
+  },
+  voucherCodeContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginVertical: 8,
+  },
+  voucherCode: {
+    color: '#1F2937',
+    fontSize: 14,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+  },
+  vouchersLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    gap: 8,
+  },
+  vouchersLoadingText: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  vouchersEmptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+  },
+  vouchersEmptyText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginTop: 8,
+  },
+  redeemButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0F4D3A',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 12,
+    gap: 6,
+  },
+  redeemButtonDisabled: {
+    opacity: 0.6,
+  },
+  redeemButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  redeemedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#D1FAE5',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    gap: 6,
+  },
+  redeemedBadgeText: {
+    color: '#059669',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  voucherStatusBadgeRedeemed: {
+    backgroundColor: '#D1FAE5',
+  },
+  voucherStatusTextRedeemed: {
+    color: '#059669',
+  },
+  detailLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginRight: 8,
+  },
+  detailValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+    flex: 1,
+    textTransform: 'capitalize',
+  },
+  conditionImagesSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  imageGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 12,
+  },
+  imageItem: {
+    width: '30%',
+    alignItems: 'center',
+  },
+  imageLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 8,
+    textTransform: 'capitalize',
+  },
+  conditionImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+  },
+  damageFacesSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  damageFaceItem: {
+    marginBottom: 12,
+  },
+  damageFaceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  damageFaceLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginRight: 8,
+    fontWeight: '600',
+  },
+  damageFaceValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#EF4444',
+    textTransform: 'capitalize',
+  },
+  emptyDamageFaces: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    gap: 8,
+  },
+  emptyDamageFacesText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+  },
+  // New redesigned styles
+  coverImageContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: Dimensions.get('window').height * 0.3,
+    zIndex: 0,
+  },
+  coverImage: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'flex-start',
+  },
+  coverOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    zIndex: 1,
+  },
+  headerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingTop: 50,
+    paddingHorizontal: 16,
+    zIndex: 200,
+    elevation: 200,
+  },
+  headerButtonBackground: {
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerBackButton: {
+    zIndex: 201,
+    elevation: 201,
+    pointerEvents: 'auto',
+  },
+  headerSearchButton: {
+    // Container for search button
+  },
+  animatedHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#0F4D3A',
+    paddingTop: 50,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  animatedHeaderBackButton: {
+    padding: 8,
+    width: 40,
+    zIndex: 100,
+    elevation: 10,
+  },
+  animatedHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    flex: 1,
+  },
+  animatedHeaderPlaceholder: {
+    width: 40,
+  },
+  scrollContent: {
+    paddingTop: Dimensions.get('window').height * 0.3,
+    // paddingBottom được tính động trong contentContainerStyle dựa trên safe area + tab bar + cart bar
+  },
+  storeInfoCard: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    marginTop: -40, // Overlap with cover image
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    zIndex: 10,
+    position: 'relative',
+  },
+  storeInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  storeInfoLogo: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+    marginRight: 12,
+  },
+  storeInfoLogoPlaceholder: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  storeInfoHeaderText: {
+    flex: 1,
+  },
+  storeInfoName: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  storeInfoMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  storeInfoMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  storeInfoMetaText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  storeInfoMetaSeparator: {
+    fontSize: 13,
+    color: '#D1D5DB',
+  },
+  storeInfoAddress: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  storeInfoAddressText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+  },
+  menuNavigationContainer: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 12,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  menuNavigationContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  menuTab: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    marginRight: 8,
+  },
+  menuTabActive: {
+    backgroundColor: '#0F4D3A',
+  },
+  menuTabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  menuTabTextActive: {
+    color: '#FFFFFF',
+  },
+  productsListContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+  },
+  productCardNew: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  productCardImageContainer: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginRight: 12,
+  },
+  productCardImage: {
+    width: '100%',
+    height: '100%',
+  },
+  productCardImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  productCardInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  productCardName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  productCardDescription: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 6,
+    lineHeight: 18,
+  },
+  productCardPrice: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F4D3A',
+  },
+  productCardAddButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#0F4D3A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'center',
+  },
+  loadMoreButton: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  loadMoreButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F4D3A',
+  },
+  bottomFloatingBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 100,
+  },
+  cartInfo: {
+    flex: 1,
+  },
+  cartItemsText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  cartTotalText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0F4D3A',
+  },
+  viewCartButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F4D3A',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  viewCartButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
 

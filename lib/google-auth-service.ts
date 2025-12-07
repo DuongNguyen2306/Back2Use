@@ -214,6 +214,21 @@ export class GoogleAuthService {
         // Determine user role
         const role = user.role || 'customer';
         
+        // Block admin access on mobile
+        if (role === 'admin') {
+          Alert.alert(
+            'Access Restricted',
+            'Admin accounts cannot be accessed on mobile devices. Please log in on the web platform.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+        
+        // Only allow customer and business roles on mobile
+        const destination = role === 'business' 
+          ? '/(protected)/business' 
+          : '/(protected)/customer';
+        
         Alert.alert(
           'Success',
           `Welcome ${user.name || user.email}! You have been logged in successfully.`,
@@ -222,10 +237,10 @@ export class GoogleAuthService {
               text: 'OK',
               onPress: () => {
                 // Navigate to main app or dashboard
-                console.log('User logged in successfully, navigating to:', `/(protected)/${role}`);
+                console.log('User logged in successfully, navigating to:', destination);
                 // Delay navigation to ensure app is ready
                 setTimeout(() => {
-                  router.replace(`/(protected)/${role}`);
+                  router.replace(destination);
                 }, 100);
               }
             }

@@ -54,7 +54,7 @@ export default function CustomerWallet() {
   const [user, setUser] = useState<User | null>(null);
   const [wallet, setWallet] = useState<WalletDetails | null>(null);
   const [loading, setLoading] = useState(true);
-  const [transactionFilter, setTransactionFilter] = useState<'all' | 'deposits' | 'withdrawals'>('all');
+  const [transactionFilter, setTransactionFilter] = useState<'all' | 'external' | 'internal'>('all');
   
   // Real transactions from API
   const [realTransactions, setRealTransactions] = useState<WalletTransaction[]>([]);
@@ -618,11 +618,24 @@ export default function CustomerWallet() {
     }
   };
 
+  // Helper function to check if transaction is external (top_up, withdraw)
+  const isExternalTransaction = (transaction: WalletTransaction): boolean => {
+    return transaction.transactionType === 'top_up' || transaction.transactionType === 'withdraw';
+  };
+
+  // Helper function to check if transaction is internal (borrow_deposit, return_refund, deposit_forfeited, subscription_fee)
+  const isInternalTransaction = (transaction: WalletTransaction): boolean => {
+    return transaction.transactionType === 'borrow_deposit' || 
+           transaction.transactionType === 'return_refund' || 
+           transaction.transactionType === 'deposit_forfeited' ||
+           transaction.transactionType === 'subscription_fee';
+  };
+
   // Filter real transactions based on type
   const filteredTransactions = realTransactions.filter(transaction => {
     if (transactionFilter === 'all') return true;
-    if (transactionFilter === 'deposits') return transaction.direction === 'in';
-    if (transactionFilter === 'withdrawals') return transaction.direction === 'out';
+    if (transactionFilter === 'external') return isExternalTransaction(transaction);
+    if (transactionFilter === 'internal') return isInternalTransaction(transaction);
     return true;
   });
 
@@ -1021,21 +1034,21 @@ export default function CustomerWallet() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.filterButton, transactionFilter === 'deposits' && styles.activeFilterButton]}
-              onPress={() => setTransactionFilter('deposits')}
+              style={[styles.filterButton, transactionFilter === 'external' && styles.activeFilterButton]}
+              onPress={() => setTransactionFilter('external')}
             >
-              <Ionicons name="arrow-up" size={16} color={transactionFilter === 'deposits' ? "#fff" : "#10B981"} />
-              <Text style={[styles.filterButtonText, transactionFilter === 'deposits' && styles.activeFilterButtonText]}>
-                Deposits
+              <Ionicons name="card-outline" size={16} color={transactionFilter === 'external' ? "#fff" : "#3B82F6"} />
+              <Text style={[styles.filterButtonText, transactionFilter === 'external' && styles.activeFilterButtonText]}>
+                External
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.filterButton, transactionFilter === 'withdrawals' && styles.activeFilterButton]}
-              onPress={() => setTransactionFilter('withdrawals')}
+              style={[styles.filterButton, transactionFilter === 'internal' && styles.activeFilterButton]}
+              onPress={() => setTransactionFilter('internal')}
             >
-              <Ionicons name="arrow-down" size={16} color={transactionFilter === 'withdrawals' ? "#fff" : "#EF4444"} />
-              <Text style={[styles.filterButtonText, transactionFilter === 'withdrawals' && styles.activeFilterButtonText]}>
-                Withdrawals
+              <Ionicons name="swap-horizontal-outline" size={16} color={transactionFilter === 'internal' ? "#fff" : "#059669"} />
+              <Text style={[styles.filterButtonText, transactionFilter === 'internal' && styles.activeFilterButtonText]}>
+                Internal
               </Text>
             </TouchableOpacity>
           </View>
@@ -1266,20 +1279,35 @@ export default function CustomerWallet() {
         presentationStyle="pageSheet"
       >
         <View style={styles.modalContainer}>
-          <StatusBar barStyle="light-content" backgroundColor="#0F4D3A" />
-            <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setShowWithdraw(false)}>
-              <Text style={styles.cancelButton}>Cancel</Text>
+          <StatusBar barStyle="light-content" backgroundColor="#F97316" />
+            <View style={[styles.modalHeader, styles.withdrawModalHeader]}>
+              <TouchableOpacity onPress={() => {
+                setShowWithdraw(false);
+                setAmount('');
+              }}>
+              <Ionicons name="close" size={24} color="#FFFFFF" />
               </TouchableOpacity>
             <Text style={styles.modalTitle}>Withdraw</Text>
-            <View style={{ width: 60 }} />
+            <View style={{ width: 24 }} />
             </View>
               
-          <View style={styles.modalContent}>
-            <Text style={styles.modalSubtitle}>Enter amount to withdraw from your wallet</Text>
-            <Text style={styles.balanceInfo}>
-              Available balance: {wallet ? (wallet.balance || (wallet as any)?.availableBalance || 0).toLocaleString('vi-VN') : '0'} VNĐ
-            </Text>
+          <ScrollView 
+            style={styles.modalContent}
+            contentContainerStyle={styles.modalContentScroll}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Balance Card */}
+            <View style={styles.balanceCardModal}>
+              <View style={styles.balanceCardHeader}>
+                <Ionicons name="wallet-outline" size={24} color="#F97316" />
+                <Text style={styles.balanceCardTitle}>Available Balance</Text>
+              </View>
+              <Text style={styles.balanceCardAmount}>
+                {wallet ? (wallet.balance || (wallet as any)?.availableBalance || 0).toLocaleString('vi-VN') : '0'} VND
+              </Text>
+            </View>
+
+            <Text style={styles.modalSubtitle}>Enter amount to withdraw</Text>
             
             <View style={styles.amountInputContainer}>
               <Text style={styles.currencySymbol}>VNĐ</Text>
@@ -1287,22 +1315,98 @@ export default function CustomerWallet() {
                 style={styles.amountInput}
                 placeholder="0"
                   value={amount}
-                  onChangeText={setAmount}
+                  onChangeText={(text) => {
+                  const num = text.replace(/[^0-9]/g, '');
+                  if (num === '') {
+                    setAmount('');
+                  } else {
+                    setAmount(num);
+                  }
+                }}
                 keyboardType="numeric"
                 placeholderTextColor="#9CA3AF"
               />
             </View>
-                
-                    <TouchableOpacity
-              style={[styles.confirmButton, styles.withdrawConfirmButton]}
-              onPress={handleWithdraw}
-              disabled={isProcessing}
-            >
-              <Text style={styles.confirmButtonText}>
-                {isProcessing ? 'Processing...' : 'Withdraw'}
-              </Text>
-                </TouchableOpacity>
+
+            {/* Quick Amount Buttons */}
+            <View style={styles.quickAmounts}>
+              <TouchableOpacity
+                style={styles.quickAmountButton}
+                onPress={() => {
+                  const balance = wallet ? (wallet.balance || (wallet as any)?.availableBalance || 0) : 0;
+                  const amount25 = Math.floor(balance * 0.25);
+                  setAmount(amount25.toString());
+                }}
+              >
+                <Text style={styles.quickAmountText}>25%</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.quickAmountButton}
+                onPress={() => {
+                  const balance = wallet ? (wallet.balance || (wallet as any)?.availableBalance || 0) : 0;
+                  const amount50 = Math.floor(balance * 0.5);
+                  setAmount(amount50.toString());
+                }}
+              >
+                <Text style={styles.quickAmountText}>50%</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.quickAmountButton}
+                onPress={() => {
+                  const balance = wallet ? (wallet.balance || (wallet as any)?.availableBalance || 0) : 0;
+                  const amount75 = Math.floor(balance * 0.75);
+                  setAmount(amount75.toString());
+                }}
+              >
+                <Text style={styles.quickAmountText}>75%</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.quickAmountButton}
+                onPress={() => {
+                  const balance = wallet ? (wallet.balance || (wallet as any)?.availableBalance || 0) : 0;
+                  setAmount(balance.toString());
+                }}
+              >
+                <Text style={styles.quickAmountText}>All</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Info Message */}
+            {amount && Number(amount) > 0 && (
+              <View style={styles.withdrawInfoCard}>
+                <Ionicons name="information-circle-outline" size={20} color="#3B82F6" />
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={styles.withdrawInfoText}>
+                    You will withdraw: {Number(amount).toLocaleString('vi-VN')} VND
+                  </Text>
+                  {wallet && Number(amount) > (wallet.balance || (wallet as any)?.availableBalance || 0) && (
+                    <Text style={styles.withdrawWarningText}>
+                      ⚠️ Amount exceeds available balance
+                    </Text>
+                  )}
+                </View>
               </View>
+            )}
+                
+            <TouchableOpacity
+              style={[
+                styles.confirmButton, 
+                styles.withdrawConfirmButton,
+                (!amount || Number(amount) <= 0 || isProcessing) && styles.confirmButtonDisabled
+              ]}
+              onPress={handleWithdraw}
+              disabled={!amount || Number(amount) <= 0 || isProcessing}
+            >
+              {isProcessing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="arrow-down-circle" size={20} color="#FFFFFF" />
+                  <Text style={styles.confirmButtonText}>Withdraw</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </ScrollView>
             </View>
       </Modal>
 
@@ -2561,6 +2665,9 @@ const styles = StyleSheet.create({
     paddingTop: 50, // Account for status bar
     backgroundColor: '#0F4D3A',
   },
+  withdrawModalHeader: {
+    backgroundColor: '#F97316',
+  },
   cancelButton: {
     fontSize: 16,
     color: 'white',
@@ -2584,7 +2691,59 @@ const styles = StyleSheet.create({
     backgroundColor: '#0F4D3A',
   },
   withdrawConfirmButton: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#F97316',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  confirmButtonDisabled: {
+    opacity: 0.5,
+  },
+  balanceCardModal: {
+    backgroundColor: '#FFF7ED',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  balanceCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
+  balanceCardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#9A3412',
+  },
+  balanceCardAmount: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#F97316',
+  },
+  withdrawInfoCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  withdrawInfoText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1E40AF',
+  },
+  withdrawWarningText: {
+    fontSize: 12,
+    color: '#DC2626',
+    marginTop: 4,
+    fontWeight: '600',
   },
   // Payment result modal styles
   resultModalContainer: {

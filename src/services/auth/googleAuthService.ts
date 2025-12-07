@@ -32,7 +32,8 @@ export class GoogleAuthService {
 
         // Lưu vào Storage (Ví dụ)
         await AsyncStorage.setItem("ACCESS_TOKEN", accessToken);
-        await AsyncStorage.setItem("AUTH_ROLE", role);
+        // ✅ Đảm bảo role là string
+        await AsyncStorage.setItem("AUTH_ROLE", String(role));
 
         // Điều hướng
         Alert.alert("Thành công", `Chào ${user.fullName}`);

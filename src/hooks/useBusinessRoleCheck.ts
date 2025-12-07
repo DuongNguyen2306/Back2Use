@@ -67,8 +67,13 @@ export function useBusinessRoleCheck() {
           
           return true;
         }
-      } catch (error) {
-        console.error('❌ Error fetching user profile:', error);
+      } catch (error: any) {
+        // Silently handle "No valid access token available" errors
+        const isNoTokenError = error?.message?.toLowerCase().includes('no valid access token') ||
+                               error?.message?.toLowerCase().includes('no access token');
+        if (!isNoTokenError) {
+          console.error('❌ Error fetching user profile:', error);
+        }
       }
 
       // Method 2: Check business registration history as fallback
@@ -122,12 +127,24 @@ export function useBusinessRoleCheck() {
           // Don't log or show Unauthorized errors
           return false;
         }
+        // Silently handle "No valid access token available" errors
+        const isNoTokenError = error?.message?.toLowerCase().includes('no valid access token') ||
+                               error?.message?.toLowerCase().includes('no access token');
+        if (isNoTokenError) {
+          // Don't log or show "No valid access token" errors
+          return false;
+        }
         console.error('❌ Error checking business history:', error);
       }
 
       return false;
-    } catch (error) {
-      console.error('❌ Error checking business status:', error);
+    } catch (error: any) {
+      // Silently handle "No valid access token available" errors
+      const isNoTokenError = error?.message?.toLowerCase().includes('no valid access token') ||
+                             error?.message?.toLowerCase().includes('no access token');
+      if (!isNoTokenError) {
+        console.error('❌ Error checking business status:', error);
+      }
       return false;
     } finally {
       setIsChecking(false);

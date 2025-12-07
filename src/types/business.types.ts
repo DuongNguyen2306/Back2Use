@@ -57,7 +57,11 @@ export interface NearbyBusinessesResponse {
 // Business without distance (for GET all businesses)
 export interface Business {
   _id: string;
+  id?: string; // Some APIs return both _id and id
   userId: string;
+  businessFormId?: string;
+  businessMail?: string;
+  taxCode?: string;
   businessName: string;
   businessAddress: string;
   businessPhone: string;
@@ -65,21 +69,30 @@ export interface Business {
   openTime: string;
   closeTime: string;
   businessLogoUrl?: string;
+  foodSafetyCertUrl?: string;
+  businessLicenseUrl?: string;
   location: {
     type: 'Point';
     coordinates: [number, number]; // [longitude, latitude]
   };
+  co2Reduced?: number;
+  ecoPoints?: number;
+  averageRating?: number;
+  totalReviews?: number;
   createdAt: string;
   updatedAt: string;
-  role: string;
-  isActive: boolean;
-  isBlocked: boolean;
+  role?: string | string[];
+  isActive?: boolean;
+  isBlocked?: boolean;
 }
 
 export interface GetAllBusinessesResponse {
   statusCode: number;
   message: string;
   data: Business[];
+  total?: number;
+  currentPage?: number;
+  totalPages?: number;
 }
 
 export interface MaterialCreateRequest {

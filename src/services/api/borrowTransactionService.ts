@@ -71,14 +71,19 @@ export const borrowTransactionsApi = {
         throw new Error(result.message || 'Failed to create borrow transaction');
       }
     } catch (error: any) {
-      console.error('Error creating borrow transaction:', error);
-      console.error('Error details:', {
-        message: error.message,
-        code: error.code,
-        response: error.response?.data,
-        status: error.response?.status,
-        url: error.config?.url
-      });
+      // Silently handle 400 errors (validation errors) - don't log to console
+      const isValidationError = error.response?.status === 400;
+      
+      if (!isValidationError) {
+        console.error('Error creating borrow transaction:', error);
+        console.error('Error details:', {
+          message: error.message,
+          code: error.code,
+          response: error.response?.data,
+          status: error.response?.status,
+          url: error.config?.url
+        });
+      }
       
       if (error.code === 'ECONNABORTED') {
         throw new Error('Request timeout. Please check your connection and try again.');

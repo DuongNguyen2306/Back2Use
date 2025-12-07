@@ -218,7 +218,8 @@ export function useAuthCore() {
                   console.log(`✅ Role confirmed on hydration: ${backendRole}`);
                 }
                 // Always update role in storage and state to ensure consistency
-                await AsyncStorage.setItem(STORAGE_KEYS.ROLE, backendRole);
+                // ✅ Đảm bảo role là string
+                await AsyncStorage.setItem(STORAGE_KEYS.ROLE, String(backendRole));
                 updatedState.role = backendRole;
                 updatedState.user = userProfile as User;
               }
@@ -369,7 +370,8 @@ export function useAuthCore() {
       // Save to storage
       await Promise.all([
         AsyncStorage.setItem(STORAGE_KEYS.AUTH, "true"),
-        AsyncStorage.setItem(STORAGE_KEYS.ROLE, role || ""),
+        // ✅ Đảm bảo role là string
+        AsyncStorage.setItem(STORAGE_KEYS.ROLE, String(role || "")),
         AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken),
         AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken || ""),
         AsyncStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRY, tokenExpiry.toString()),
@@ -494,8 +496,8 @@ export function useAuthCore() {
     try {
       console.log(`🔄 Updating role to: ${newRole}`);
       
-      // Update role in storage
-      await AsyncStorage.setItem(STORAGE_KEYS.ROLE, newRole);
+      // Update role in storage - ✅ Đảm bảo role là string
+      await AsyncStorage.setItem(STORAGE_KEYS.ROLE, String(newRole));
       
       // Update state
       setState(prev => ({
@@ -528,7 +530,8 @@ export function useAuthCore() {
       await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
       await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
       await AsyncStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRY, tokenExpiry.toString());
-      await AsyncStorage.setItem(STORAGE_KEYS.ROLE, newRole);
+      // ✅ Đảm bảo role là string
+      await AsyncStorage.setItem(STORAGE_KEYS.ROLE, String(newRole));
       await AsyncStorage.setItem(STORAGE_KEYS.AUTH, 'true');
       
       console.log(`✅ Tokens saved to AsyncStorage`);

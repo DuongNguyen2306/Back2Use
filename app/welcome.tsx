@@ -58,11 +58,19 @@ export default function WelcomeScreen() {
   // Redirect if already authenticated (only after hydration)
   useEffect(() => {
     if (state.isHydrated && state.isAuthenticated && state.role) {
+      // Block admin access on mobile
+      if (state.role === "admin") {
+        console.log("❌ Welcome: Admin user detected on mobile - redirecting to login");
+        router.replace("/auth/login");
+        return;
+      }
+      
+      // Only allow customer and business roles on mobile
       const destination = state.role === "customer" 
         ? "/(protected)/customer" 
         : state.role === "business" 
         ? "/(protected)/business" 
-        : "/(protected)/admin";
+        : "/auth/login"; // Fallback to login for any other role
       router.replace(destination);
     }
   }, [state.isHydrated, state.isAuthenticated, state.role]);

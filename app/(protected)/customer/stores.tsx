@@ -150,8 +150,9 @@ export default function Stores() {
           // Filter only active businesses
           const activeBusinesses = response.data.filter(business => business.isActive && !business.isBlocked);
           
-          // Get pagination info
-          const totalPages = (response as any).totalPages || 1;
+          // Get pagination info from root level
+          const totalPages = response.totalPages || 1;
+          const total = response.total || activeBusinesses.length;
           setStoreTotalPages(totalPages);
           setHasMoreStores(page < totalPages);
           
@@ -316,8 +317,15 @@ export default function Stores() {
     }
     
     if (activeFilter === 'top-rated') {
-      // We don't have rating data from API, so return all sorted by distance
-      return stores.sort((a, b) => (a.distance || 0) - (b.distance || 0));
+      // Sort by averageRating (highest first), then by distance
+      return stores.sort((a, b) => {
+        const ratingA = a.averageRating || 0;
+        const ratingB = b.averageRating || 0;
+        if (ratingB !== ratingA) {
+          return ratingB - ratingA; // Higher rating first
+        }
+        return (a.distance || 0) - (b.distance || 0); // Then by distance
+      });
     }
     
     if (activeFilter === 'closest') {
@@ -382,7 +390,12 @@ export default function Stores() {
           <View style={styles.storeMetaRow}>
             <View style={styles.ratingContainer}>
               <Ionicons name="star" size={14} color="#F59E0B" />
-              <Text style={styles.ratingText}>4.5</Text>
+              <Text style={styles.ratingText}>
+                {store.averageRating ? store.averageRating.toFixed(1) : '0.0'}
+              </Text>
+              {store.totalReviews !== undefined && store.totalReviews > 0 && (
+                <Text style={styles.ratingCount}>({store.totalReviews})</Text>
+              )}
             </View>
             <View style={styles.productsCountContainer}>
               <Ionicons name="cube-outline" size={14} color="#6B7280" />
@@ -513,8 +526,10 @@ export default function Stores() {
                   showsMyLocationButton={false}
                   showsCompass={true}
                   showsScale={true}
-                  scrollEnabled={false}
-                  zoomEnabled={false}
+                  scrollEnabled={true}
+                  zoomEnabled={true}
+                  rotateEnabled={true}
+                  pitchEnabled={true}
                 >
                   {/* User location marker */}
                   {userLocation && (
@@ -953,6 +968,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#1F2937',
+  },
+  ratingCount: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginLeft: 2,
   },
   productsCountContainer: {
     flexDirection: 'row',

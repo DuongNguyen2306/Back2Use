@@ -84,13 +84,13 @@ export default function VoucherDetailScreen() {
         if (foundVoucher) {
           setVoucher(foundVoucher);
         } else {
-          Alert.alert('Lỗi', 'Không tìm thấy voucher');
+          Alert.alert('Error', 'Voucher not found');
           router.back();
         }
       }
     } catch (error: any) {
       // Silently handle errors
-      Alert.alert('Lỗi', 'Không thể tải thông tin voucher');
+      Alert.alert('Error', 'Unable to load voucher information');
       router.back();
     } finally {
       setLoading(false);
@@ -99,7 +99,7 @@ export default function VoucherDetailScreen() {
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('vi-VN', {
+    return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -111,13 +111,13 @@ export default function VoucherDetailScreen() {
   const getStatusText = (status?: string) => {
     switch (status) {
       case 'redeemed':
-        return 'Đã nhận';
+        return 'Redeemed';
       case 'used':
-        return 'Đã sử dụng';
+        return 'Used';
       case 'expired':
-        return 'Đã hết hạn';
+        return 'Expired';
       default:
-        return 'Không xác định';
+        return 'Unknown';
     }
   };
 
@@ -143,13 +143,13 @@ export default function VoucherDetailScreen() {
             <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
               <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Chi tiết Voucher</Text>
+            <Text style={styles.headerTitle}>Voucher Details</Text>
             <View style={styles.placeholder} />
           </View>
         </SafeAreaView>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#00704A" />
-          <Text style={styles.loadingText}>Đang tải...</Text>
+          <Text style={styles.loadingText}>Loading...</Text>
         </View>
       </View>
     );
@@ -164,13 +164,13 @@ export default function VoucherDetailScreen() {
             <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
               <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Chi tiết Voucher</Text>
+            <Text style={styles.headerTitle}>Voucher Details</Text>
             <View style={styles.placeholder} />
           </View>
         </SafeAreaView>
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
-          <Text style={styles.errorText}>Không tìm thấy voucher</Text>
+          <Text style={styles.errorText}>Voucher not found</Text>
         </View>
       </View>
     );
@@ -213,13 +213,13 @@ export default function VoucherDetailScreen() {
             <Text style={styles.voucherCardDescription}>{voucherInfo.customDescription}</Text>
             
             <View style={styles.voucherCodeContainer}>
-              <Text style={styles.voucherCodeLabel}>Mã voucher</Text>
+              <Text style={styles.voucherCodeLabel}>Voucher Code</Text>
               <Text style={styles.voucherCode}>{voucher.fullCode || voucherInfo.baseCode}</Text>
             </View>
 
             <View style={styles.voucherCardFooter}>
               <View>
-                <Text style={styles.validUntilLabel}>Hạn sử dụng</Text>
+                <Text style={styles.validUntilLabel}>Valid Until</Text>
                 <Text style={styles.validUntil}>{formatDate(voucherInfo.endDate)}</Text>
               </View>
               <View style={[styles.statusBadge, { backgroundColor: getStatusColor(voucher.status) + '20' }]}>
@@ -236,11 +236,11 @@ export default function VoucherDetailScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Ionicons name="qr-code-outline" size={24} color="#00704A" />
-              <Text style={styles.sectionTitle}>Mã QR</Text>
+              <Text style={styles.sectionTitle}>QR Code</Text>
             </View>
             <View style={styles.qrCodeContainer}>
               <Image source={{ uri: voucher.qrCode }} style={styles.qrCodeImage} />
-              <Text style={styles.qrCodeHint}>Hiển thị mã QR này khi sử dụng voucher</Text>
+              <Text style={styles.qrCodeHint}>Show this QR code when using the voucher</Text>
             </View>
           </View>
         )}
@@ -250,7 +250,7 @@ export default function VoucherDetailScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Ionicons name="storefront-outline" size={24} color="#00704A" />
-              <Text style={styles.sectionTitle}>Thông tin cửa hàng</Text>
+              <Text style={styles.sectionTitle}>Store Information</Text>
             </View>
             <View style={styles.businessCard}>
               {businessInfo.businessLogoUrl && (
@@ -287,34 +287,34 @@ export default function VoucherDetailScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Ionicons name="information-circle-outline" size={24} color="#00704A" />
-            <Text style={styles.sectionTitle}>Thông tin chi tiết</Text>
+            <Text style={styles.sectionTitle}>Details</Text>
           </View>
           <View style={styles.detailsCard}>
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Tên voucher</Text>
+              <Text style={styles.detailLabel}>Voucher Name</Text>
               <Text style={styles.detailValue}>{voucherInfo.customName}</Text>
             </View>
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Giảm giá</Text>
+              <Text style={styles.detailLabel}>Discount</Text>
               <Text style={styles.detailValue}>{voucherInfo.discountPercent}%</Text>
             </View>
             {voucherInfo.rewardPointCost && (
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Điểm đổi</Text>
-                <Text style={styles.detailValue}>{voucherInfo.rewardPointCost} điểm</Text>
+                <Text style={styles.detailLabel}>Points Cost</Text>
+                <Text style={styles.detailValue}>{voucherInfo.rewardPointCost} points</Text>
               </View>
             )}
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Ngày bắt đầu</Text>
+              <Text style={styles.detailLabel}>Start Date</Text>
               <Text style={styles.detailValue}>{formatDate(voucherInfo.startDate)}</Text>
             </View>
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Ngày hết hạn</Text>
+              <Text style={styles.detailLabel}>Expiry Date</Text>
               <Text style={styles.detailValue}>{formatDate(voucherInfo.endDate)}</Text>
             </View>
             {voucher.redeemedAt && (
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Ngày nhận</Text>
+                <Text style={styles.detailLabel}>Redeemed Date</Text>
                 <Text style={styles.detailValue}>{formatDate(voucher.redeemedAt)}</Text>
               </View>
             )}
@@ -325,14 +325,14 @@ export default function VoucherDetailScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Ionicons name="document-text-outline" size={24} color="#00704A" />
-            <Text style={styles.sectionTitle}>Điều kiện sử dụng</Text>
+            <Text style={styles.sectionTitle}>Terms & Conditions</Text>
           </View>
           <View style={styles.termsCard}>
             <Text style={styles.termsText}>
-              • Voucher chỉ có hiệu lực trong thời gian quy định{'\n'}
-              • Mỗi voucher chỉ được sử dụng một lần{'\n'}
-              • Voucher không thể hoàn tiền hoặc chuyển nhượng{'\n'}
-              • Áp dụng theo điều kiện của cửa hàng
+              • Voucher is only valid during the specified period{'\n'}
+              • Each voucher can only be used once{'\n'}
+              • Voucher cannot be refunded or transferred{'\n'}
+              • Subject to store conditions
             </Text>
           </View>
         </View>

@@ -32,13 +32,16 @@ export interface MyVoucher extends Voucher {
 export interface VouchersResponse {
   statusCode: number;
   message: string;
-  data: {
+  data: Voucher[] | {
     items: Voucher[];
     total: number;
     page: number;
     limit: number;
     totalPages: number;
   };
+  total?: number;
+  currentPage?: number;
+  totalPages?: number;
 }
 
 export interface MyVouchersResponse {
@@ -75,11 +78,14 @@ export const voucherApi = {
   getAll: async (params?: {
     page?: number;
     limit?: number;
+    status?: 'active' | 'inactive' | 'expired';
   }): Promise<VouchersResponse> => {
-    const { page = 1, limit = 100 } = params || {};
+    const { page = 1, limit = 100, status } = params || {};
+    const queryParams: any = { page, limit };
+    if (status) queryParams.status = status;
     return apiCall<VouchersResponse>(API_ENDPOINTS.VOUCHERS.GET_ALL, {
       method: 'GET',
-      params: { page, limit },
+      params: queryParams,
     });
   },
 
