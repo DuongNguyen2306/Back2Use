@@ -9,20 +9,20 @@ import { Camera, CameraView } from "expo-camera";
 import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Image,
-  Modal,
-  Platform,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Vibration,
-  View
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Image,
+    Modal,
+    Platform,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    Vibration,
+    View
 } from "react-native";
 import CustomerHeader from "../../../components/CustomerHeader";
 import { StandaloneAIChecker } from "../../../components/StandaloneAIChecker";
@@ -45,8 +45,11 @@ export default function CustomerDashboard() {
   const [showBalance, setShowBalance] = useState(false); // Mặc định ẩn số tiền
   const [durationInDays, setDurationInDays] = useState<string>('30'); // Số ngày mượn, mặc định 30
   const [userRank, setUserRank] = useState<number | null>(null);
+  const [flashEnabled, setFlashEnabled] = useState(false);
+  const [laserLinePosition, setLaserLinePosition] = useState(0);
   // use layout navigation; no local tab state here
   const scanLock = useRef(false);
+  const laserAnimationRef = useRef<any>(null);
 
   useTokenRefresh();
 
@@ -230,7 +233,41 @@ export default function CustomerDashboard() {
     }
   };
 
-  const stopScanning = () => setShowQRScanner(false);
+  const stopScanning = () => {
+    setShowQRScanner(false);
+    setFlashEnabled(false);
+    if (laserAnimationRef.current) {
+      clearInterval(laserAnimationRef.current);
+      laserAnimationRef.current = null;
+    }
+  };
+
+  // Laser scanning line animation
+  useEffect(() => {
+    if (showQRScanner && hasPermission) {
+      const frameSize = screenWidth * 0.7;
+      let direction = 1;
+      let position = 10; // Start from top
+      
+      laserAnimationRef.current = setInterval(() => {
+        position += direction * 3;
+        if (position >= frameSize - 10 || position <= 10) {
+          direction *= -1;
+        }
+        setLaserLinePosition(position);
+      }, 16); // ~60fps
+      
+      return () => {
+        if (laserAnimationRef.current) {
+          clearInterval(laserAnimationRef.current);
+          laserAnimationRef.current = null;
+        }
+        setLaserLinePosition(0);
+      };
+    } else {
+      setLaserLinePosition(0);
+    }
+  }, [showQRScanner, hasPermission]);
 
   // Helper function to handle product not found case
   const handleProductNotFound = async (serialNumber: string) => {
@@ -1039,21 +1076,131 @@ export default function CustomerDashboard() {
       {/* bottom navigation removed; using layout navigation */}
 
       {showQRScanner && hasPermission && (
-         <View style={styles.cameraSheet}>
-          <TouchableOpacity style={styles.cameraBackdrop} onPress={stopScanning} activeOpacity={1} />
-           <View style={styles.cameraHeader}>
-             <Text style={styles.cameraTitle}>Scan QR</Text>
-            <TouchableOpacity style={styles.closeButton} onPress={stopScanning} activeOpacity={0.7}>
-               <Ionicons name="close" size={24} color="#fff" />
-             </TouchableOpacity>
-           </View>
-           <View style={styles.cameraBox}>
-            <CameraView style={styles.camera} barcodeScannerSettings={{ barcodeTypes: ["qr"] }} onBarcodeScanned={onBarcode} />
-             <View pointerEvents="none" style={styles.reticle} />
-           </View>
-           <Text style={styles.cameraHint}>Align the QR inside the frame to scan</Text>
-         </View>
-       )}
+        <Modal
+          visible={showQRScanner}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={stopScanning}
+        >
+          <View style={styles.qrScannerContainer}>
+            <StatusBar hidden />
+            {/* Full Screen Camera */}
+            <CameraView 
+              style={StyleSheet.absoluteFillObject} 
+              barcodeScannerSettings={{ barcodeTypes: ["qr"] }} 
+              onBarcodeScanned={onBarcode}
+              enableTorch={flashEnabled}
+            />
+            
+            {/* Overlay Mask - Dark Semi-transparent (60-70% opacity) with cutout */}
+            <View style={styles.overlayMask}>
+              {/* Top overlay */}
+              <View style={styles.overlayTop} />
+              {/* Bottom overlay */}
+              <View style={styles.overlayBottom} />
+              {/* Left overlay */}
+              <View style={styles.overlayLeft} />
+              {/* Right overlay */}
+              <View style={styles.overlayRight} />
+            </View>
+
+            {/* Branding - Top */}
+            <View style={styles.brandingContainer}>
+              <Text style={styles.brandingText}>Powered by Back2Use</Text>
+            </View>
+
+            {/* Close Button - Top Right */}
+            <TouchableOpacity 
+              style={styles.closeButtonTop} 
+              onPress={stopScanning}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            {/* Scanning Frame with Rounded Corner Brackets */}
+            <View style={styles.scanningFrameContainer}>
+              <View style={styles.scanningFrame}>
+                {/* Top Left Corner */}
+                <View style={[styles.cornerBracket, styles.topLeftCorner]}>
+                  <View style={styles.cornerBracketHorizontal} />
+                  <View style={styles.cornerBracketVertical} />
+                </View>
+                {/* Top Right Corner */}
+                <View style={[styles.cornerBracket, styles.topRightCorner]}>
+                  <View style={styles.cornerBracketHorizontal} />
+                  <View style={styles.cornerBracketVertical} />
+                </View>
+                {/* Bottom Left Corner */}
+                <View style={[styles.cornerBracket, styles.bottomLeftCorner]}>
+                  <View style={styles.cornerBracketHorizontal} />
+                  <View style={styles.cornerBracketVertical} />
+                </View>
+                {/* Bottom Right Corner */}
+                <View style={[styles.cornerBracket, styles.bottomRightCorner]}>
+                  <View style={styles.cornerBracketHorizontal} />
+                  <View style={styles.cornerBracketVertical} />
+                </View>
+                
+                {/* Laser Scanning Line */}
+                <View 
+                  style={[
+                    styles.laserLine,
+                    { top: laserLinePosition }
+                  ]}
+                />
+              </View>
+            </View>
+
+            {/* Instructions Text */}
+            <View style={styles.instructionsContainer}>
+              <Text style={styles.instructionsText}>
+                Align the QR code within the frame to scan
+              </Text>
+            </View>
+
+            {/* Floating Controls - Bottom */}
+            <View style={styles.floatingControls}>
+              {/* My QR Button */}
+              <TouchableOpacity 
+                style={styles.floatingButton}
+                onPress={() => {
+                  // Navigate to My QR or show QR code
+                  Alert.alert('My QR', 'Feature coming soon');
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="qr-code-outline" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+
+              {/* Flash/Torch Button - Center (Large) */}
+              <TouchableOpacity 
+                style={[styles.floatingButton, styles.flashButton]}
+                onPress={() => setFlashEnabled(!flashEnabled)}
+                activeOpacity={0.8}
+              >
+                <Ionicons 
+                  name={flashEnabled ? "flash" : "flash-outline"} 
+                  size={28} 
+                  color={flashEnabled ? "#FCD34D" : "#FFFFFF"} 
+                />
+              </TouchableOpacity>
+
+              {/* Upload Image Button */}
+              <TouchableOpacity 
+                style={styles.floatingButton}
+                onPress={() => {
+                  // Open image picker to scan from gallery
+                  Alert.alert('Upload Image', 'Feature coming soon');
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="image-outline" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
 
        {/* Product Info Modal - Hiển thị sau khi quét QR */}
        {showProductModal && scannedItem && (
@@ -1885,60 +2032,180 @@ const styles = StyleSheet.create({
   bottomNav: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#E5E7EB', flexDirection: 'row', justifyContent: 'space-around', paddingBottom: 10, paddingTop: 10 },
   navItem: { alignItems: 'center' },
   navText: { fontSize: 10, marginTop: 4, color: '#6B7280', fontWeight: '700' },
-  // camera overlay
-  cameraSheet: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.8)",
-    zIndex: 50,
-    paddingTop: 56,
-    paddingHorizontal: 16,
-    alignItems: "center",
+  // QR Scanner - Professional Redesign
+  qrScannerContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
   },
-  cameraBackdrop: {
-    position: "absolute",
+  overlayMask: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  overlayTop: {
+    position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    zIndex: 1,
+    height: screenHeight * 0.25,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
   },
-  cameraHeader: {
-    position: "absolute",
-    top: 16,
-    left: 16,
-    right: 16,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  overlayBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: screenHeight - (screenHeight * 0.25 + screenWidth * 0.7),
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  overlayLeft: {
+    position: 'absolute',
+    top: screenHeight * 0.25,
+    left: 0,
+    width: screenWidth * 0.15,
+    height: screenWidth * 0.7,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  overlayRight: {
+    position: 'absolute',
+    top: screenHeight * 0.25,
+    right: 0,
+    width: screenWidth * 0.15,
+    height: screenWidth * 0.7,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  brandingContainer: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
     zIndex: 10,
   },
-  cameraTitle: { color: "#fff", fontSize: 18, fontWeight: "800" },
-  closeButton: {
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    padding: 8,
-    borderRadius: 20,
-    width: 40,
-    height: 40,
+  brandingText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  closeButtonTop: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 10,
   },
-  cameraBox: { width: "100%", maxWidth: 420, aspectRatio: 3 / 4, borderRadius: 16, overflow: "hidden", marginTop: 24 },
-  camera: { flex: 1 },
-  reticle: {
-    position: "absolute",
-    left: "10%",
-    top: "18%",
-    width: "80%",
-    height: "64%",
-    borderWidth: 3,
-    borderColor: "rgba(255,255,255,0.9)",
-    borderRadius: 12,
+  scanningFrameContainer: {
+    position: 'absolute',
+    top: screenHeight * 0.25,
+    left: screenWidth * 0.15,
+    width: screenWidth * 0.7,
+    height: screenWidth * 0.7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 5,
   },
-  cameraHint: { color: "#fff", opacity: 0.9, fontSize: 12, marginTop: 12 },
+  scanningFrame: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+  },
+  cornerBracket: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+  },
+  cornerBracketHorizontal: {
+    position: 'absolute',
+    width: 30,
+    height: 4,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 2,
+  },
+  cornerBracketVertical: {
+    position: 'absolute',
+    width: 4,
+    height: 30,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 2,
+  },
+  topLeftCorner: {
+    top: 0,
+    left: 0,
+  },
+  topRightCorner: {
+    top: 0,
+    right: 0,
+  },
+  bottomLeftCorner: {
+    bottom: 0,
+    left: 0,
+  },
+  bottomRightCorner: {
+    bottom: 0,
+    right: 0,
+  },
+  laserLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: '#10B981',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
+    elevation: 10,
+    opacity: 0.9,
+  },
+  instructionsContainer: {
+    position: 'absolute',
+    bottom: 180,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  instructionsText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
+    textAlign: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 20,
+  },
+  floatingControls: {
+    position: 'absolute',
+    bottom: 60,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 24,
+    zIndex: 10,
+  },
+  floatingButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backdropFilter: 'blur(10px)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  flashButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
   aiQualityOverlay: {
     position: 'absolute',
     top: 0,

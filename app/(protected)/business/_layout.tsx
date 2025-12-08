@@ -31,11 +31,11 @@ export default function BusinessLayout() {
 
   // Function to get active tab based on pathname
   const getActiveTab = (path: string) => {
-    if (path.includes("menu")) return "menu";
+    if (path.includes("menu") || path.includes("my-profile")) return "menu";
     if (path.includes("wallet")) return "wallet";
-    if (path.includes("materials")) return "materials";
+    if (path.includes("materials") || path.includes("inventory")) return "materials";
     if (path.includes("transaction") || path.includes("transaction-processing")) return "transaction";
-    if (path.includes("business") || path === "/(protected)/business") return "dashboard";
+    if (path.includes("business") || path === "/(protected)/business" || path.includes("overview") || path.includes("business-dashboard")) return "dashboard";
     
     return "dashboard"; // default
   };

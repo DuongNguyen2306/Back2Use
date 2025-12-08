@@ -15,11 +15,12 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../../context/AuthProvider';
 import { useToast } from '../../../hooks/use-toast';
 import { useI18n } from '../../../hooks/useI18n';
 import { authApi, SubscriptionPackage } from '../../../lib/api';
-import { businessesApi } from '../../../src/services/api/businessService';
+import { businessesApi, subscriptionsApi } from '../../../src/services/api/businessService';
 import { staffApi, StaffProfile } from '../../../src/services/api/staffService';
 import { BusinessProfile } from '../../../src/types/business.types';
 
@@ -49,6 +50,7 @@ export default function BusinessProfileScreen() {
   const auth = useAuth();
   const { t, language, changeLanguage } = useI18n();
   const { toast } = useToast();
+  const insets = useSafeAreaInsets();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -59,6 +61,9 @@ export default function BusinessProfileScreen() {
   const [subscriptions, setSubscriptions] = useState<SubscriptionPackage[]>([]);
   const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [autoRenewStates, setAutoRenewStates] = useState<Record<string, boolean>>({});
+  const [togglingAutoRenew, setTogglingAutoRenew] = useState<Record<string, boolean>>({});
+  const [isBusinessInfoExpanded, setIsBusinessInfoExpanded] = useState(false);
 
   // Change password states
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
@@ -162,6 +167,16 @@ export default function BusinessProfileScreen() {
                 ? profileResponse.data.activeSubscription 
                 : [profileResponse.data.activeSubscription];
               setActiveSubscription(subscriptions);
+              
+              // Load auto-renew states from active subscriptions
+              const autoRenewMap: Record<string, boolean> = {};
+              subscriptions.forEach((sub: any) => {
+                const subId = sub._id;
+                if (subId) {
+                  autoRenewMap[subId] = sub.autoRenew || false;
+                }
+              });
+              setAutoRenewStates(prev => ({ ...prev, ...autoRenewMap }));
             } else {
               setActiveSubscription([]);
             }
@@ -436,6 +451,50 @@ export default function BusinessProfileScreen() {
     );
   };
 
+  // Toggle auto-renew handler
+  const handleToggleAutoRenew = async (subscriptionId: string, currentValue: boolean) => {
+    try {
+      setTogglingAutoRenew(prev => ({ ...prev, [subscriptionId]: true }));
+      console.log('🔄 Toggling auto-renew for subscription:', subscriptionId);
+      
+      const newValue = !currentValue;
+      const response = await subscriptionsApi.toggleAutoRenew(subscriptionId, {
+        autoRenew: newValue,
+      });
+      
+      console.log('✅ Toggle auto-renew response:', response);
+      
+      // Update local state
+      setAutoRenewStates(prev => ({
+        ...prev,
+        [subscriptionId]: newValue,
+      }));
+      
+      // Update active subscription data
+      setActiveSubscription(prev => prev.map(sub => {
+        if (sub._id === subscriptionId) {
+          return { ...sub, autoRenew: newValue };
+        }
+        return sub;
+      }));
+      
+      toast({
+        title: "Success",
+        description: newValue 
+          ? "Auto-renewal has been enabled" 
+          : "Auto-renewal has been disabled",
+      });
+    } catch (error: any) {
+      console.error('❌ Error toggling auto-renew:', error);
+      toast({
+        title: "Error",
+        description: error?.response?.data?.message || error?.message || "Unable to change auto-renewal settings. Please try again.",
+      });
+    } finally {
+      setTogglingAutoRenew(prev => ({ ...prev, [subscriptionId]: false }));
+    }
+  };
+
   // Switch role handler
   const handleSwitchRole = async (targetRole: 'customer' | 'business') => {
     try {
@@ -506,77 +565,145 @@ export default function BusinessProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0F4D3A" />
+      <StatusBar barStyle="light-content" backgroundColor="#00704A" />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>
-          {auth.state.role === 'staff' ? 'Staff Profile' : 'Business Profile'}
-        </Text>
-        <TouchableOpacity 
-          style={styles.settingsButton}
-          onPress={() => router.push('/(protected)/business/settings')}
-        >
-          <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Profile Card */}
-        <View style={styles.profileCard}>
-          <View style={styles.avatarContainer}>
-            <Image 
-              source={{ 
-                uri: auth.state.role === 'staff' 
-                  ? (staffProfile?.avatar || 'https://via.placeholder.com/100')
-                  : (businessProfile?.businessLogoUrl || 'https://via.placeholder.com/100')
-              }} 
-              style={styles.avatar}
-            />
+      {/* New Header Design */}
+      {auth.state.role === 'business' && businessProfile && (
+        <View style={[styles.newHeader, { paddingTop: insets.top + 16 }]}>
+          <View style={styles.headerContent}>
+            {/* Left: Business Logo */}
+            <View style={styles.headerLogoContainer}>
+              <Image 
+                source={{ 
+                  uri: businessProfile.businessLogoUrl || 'https://via.placeholder.com/100'
+                }} 
+                style={styles.headerLogo}
+              />
+            </View>
+            
+            {/* Center: Business Name & Rating */}
+            <View style={styles.headerCenter}>
+              <View style={styles.businessNameRow}>
+                <Text style={styles.headerBusinessName}>
+                  {businessProfile.businessName || 'Business Name'}
+                </Text>
+                <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" style={styles.verifiedBadge} />
+              </View>
+              <View style={styles.ratingBadge}>
+                <Ionicons name="star" size={14} color="#F59E0B" />
+                <Text style={styles.ratingText}>
+                  {businessProfile.averageRating ? businessProfile.averageRating.toFixed(1) : '0.0'} ({businessProfile.totalReviews || 0} reviews)
+                </Text>
+              </View>
+            </View>
+            
+            {/* Right: Settings Icon */}
             <TouchableOpacity 
-              style={styles.avatarEditButton}
-              onPress={() => {/* Handle avatar upload */}}
+              style={styles.headerSettingsButton}
+              onPress={() => router.push('/(protected)/business/settings')}
             >
-              <Ionicons name="camera" size={16} color="#FFFFFF" />
+              <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
-          
-          <Text style={styles.name}>
-            {auth.state.role === 'staff'
-              ? (staffProfile?.fullName || 'Staff Name')
-              : (businessProfile?.businessName || businessProfile?.userId?.username || 'Business Name')}
-          </Text>
-          <Text style={styles.email}>
-            {auth.state.role === 'staff'
-              ? (staffProfile?.email || '')
-              : (businessProfile?.userId?.email || businessProfile?.businessMail || '')}
-          </Text>
-          <Text style={styles.role}>
-            {auth.state.role === 'staff' ? 'Staff' : 'Business'}
-          </Text>
-          
+        </View>
+      )}
+      
+      {/* Staff Header (keep old design) */}
+      {auth.state.role === 'staff' && (
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+          <Text style={styles.headerTitle}>Staff Profile</Text>
           <TouchableOpacity 
-            style={styles.editProfileButton}
-            onPress={() => setIsEditing(true)}
+            style={styles.settingsButton}
+            onPress={() => router.push('/(protected)/business/settings')}
           >
-            <Ionicons name="create-outline" size={16} color="#0F4D3A" />
-            <Text style={styles.editProfileButtonText}>Edit</Text>
+            <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
+      )}
 
-        {/* Achievements Section - Only for business */}
-        {auth.state.role === 'business' && (
-          <View style={styles.achievementsSection}>
-            <Text style={styles.sectionTitle}>Achievements</Text>
-            <View style={styles.achievementsGrid}>
-              {achievements.map((achievement) => (
-                <View key={achievement.id} style={styles.achievementItem}>
-                  <View style={[styles.achievementIcon, { backgroundColor: achievement.color }]}>
-                    <Ionicons name={achievement.icon as any} size={20} color="#FFFFFF" />
-                  </View>
-                  <Text style={styles.achievementTitle}>{achievement.title}</Text>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Profile Card - Only for Staff */}
+        {auth.state.role === 'staff' && (
+          <View style={styles.profileCard}>
+            <View style={styles.avatarContainer}>
+              <Image 
+                source={{ 
+                  uri: staffProfile?.avatar || 'https://via.placeholder.com/100'
+                }} 
+                style={styles.avatar}
+              />
+              <TouchableOpacity 
+                style={styles.avatarEditButton}
+                onPress={() => {/* Handle avatar upload */}}
+              >
+                <Ionicons name="camera" size={16} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={styles.name}>
+              {staffProfile?.fullName || 'Staff Name'}
+            </Text>
+            <Text style={styles.email}>
+              {staffProfile?.email || ''}
+            </Text>
+            <Text style={styles.role}>Staff</Text>
+            
+            <TouchableOpacity 
+              style={styles.editProfileButton}
+              onPress={() => setIsEditing(true)}
+            >
+              <Ionicons name="create-outline" size={16} color="#0F4D3A" />
+              <Text style={styles.editProfileButtonText}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Main Stats Dashboard - Green Impact Section (2x2 Grid) */}
+        {auth.state.role === 'business' && businessProfile && (
+          <View style={styles.mainStatsSection}>
+            <Text style={styles.mainStatsTitle}>Green Impact</Text>
+            <View style={styles.statsGrid2x2}>
+              {/* Card 1: Eco Points */}
+              <View style={styles.statCardWhite}>
+                <View style={[styles.statIconContainer, { backgroundColor: '#FEF3C7' }]}>
+                  <Ionicons name="trophy" size={28} color="#F59E0B" />
                 </View>
-              ))}
+                <Text style={styles.statValueLarge}>
+                  {businessProfile.ecoPoints ? Math.round(businessProfile.ecoPoints) : '0'}
+                </Text>
+                <Text style={styles.statLabelLarge}>Eco Points</Text>
+              </View>
+              
+              {/* Card 2: CO2 Reduced */}
+              <View style={styles.statCardWhite}>
+                <View style={[styles.statIconContainer, { backgroundColor: '#ECFDF5' }]}>
+                  <Ionicons name="leaf" size={28} color="#10B981" />
+                </View>
+                <Text style={styles.statValueLarge}>
+                  {businessProfile.co2Reduced ? businessProfile.co2Reduced.toFixed(2) : '0.00'} kg
+                </Text>
+                <Text style={styles.statLabelLarge}>CO₂ Reduced</Text>
+              </View>
+              
+              {/* Card 3: Customers */}
+              <View style={styles.statCardWhite}>
+                <View style={[styles.statIconContainer, { backgroundColor: '#DBEAFE' }]}>
+                  <Ionicons name="people" size={28} color="#3B82F6" />
+                </View>
+                <Text style={styles.statValueLarge}>
+                  {businessProfile.totalReviews ? `${businessProfile.totalReviews}+` : '0+'}
+                </Text>
+                <Text style={styles.statLabelLarge}>Customers</Text>
+              </View>
+              
+              {/* Card 4: Revenue/Orders */}
+              <View style={styles.statCardWhite}>
+                <View style={[styles.statIconContainer, { backgroundColor: '#F3E8FF' }]}>
+                  <Ionicons name="trending-up" size={28} color="#8B5CF6" />
+                </View>
+                <Text style={styles.statValueLarge}>Top</Text>
+                <Text style={styles.statLabelLarge}>Revenue</Text>
+              </View>
             </View>
           </View>
         )}
@@ -640,165 +767,163 @@ export default function BusinessProfileScreen() {
           </View>
         )}
 
-        {/* Business Information Card */}
+        {/* Business Information - Collapsible/Accordion */}
         {auth.state.role === 'business' && businessProfile && (
-          <View style={styles.businessInfoCard}>
-            <Text style={styles.businessInfoTitle}>Business Information</Text>
-            <View style={styles.businessInfoRow}>
-              <Ionicons name="business" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
-              <View style={styles.businessInfoContent}>
-                <Text style={styles.businessInfoLabel}>Business Name</Text>
-                <Text style={styles.businessInfoValue}>{businessProfile.businessName || 'Not set'}</Text>
-              </View>
-            </View>
-            <View style={styles.businessInfoRow}>
-              <Ionicons name="mail" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
-              <View style={styles.businessInfoContent}>
-                <Text style={styles.businessInfoLabel}>Business Email</Text>
-                <Text style={styles.businessInfoValue}>{businessProfile.businessMail || businessProfile.userId?.email || 'Not set'}</Text>
-              </View>
-            </View>
-            <View style={styles.businessInfoRow}>
-              <Ionicons name="call" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
-              <View style={styles.businessInfoContent}>
-                <Text style={styles.businessInfoLabel}>Phone Number</Text>
-                <Text style={styles.businessInfoValue}>{businessProfile.businessPhone || 'Not set'}</Text>
-              </View>
-            </View>
-            <View style={styles.businessInfoRow}>
-              <Ionicons name="location" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
-              <View style={styles.businessInfoContent}>
-                <Text style={styles.businessInfoLabel}>Address</Text>
-                <Text style={styles.businessInfoValue}>{businessProfile.businessAddress || 'Not set'}</Text>
-              </View>
-            </View>
-            <View style={styles.businessInfoRow}>
-              <Ionicons name="pricetag" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
-              <View style={styles.businessInfoContent}>
-                <Text style={styles.businessInfoLabel}>Business Type</Text>
-                <Text style={styles.businessInfoValue}>{businessProfile.businessType || 'Not set'}</Text>
-              </View>
-            </View>
-            <View style={styles.businessInfoRow}>
-              <Ionicons name="time" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
-              <View style={styles.businessInfoContent}>
-                <Text style={styles.businessInfoLabel}>Working Hours</Text>
-                <Text style={styles.businessInfoValue}>
-                  {businessProfile.openTime && businessProfile.closeTime 
-                    ? `${businessProfile.openTime} - ${businessProfile.closeTime}`
-                    : 'Not set'}
-                </Text>
-              </View>
-            </View>
-            {businessProfile.taxCode && (
-              <View style={styles.businessInfoRow}>
-                <Ionicons name="document-text" size={20} color="#0F4D3A" style={styles.businessInfoIcon} />
-                <View style={styles.businessInfoContent}>
-                  <Text style={styles.businessInfoLabel}>Tax Code</Text>
-                  <Text style={styles.businessInfoValue}>{businessProfile.taxCode}</Text>
+          <View style={styles.businessInfoAccordionCard}>
+            <TouchableOpacity 
+              style={styles.businessInfoAccordionHeader}
+              onPress={() => setIsBusinessInfoExpanded(!isBusinessInfoExpanded)}
+            >
+              <Text style={styles.businessInfoAccordionTitle}>Business Information</Text>
+              <Ionicons 
+                name={isBusinessInfoExpanded ? "chevron-up" : "chevron-down"} 
+                size={20} 
+                color="#00704A" 
+              />
+            </TouchableOpacity>
+            
+            {isBusinessInfoExpanded && (
+              <View style={styles.businessInfoAccordionContent}>
+                <View style={styles.businessInfoRowCompact}>
+                  <Ionicons name="location" size={18} color="#00704A" style={styles.businessInfoIconCompact} />
+                  <Text style={styles.businessInfoValueCompact}>
+                    {businessProfile.businessAddress || 'Not set'}
+                  </Text>
                 </View>
+                <View style={styles.businessInfoRowCompact}>
+                  <Ionicons name="call" size={18} color="#00704A" style={styles.businessInfoIconCompact} />
+                  <Text style={styles.businessInfoValueCompact}>
+                    {businessProfile.businessPhone || 'Not set'}
+                  </Text>
+                </View>
+                <View style={styles.businessInfoRowCompact}>
+                  <Ionicons name="mail" size={18} color="#00704A" style={styles.businessInfoIconCompact} />
+                  <Text style={styles.businessInfoValueCompact}>
+                    {businessProfile.businessMail || businessProfile.userId?.email || 'Not set'}
+                  </Text>
+                </View>
+                {businessProfile.taxCode && (
+                  <View style={styles.businessInfoRowCompact}>
+                    <Ionicons name="document-text" size={18} color="#00704A" style={styles.businessInfoIconCompact} />
+                    <Text style={styles.businessInfoValueCompact}>
+                      {businessProfile.taxCode}
+                    </Text>
+                  </View>
+                )}
+                
+                {/* Edit Profile Button */}
+                <TouchableOpacity 
+                  style={styles.editProfileButtonOutlined}
+                  onPress={() => setIsEditing(true)}
+                >
+                  <Ionicons name="create-outline" size={18} color="#00704A" />
+                  <Text style={styles.editProfileButtonOutlinedText}>Edit Profile</Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
         )}
 
-        {/* Current Subscription Plan Card - Only for business */}
-        {auth.state.role === 'business' && activeSubscription && activeSubscription.length > 0 ? (
-          <View style={styles.subscriptionCard}>
-            <View style={styles.subscriptionHeader}>
-              <Ionicons name="card" size={24} color="#00704A" />
-              <Text style={styles.subscriptionTitle}>Current Subscription Plan</Text>
-            </View>
-            {activeSubscription.map((sub: any, index: number) => {
-              // Handle different possible structures
-              const subscriptionName = sub.subscriptionId?.name || sub.subscription?.name || sub.name || 'Unknown Plan';
-              const subscriptionPrice = sub.subscriptionId?.price || sub.subscription?.price || sub.price || 0;
-              const startDate = sub.startDate || sub.startAt || sub.createdAt;
-              const endDate = sub.endDate || sub.endAt || sub.expiresAt;
-              const status = sub.status || (sub.isActive ? 'active' : 'inactive');
-              
-              return (
-                <View key={index} style={styles.subscriptionItem}>
-                  <View style={styles.subscriptionInfo}>
-                    <Text style={styles.subscriptionName}>{subscriptionName}</Text>
-                    <Text style={styles.subscriptionPrice}>
-                      {subscriptionPrice > 0 
-                        ? `${subscriptionPrice.toLocaleString('en-US')} VND` 
-                        : 'Free'}
-                    </Text>
-                    {startDate && endDate && (
-                      <Text style={styles.subscriptionDate}>
-                        {new Date(startDate).toLocaleDateString('en-US')} - {new Date(endDate).toLocaleDateString('en-US')}
-                      </Text>
-                    )}
-                    {sub.durationInDays && (
-                      <Text style={styles.subscriptionDate}>
-                        Duration: {sub.durationInDays} days
-                      </Text>
-                    )}
-                    <View style={[
-                      styles.subscriptionStatus,
-                      status === 'active' && styles.subscriptionStatusActive,
-                      status === 'expired' && styles.subscriptionStatusExpired,
-                    ]}>
-                      <Text style={styles.subscriptionStatusText}>
-                        {status === 'active' ? 'Active' : status === 'expired' ? 'Expired' : status}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        ) : auth.state.role === 'business' ? (
-          <View style={styles.subscriptionCard}>
-            <View style={styles.subscriptionHeader}>
-              <Ionicons name="card-outline" size={24} color="#9CA3AF" />
-              <Text style={styles.subscriptionTitle}>Current Subscription Plan</Text>
-            </View>
-            <View style={styles.subscriptionItem}>
-              <Text style={styles.subscriptionName}>No active subscription</Text>
-              <Text style={styles.subscriptionDate}>You don't have an active subscription plan</Text>
-            </View>
-          </View>
-        ) : null}
 
-        {/* Menu Sections */}
-        {menuSections.map((section, sectionIndex) => (
-          <View key={sectionIndex} style={styles.menuSection}>
-            {section.title ? <Text style={styles.sectionTitle}>{section.title}</Text> : null}
-            <View style={styles.menuItems}>
-              {section.items.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.menuItem}
-                  onPress={item.onPress}
-                >
-                  <View style={styles.menuItemLeft}>
-                    <View style={[styles.menuItemIcon, { backgroundColor: item.color }]}>
-                      <Ionicons name={item.icon as any} size={20} color="#FFFFFF" />
+        {/* Subscription Status Card - Premium Card with Gradient */}
+        {auth.state.role === 'business' && activeSubscription && activeSubscription.length > 0 && (
+          <View style={styles.subscriptionPremiumCard}>
+            <View style={styles.subscriptionPremiumContent}>
+              <View style={styles.subscriptionPremiumHeader}>
+                <Text style={styles.subscriptionPremiumTitle}>
+                  Current Plan: {activeSubscription[0]?.subscriptionId?.name || activeSubscription[0]?.subscription?.name || activeSubscription[0]?.name || 'Unknown'}
+                </Text>
+              </View>
+              
+              {activeSubscription.map((sub: any, index: number) => {
+                const subscriptionId = sub._id;
+                const subscriptionPrice = sub.subscriptionId?.price || sub.subscription?.price || sub.price || 0;
+                const endDate = sub.endDate || sub.endAt || sub.expiresAt;
+                const status = sub.status || (sub.isActive ? 'active' : 'inactive');
+                const currentAutoRenew = autoRenewStates[subscriptionId] ?? sub.autoRenew ?? false;
+                const isToggling = togglingAutoRenew[subscriptionId] || false;
+                
+                return (
+                  <View key={index}>
+                    <View style={styles.subscriptionPremiumDetails}>
+                      <Text style={styles.subscriptionPremiumPrice}>
+                        {subscriptionPrice > 0 ? `${subscriptionPrice.toLocaleString('en-US')} VNĐ` : 'Free'} 
+                        {endDate && ` • Exp: ${new Date(endDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}`}
+                      </Text>
+                      <View style={[styles.subscriptionPremiumStatus, status === 'active' && styles.subscriptionPremiumStatusActive]}>
+                        <Text style={styles.subscriptionPremiumStatusText}>
+                          {status === 'active' ? 'Active' : 'Expired'}
+                        </Text>
+                      </View>
                     </View>
-                    <Text style={styles.menuItemTitle}>{item.title}</Text>
-                    {item.badge && (
-                      <View style={styles.badge}>
-                        <Text style={styles.badgeText}>{item.badge}</Text>
+                    
+                    {/* Auto Renew Toggle */}
+                    {status === 'active' && subscriptionId && (
+                      <View style={styles.subscriptionPremiumAutoRenew}>
+                        <Text style={styles.subscriptionPremiumAutoRenewLabel}>Auto Renew</Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.subscriptionToggleSwitch,
+                            currentAutoRenew && styles.subscriptionToggleSwitchActive,
+                            isToggling && styles.subscriptionToggleSwitchDisabled
+                          ]}
+                          onPress={() => handleToggleAutoRenew(subscriptionId, currentAutoRenew)}
+                          disabled={isToggling}
+                        >
+                          <View style={[
+                            styles.subscriptionToggleThumb,
+                            currentAutoRenew && styles.subscriptionToggleThumbActive
+                          ]} />
+                        </TouchableOpacity>
                       </View>
                     )}
                   </View>
-                  {item.showArrow && (
-                    <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-                  )}
-                </TouchableOpacity>
-              ))}
+                );
+              })}
             </View>
           </View>
-        ))}
+        )}
 
-        {/* Logout Button */}
-         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-           <Ionicons name="log-out-outline" size={20} color="#EF4444" />
-           <Text style={styles.logoutText}>Logout</Text>
-         </TouchableOpacity>
+        {/* Account Actions Section */}
+        {auth.state.role === 'business' && (
+          <View style={styles.accountActionsCard}>
+            <TouchableOpacity 
+              style={styles.accountActionItem}
+              onPress={() => setShowChangePasswordModal(true)}
+            >
+              <View style={styles.accountActionLeft}>
+                <Ionicons name="lock-closed-outline" size={20} color="#00704A" />
+                <Text style={styles.accountActionText}>Change Password</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+            
+            <View style={styles.accountActionDivider} />
+            
+            <TouchableOpacity 
+              style={styles.accountActionItem}
+              onPress={() => handleSwitchRole('customer')}
+            >
+              <View style={styles.accountActionLeft}>
+                <Ionicons name="swap-horizontal-outline" size={20} color="#00704A" />
+                <Text style={styles.accountActionText}>Switch to Customer Account</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+            
+            <View style={styles.accountActionDivider} />
+            
+            <TouchableOpacity 
+              style={styles.accountActionItem}
+              onPress={handleLogout}
+            >
+              <View style={styles.accountActionLeft}>
+                <Ionicons name="log-out-outline" size={20} color="#EF4444" />
+                <Text style={[styles.accountActionText, styles.accountActionTextRed]}>Logout</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
 
       {/* Edit Profile Modal */}
@@ -1385,6 +1510,103 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#1F2937',
   },
+  subscriptionAutoRenewContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  subscriptionAutoRenewInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  subscriptionAutoRenewLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  subscriptionToggleSwitch: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#D1D5DB',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  subscriptionToggleSwitchActive: {
+    backgroundColor: '#00704A',
+  },
+  subscriptionToggleSwitchDisabled: {
+    opacity: 0.5,
+  },
+  subscriptionToggleThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  subscriptionToggleThumbActive: {
+    transform: [{ translateX: 20 }],
+  },
+  // Business Statistics Card styles
+  statsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  statsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 16,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  statItem: {
+    width: (width - 64) / 2,
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+  },
+  statIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
   // Modal styles
   modalContainer: {
     flex: 1,
@@ -1471,5 +1693,270 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // New Header Design Styles
+  newHeader: {
+    backgroundColor: '#00704A',
+    paddingBottom: 16,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  headerLogoContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+  },
+  headerLogo: {
+    width: '100%',
+    height: '100%',
+  },
+  headerCenter: {
+    flex: 1,
+  },
+  businessNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  headerBusinessName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  verifiedBadge: {
+    marginLeft: 4,
+  },
+  ratingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    gap: 4,
+  },
+  ratingText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '500',
+  },
+  headerSettingsButton: {
+    padding: 8,
+  },
+  // Main Stats Dashboard Styles
+  mainStatsSection: {
+    marginBottom: 20,
+    paddingHorizontal: 20,
+  },
+  mainStatsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 12,
+  },
+  statsGrid2x2: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  statCardWhite: {
+    width: '48%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  statValueLarge: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  statLabelLarge: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  // Subscription Premium Card Styles
+  subscriptionPremiumCard: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  subscriptionPremiumContent: {
+    backgroundColor: '#ECFDF5',
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+    // Gradient effect - light green to white
+  },
+  subscriptionPremiumHeader: {
+    marginBottom: 16,
+  },
+  subscriptionPremiumTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  subscriptionPremiumDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  subscriptionPremiumPrice: {
+    fontSize: 16,
+    color: '#6B7280',
+    fontWeight: '500',
+    flex: 1,
+  },
+  subscriptionPremiumStatus: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+  },
+  subscriptionPremiumStatusActive: {
+    backgroundColor: '#D1FAE5',
+  },
+  subscriptionPremiumStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  subscriptionPremiumAutoRenew: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  subscriptionPremiumAutoRenewLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#1F2937',
+  },
+  // Business Info Accordion Styles
+  businessInfoAccordionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  businessInfoAccordionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+  },
+  businessInfoAccordionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  businessInfoAccordionContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  businessInfoRowCompact: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    gap: 12,
+  },
+  businessInfoIconCompact: {
+    marginTop: 2,
+  },
+  businessInfoValueCompact: {
+    flex: 1,
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+  },
+  editProfileButtonOutlined: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#00704A',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginTop: 8,
+    gap: 8,
+  },
+  editProfileButtonOutlinedText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#00704A',
+  },
+  // Account Actions Styles
+  accountActionsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  accountActionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  accountActionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  accountActionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#1F2937',
+  },
+  accountActionTextRed: {
+    color: '#EF4444',
+  },
+  accountActionDivider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginLeft: 48,
   },
 });

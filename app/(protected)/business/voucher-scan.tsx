@@ -1,23 +1,23 @@
-import { Camera, CameraView } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
+import { Camera, CameraView } from 'expo-camera';
 import { router } from 'expo-router';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Image,
-  Modal,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  Vibration
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Image,
+    Modal,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    Vibration,
+    View
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
 import { businessVoucherApi, BusinessVoucherCode } from '../../../src/services/api/businessVoucherService';
@@ -33,11 +33,41 @@ export default function VoucherScanScreen() {
   const [confirming, setConfirming] = useState(false);
   const [voucherCode, setVoucherCode] = useState('');
   const [showVoucherDetail, setShowVoucherDetail] = useState(false);
+  const [flashEnabled, setFlashEnabled] = useState(false);
+  const [laserLinePosition, setLaserLinePosition] = useState(0);
   const scanLock = useRef(false);
+  const laserAnimationRef = useRef<any>(null);
 
   useEffect(() => {
     requestCameraPermission();
   }, []);
+
+  // Laser scanning line animation
+  useEffect(() => {
+    if (showQRScanner && hasCameraPermission) {
+      const frameSize = width * 0.7;
+      let direction = 1;
+      let position = 10;
+      
+      laserAnimationRef.current = setInterval(() => {
+        position += direction * 3;
+        if (position >= frameSize - 10 || position <= 10) {
+          direction *= -1;
+        }
+        setLaserLinePosition(position);
+      }, 16);
+      
+      return () => {
+        if (laserAnimationRef.current) {
+          clearInterval(laserAnimationRef.current);
+          laserAnimationRef.current = null;
+        }
+        setLaserLinePosition(0);
+      };
+    } else {
+      setLaserLinePosition(0);
+    }
+  }, [showQRScanner, hasCameraPermission]);
 
   const requestCameraPermission = async () => {
     try {
@@ -250,17 +280,116 @@ export default function VoucherScanScreen() {
                   barcodeScannerSettings={{
                     barcodeTypes: ['qr'],
                   }}
+                  enableTorch={flashEnabled}
                 />
-                <View style={styles.scannerOverlay}>
-                  <View style={styles.scannerFrame}>
-                    <View style={[styles.corner, styles.topLeft]} />
-                    <View style={[styles.corner, styles.topRight]} />
-                    <View style={[styles.corner, styles.bottomLeft]} />
-                    <View style={[styles.corner, styles.bottomRight]} />
+                
+                {/* Overlay Mask - Dark Semi-transparent (60-70% opacity) with cutout */}
+                <View style={styles.overlayMask}>
+                  <View style={styles.overlayTop} />
+                  <View style={styles.overlayBottom} />
+                  <View style={styles.overlayLeft} />
+                  <View style={styles.overlayRight} />
+                </View>
+
+                {/* Branding - Top */}
+                <View style={styles.brandingContainer}>
+                  <Text style={styles.brandingText}>Powered by Back2Use</Text>
+                </View>
+
+                {/* Close Button - Top Right */}
+                <TouchableOpacity 
+                  style={styles.closeButtonTop} 
+                  onPress={() => {
+                    setShowQRScanner(false);
+                    setFlashEnabled(false);
+                    if (laserAnimationRef.current) {
+                      clearInterval(laserAnimationRef.current);
+                      laserAnimationRef.current = null;
+                    }
+                    router.back();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close" size={28} color="#FFFFFF" />
+                </TouchableOpacity>
+
+                {/* Scanning Frame with Rounded Corner Brackets */}
+                <View style={styles.scanningFrameContainer}>
+                  <View style={styles.scanningFrame}>
+                    {/* Top Left Corner */}
+                    <View style={[styles.cornerBracket, styles.topLeftCorner]}>
+                      <View style={styles.cornerBracketHorizontal} />
+                      <View style={styles.cornerBracketVertical} />
+                    </View>
+                    {/* Top Right Corner */}
+                    <View style={[styles.cornerBracket, styles.topRightCorner]}>
+                      <View style={styles.cornerBracketHorizontal} />
+                      <View style={styles.cornerBracketVertical} />
+                    </View>
+                    {/* Bottom Left Corner */}
+                    <View style={[styles.cornerBracket, styles.bottomLeftCorner]}>
+                      <View style={styles.cornerBracketHorizontal} />
+                      <View style={styles.cornerBracketVertical} />
+                    </View>
+                    {/* Bottom Right Corner */}
+                    <View style={[styles.cornerBracket, styles.bottomRightCorner]}>
+                      <View style={styles.cornerBracketHorizontal} />
+                      <View style={styles.cornerBracketVertical} />
+                    </View>
+                    
+                    {/* Laser Scanning Line */}
+                    <View 
+                      style={[
+                        styles.laserLine,
+                        { top: laserLinePosition }
+                      ]}
+                    />
                   </View>
-                  <Text style={styles.scannerHint}>
-                    Đưa mã QR vào khung để quét
+                </View>
+
+                {/* Instructions Text */}
+                <View style={styles.instructionsContainer}>
+                  <Text style={styles.instructionsText}>
+                    Align the QR code within the frame to scan
                   </Text>
+                </View>
+
+                {/* Floating Controls - Bottom */}
+                <View style={styles.floatingControls}>
+                  {/* My QR Button */}
+                  <TouchableOpacity 
+                    style={styles.floatingButton}
+                    onPress={() => {
+                      Alert.alert('My QR', 'Feature coming soon');
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="qr-code-outline" size={24} color="#FFFFFF" />
+                  </TouchableOpacity>
+
+                  {/* Flash/Torch Button - Center (Large) */}
+                  <TouchableOpacity 
+                    style={[styles.floatingButton, styles.flashButton]}
+                    onPress={() => setFlashEnabled(!flashEnabled)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons 
+                      name={flashEnabled ? "flash" : "flash-outline"} 
+                      size={28} 
+                      color={flashEnabled ? "#FCD34D" : "#FFFFFF"} 
+                    />
+                  </TouchableOpacity>
+
+                  {/* Upload Image Button */}
+                  <TouchableOpacity 
+                    style={styles.floatingButton}
+                    onPress={() => {
+                      Alert.alert('Upload Image', 'Feature coming soon');
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="image-outline" size={24} color="#FFFFFF" />
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
@@ -451,7 +580,7 @@ export default function VoucherScanScreen() {
 
       {/* Main Content - Instructions */}
       {!showQRScanner && !showVoucherDetail && (
-        <View style={styles.instructionsContainer}>
+        <View style={styles.instructionsMainContainer}>
           <View style={styles.instructionsCard}>
             <Ionicons name="qr-code-outline" size={64} color="#00704A" />
             <Text style={styles.instructionsTitle}>Quét mã QR voucher</Text>
@@ -550,59 +679,175 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     textAlign: 'center',
   },
-  scannerOverlay: {
+  // QR Scanner - Professional Redesign
+  overlayMask: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  scannerFrame: {
+  overlayTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: height * 0.25,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  overlayBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: height - (height * 0.25 + width * 0.7),
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  overlayLeft: {
+    position: 'absolute',
+    top: height * 0.25,
+    left: 0,
+    width: width * 0.15,
+    height: width * 0.7,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  overlayRight: {
+    position: 'absolute',
+    top: height * 0.25,
+    right: 0,
+    width: width * 0.15,
+    height: width * 0.7,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  brandingContainer: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  brandingText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  closeButtonTop: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  scanningFrameContainer: {
+    position: 'absolute',
+    top: height * 0.25,
+    left: width * 0.15,
     width: width * 0.7,
     height: width * 0.7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 5,
+  },
+  scanningFrame: {
+    width: '100%',
+    height: '100%',
     position: 'relative',
   },
-  corner: {
+  cornerBracket: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+  },
+  cornerBracketHorizontal: {
     position: 'absolute',
     width: 30,
+    height: 4,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 2,
+  },
+  cornerBracketVertical: {
+    position: 'absolute',
+    width: 4,
     height: 30,
-    borderColor: '#FFFFFF',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 2,
   },
-  topLeft: {
+  topLeftCorner: {
     top: 0,
     left: 0,
-    borderTopWidth: 4,
-    borderLeftWidth: 4,
-    borderTopLeftRadius: 8,
   },
-  topRight: {
+  topRightCorner: {
     top: 0,
     right: 0,
-    borderTopWidth: 4,
-    borderRightWidth: 4,
-    borderTopRightRadius: 8,
   },
-  bottomLeft: {
+  bottomLeftCorner: {
     bottom: 0,
     left: 0,
-    borderBottomWidth: 4,
-    borderLeftWidth: 4,
-    borderBottomLeftRadius: 8,
   },
-  bottomRight: {
+  bottomRightCorner: {
     bottom: 0,
     right: 0,
-    borderBottomWidth: 4,
-    borderRightWidth: 4,
-    borderBottomRightRadius: 8,
   },
-  scannerHint: {
-    marginTop: width * 0.7 + 20,
-    fontSize: 16,
+  laserLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: '#10B981',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
+    elevation: 10,
+    opacity: 0.9,
+  },
+  instructionsContainer: {
+    position: 'absolute',
+    bottom: 180,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  instructionsText: {
     color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
     textAlign: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 20,
+  },
+  floatingControls: {
+    position: 'absolute',
+    bottom: 60,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 24,
+    zIndex: 10,
+  },
+  floatingButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backdropFilter: 'blur(10px)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  flashButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
   permissionButton: {
     marginTop: 20,
@@ -887,7 +1132,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  instructionsContainer: {
+  instructionsMainContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',

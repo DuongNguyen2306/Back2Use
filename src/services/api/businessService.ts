@@ -1,15 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_ENDPOINTS, REQUEST_TIMEOUT } from '../../constants/api';
 import {
-  BusinessFormHistoryResponse,
-  BusinessProfileResponse,
+    BusinessFormHistoryResponse,
+    BusinessProfileResponse,
     BusinessRegisterRequest,
     BusinessRegisterResponse,
     GetAllBusinessesResponse,
     MaterialCreateRequest,
     MaterialItem,
     NearbyBusinessesResponse,
-  PaginatedResponse
+    PaginatedResponse
 } from '../../types/business.types';
 import { apiCall, apiClient } from './client';
 
@@ -353,6 +353,10 @@ export interface BuySubscriptionRequest {
 }
 export interface BuySubscriptionResponse { statusCode: number; message: string; data?: any; }
 export interface ActivateTrialResponse { statusCode: number; message: string; data?: any; }
+export interface ToggleAutoRenewRequest {
+  autoRenew: boolean;
+}
+export interface ToggleAutoRenewResponse { statusCode: number; message: string; data?: any; }
 
 export const subscriptionsApi = {
   getAll: async (): Promise<SubscriptionsResponse> => {
@@ -367,6 +371,12 @@ export const subscriptionsApi = {
   activateTrial: async (): Promise<ActivateTrialResponse> => {
     return apiCall<ActivateTrialResponse>(API_ENDPOINTS.SUBSCRIPTIONS.ACTIVATE_TRIAL, {
       method: 'POST',
+    });
+  },
+  toggleAutoRenew: async (subscriptionId: string, payload: ToggleAutoRenewRequest): Promise<ToggleAutoRenewResponse> => {
+    return apiCall<ToggleAutoRenewResponse>(`${API_ENDPOINTS.SUBSCRIPTIONS.TOGGLE_AUTO_RENEW}/${subscriptionId}/auto-renew`, {
+      method: 'PATCH',
+      data: payload,
     });
   },
 };

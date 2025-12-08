@@ -3,23 +3,22 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  Alert,
-  Dimensions,
-  Image,
-  Modal,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    Alert,
+    Dimensions,
+    Image,
+    Modal,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../../context/AuthProvider';
 import { useToast } from '../../../hooks/use-toast';
 import { authApi, SubscriptionPackage } from '../../../lib/api';
-import { subscriptionsApi } from '../../../src/services/api/businessService';
-import { businessesApi } from '../../../src/services/api/businessService';
+import { businessesApi, subscriptionsApi } from '../../../src/services/api/businessService';
 import { staffApi, StaffProfile } from '../../../src/services/api/staffService';
 import { BusinessProfile } from '../../../src/types/business.types';
 
@@ -42,6 +41,7 @@ export default function BusinessMenu() {
   const [activeSubscription, setActiveSubscription] = useState<any[]>([]);
   const [autoRenewStates, setAutoRenewStates] = useState<Record<string, boolean>>({});
   const [activatingTrial, setActivatingTrial] = useState(false);
+  const [togglingAutoRenew, setTogglingAutoRenew] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const loadProfileData = async () => {
@@ -67,6 +67,16 @@ export default function BusinessMenu() {
                 ? profileResponse.data.activeSubscription 
                 : [profileResponse.data.activeSubscription];
               setActiveSubscription(subscriptions);
+              
+              // Load auto-renew states from active subscriptions
+              const autoRenewMap: Record<string, boolean> = {};
+              subscriptions.forEach((sub: any) => {
+                const subId = sub._id;
+                if (subId) {
+                  autoRenewMap[subId] = sub.autoRenew || false;
+                }
+              });
+              setAutoRenewStates(prev => ({ ...prev, ...autoRenewMap }));
             } else {
               setActiveSubscription([]);
             }
@@ -287,6 +297,16 @@ export default function BusinessMenu() {
           ? profileResponse.data.activeSubscription 
           : [profileResponse.data.activeSubscription];
         setActiveSubscription(subscriptions);
+        
+        // Update auto-renew states
+        const autoRenewMap: Record<string, boolean> = {};
+        subscriptions.forEach((sub: any) => {
+          const subId = sub._id;
+          if (subId) {
+            autoRenewMap[subId] = sub.autoRenew || false;
+          }
+        });
+        setAutoRenewStates(prev => ({ ...prev, ...autoRenewMap }));
       }
       
       setShowSubscriptionModal(false);
@@ -299,6 +319,49 @@ export default function BusinessMenu() {
       });
     } finally {
       setActivatingTrial(false);
+    }
+  };
+
+  const handleToggleAutoRenew = async (subscriptionId: string, currentValue: boolean) => {
+    try {
+      setTogglingAutoRenew(prev => ({ ...prev, [subscriptionId]: true }));
+      console.log('🔄 Toggling auto-renew for subscription:', subscriptionId);
+      
+      const newValue = !currentValue;
+      const response = await subscriptionsApi.toggleAutoRenew(subscriptionId, {
+        autoRenew: newValue,
+      });
+      
+      console.log('✅ Toggle auto-renew response:', response);
+      
+      // Update local state
+      setAutoRenewStates(prev => ({
+        ...prev,
+        [subscriptionId]: newValue,
+      }));
+      
+      // Update active subscription data
+      setActiveSubscription(prev => prev.map(sub => {
+        if (sub._id === subscriptionId) {
+          return { ...sub, autoRenew: newValue };
+        }
+        return sub;
+      }));
+      
+      toast({
+        title: "Success",
+        description: newValue 
+          ? "Auto-renewal has been enabled" 
+          : "Auto-renewal has been disabled",
+      });
+    } catch (error: any) {
+      console.error('❌ Error toggling auto-renew:', error);
+      toast({
+        title: "Error",
+        description: error?.response?.data?.message || error?.message || "Unable to change auto-renewal settings. Please try again.",
+      });
+    } finally {
+      setTogglingAutoRenew(prev => ({ ...prev, [subscriptionId]: false }));
     }
   };
 
@@ -572,6 +635,61 @@ export default function BusinessMenu() {
                 </View>
               ) : (
                 <>
+                  {/* Current Active Subscription with Auto-Renew Toggle */}
+                  {activeSubscription.length > 0 && hasActiveSubscription() && activeSubscription.map((sub: any) => {
+                    const subscriptionId = sub._id;
+                    const subscriptionName = sub.subscriptionId?.name || sub.subscription?.name || sub.name || 'Unknown Plan';
+                    const subscriptionPrice = sub.subscriptionId?.price || sub.subscription?.price || sub.price || 0;
+                    const startDate = sub.startDate || sub.startAt || sub.createdAt;
+                    const endDate = sub.endDate || sub.endAt || sub.expiresAt;
+                    const status = sub.status || (sub.isActive ? 'active' : 'inactive');
+                    const currentAutoRenew = autoRenewStates[subscriptionId] ?? sub.autoRenew ?? false;
+                    const isToggling = togglingAutoRenew[subscriptionId] || false;
+                    
+                    if (status !== 'active') return null;
+                    
+                    return (
+                      <View key={subscriptionId} style={styles.activeSubscriptionCard}>
+                        <View style={styles.activeSubscriptionHeader}>
+                          <View style={styles.activeSubscriptionIcon}>
+                            <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+                          </View>
+                          <View style={styles.activeSubscriptionInfo}>
+                            <Text style={styles.activeSubscriptionTitle}>Current Subscription</Text>
+                            <Text style={styles.activeSubscriptionName}>{subscriptionName}</Text>
+                            {startDate && endDate && (
+                              <Text style={styles.activeSubscriptionDate}>
+                                {new Date(startDate).toLocaleDateString('en-US')} - {new Date(endDate).toLocaleDateString('en-US')}
+                              </Text>
+                            )}
+                          </View>
+                        </View>
+                        
+                        {/* Auto Renew Toggle */}
+                        <View style={styles.activeAutoRenewContainer}>
+                          <View style={styles.activeAutoRenewInfo}>
+                            <Ionicons name="refresh" size={20} color="#00704A" />
+                            <Text style={styles.activeAutoRenewLabel}>Auto Renew</Text>
+                          </View>
+                          <TouchableOpacity
+                            style={[
+                              styles.toggleSwitch,
+                              currentAutoRenew && styles.toggleSwitchActive,
+                              isToggling && styles.toggleSwitchDisabled
+                            ]}
+                            onPress={() => handleToggleAutoRenew(subscriptionId, currentAutoRenew)}
+                            disabled={isToggling}
+                          >
+                            <View style={[
+                              styles.toggleThumb,
+                              currentAutoRenew && styles.toggleThumbActive
+                            ]} />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })}
+                  
                   {/* Activate Trial Button - Only show if no active subscription */}
                   {activeSubscription.length === 0 && !hasActiveSubscription() && (
                     <View style={styles.subscriptionPackageCard}>
@@ -1064,6 +1182,70 @@ const styles = StyleSheet.create({
   },
   toggleThumbActive: {
     transform: [{ translateX: 20 }],
+  },
+  toggleSwitchDisabled: {
+    opacity: 0.5,
+  },
+  // Active Subscription Card styles
+  activeSubscriptionCard: {
+    backgroundColor: '#F0FDF4',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: '#10B981',
+  },
+  activeSubscriptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  activeSubscriptionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#D1FAE5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  activeSubscriptionInfo: {
+    flex: 1,
+  },
+  activeSubscriptionTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#059669',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  activeSubscriptionName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  activeSubscriptionDate: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  activeAutoRenewContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#D1FAE5',
+  },
+  activeAutoRenewInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  activeAutoRenewLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
   },
 });
 

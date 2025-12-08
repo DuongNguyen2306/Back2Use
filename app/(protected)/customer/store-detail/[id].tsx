@@ -1308,6 +1308,9 @@ export default function StoreDetailScreen() {
                   <Text style={styles.storeInfoMetaText}>
                     {store.averageRating ? store.averageRating.toFixed(1) : '0.0'}
                   </Text>
+                  {store.totalReviews !== undefined && store.totalReviews > 0 && (
+                    <Text style={styles.storeInfoMetaText}>({store.totalReviews})</Text>
+                  )}
                 </View>
                 {estimatedTime > 0 && (
                   <>
@@ -1439,12 +1442,12 @@ export default function StoreDetailScreen() {
                         </View>
                         <View style={styles.voucherFooter}>
                           <Text style={[styles.validUntil, isRedeemed && styles.usedVoucherText]}>
-                            HSD: {endDate ? endDate.toLocaleDateString('vi-VN') : 'N/A'}
+                            Expires: {endDate ? endDate.toLocaleDateString('en-US') : 'N/A'}
                           </Text>
                           {isRedeemed ? (
                             <View style={styles.redeemedBadge}>
                               <Ionicons name="checkmark-circle" size={16} color="#059669" />
-                              <Text style={styles.redeemedBadgeText}>Đã nhận</Text>
+                              <Text style={styles.redeemedBadgeText}>Redeemed</Text>
                             </View>
                           ) : canRedeem ? (
                             <TouchableOpacity
@@ -1458,7 +1461,7 @@ export default function StoreDetailScreen() {
                               {isRedeeming ? (
                                 <ActivityIndicator size="small" color="#0F4D3A" />
                               ) : (
-                                <Text style={styles.useButtonText}>Nhận ngay</Text>
+                                <Text style={styles.useButtonText}>Redeem Now</Text>
                               )}
                             </TouchableOpacity>
                           ) : null}

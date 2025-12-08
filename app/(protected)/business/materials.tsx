@@ -57,6 +57,7 @@ export default function InventoryManagementScreen() {
   // Products state
   const [products, setProducts] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'borrowed' | 'non-available' | 'damaged' | 'retired'>('all');
   
   // Form states
   const [groupForm, setGroupForm] = useState({
@@ -740,6 +741,7 @@ export default function InventoryManagementScreen() {
                   style={styles.sizeCard}
                   onPress={async () => {
                     setSelectedSize(size);
+                    setStatusFilter('all'); // Reset filter when opening modal
                     setShowGroupDetailModal(false);
                     setShowProductListModal(true);  // MỞ DANH SÁCH PRODUCT
                     // Load products khi mở modal
@@ -935,7 +937,7 @@ export default function InventoryManagementScreen() {
             {/* Product Count */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <Text style={{ fontSize: 18, fontWeight: '600', color: '#111827' }}>
-                Products ({products.length})
+                Products ({products.filter((p) => statusFilter === 'all' ? true : p.status === statusFilter).length})
               </Text>
               <TouchableOpacity
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
@@ -947,6 +949,100 @@ export default function InventoryManagementScreen() {
                 <Ionicons name="add-circle" size={22} color="#059669" />
                 <Text style={{ color: '#059669', fontWeight: '600' }}>Add More</Text>
               </TouchableOpacity>
+            </View>
+
+            {/* Status Filter */}
+            <View style={{ marginBottom: 16 }}>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 8, paddingRight: 16 }}
+              >
+                <TouchableOpacity
+                  style={[
+                    styles.statusFilterChip,
+                    statusFilter === 'all' && styles.statusFilterChipActive
+                  ]}
+                  onPress={() => setStatusFilter('all')}
+                >
+                  <Text style={[
+                    styles.statusFilterText,
+                    statusFilter === 'all' && styles.statusFilterTextActive
+                  ]}>
+                    All
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.statusFilterChip,
+                    statusFilter === 'available' && styles.statusFilterChipActive
+                  ]}
+                  onPress={() => setStatusFilter('available')}
+                >
+                  <Text style={[
+                    styles.statusFilterText,
+                    statusFilter === 'available' && styles.statusFilterTextActive
+                  ]}>
+                    Available
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.statusFilterChip,
+                    statusFilter === 'borrowed' && styles.statusFilterChipActive
+                  ]}
+                  onPress={() => setStatusFilter('borrowed')}
+                >
+                  <Text style={[
+                    styles.statusFilterText,
+                    statusFilter === 'borrowed' && styles.statusFilterTextActive
+                  ]}>
+                    Borrowed
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.statusFilterChip,
+                    statusFilter === 'non-available' && styles.statusFilterChipActive
+                  ]}
+                  onPress={() => setStatusFilter('non-available')}
+                >
+                  <Text style={[
+                    styles.statusFilterText,
+                    statusFilter === 'non-available' && styles.statusFilterTextActive
+                  ]}>
+                    Non-Available
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.statusFilterChip,
+                    statusFilter === 'damaged' && styles.statusFilterChipActive
+                  ]}
+                  onPress={() => setStatusFilter('damaged')}
+                >
+                  <Text style={[
+                    styles.statusFilterText,
+                    statusFilter === 'damaged' && styles.statusFilterTextActive
+                  ]}>
+                    Damaged
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.statusFilterChip,
+                    statusFilter === 'retired' && styles.statusFilterChipActive
+                  ]}
+                  onPress={() => setStatusFilter('retired')}
+                >
+                  <Text style={[
+                    styles.statusFilterText,
+                    statusFilter === 'retired' && styles.statusFilterTextActive
+                  ]}>
+                    Retired
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
             </View>
 
             {/* Danh sách sản phẩm */}
@@ -965,9 +1061,29 @@ export default function InventoryManagementScreen() {
                   Tap "Add More" to create products with unique QR codes
                 </Text>
               </View>
-            ) : (
-              <View style={{ gap: 12 }}>
-                {products.map((product, index) => {
+            ) : (() => {
+              const filteredProducts = products.filter((product) => {
+                if (statusFilter === 'all') return true;
+                return product.status === statusFilter;
+              });
+
+              if (filteredProducts.length === 0) {
+                return (
+                  <View style={{ alignItems: 'center', paddingVertical: 60 }}>
+                    <Ionicons name="filter-outline" size={80} color="#D1D5DB" />
+                    <Text style={{ fontSize: 18, color: '#6B7280', marginTop: 20, fontWeight: '600' }}>
+                      No products found
+                    </Text>
+                    <Text style={{ color: '#9CA3AF', marginTop: 8, textAlign: 'center' }}>
+                      No products with status "{statusFilter}" found
+                    </Text>
+                  </View>
+                );
+              }
+
+              return (
+                <View style={{ gap: 12 }}>
+                  {filteredProducts.map((product, index) => {
                   // Xử lý productSizeId có thể là object hoặc string
                   const sizeId = typeof product.productSizeId === 'object' 
                     ? product.productSizeId?._id 
@@ -1009,16 +1125,17 @@ export default function InventoryManagementScreen() {
                             Status: {product.status || 'N/A'}
                           </Text>
                           <Text style={{ fontSize: 12, color: '#6B7280' }}>
-                            {new Date(product.createdAt).toLocaleDateString('vi-VN')}
+                            {new Date(product.createdAt).toLocaleDateString('en-US')}
                           </Text>
                         </View>
                       </View>
                       <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
                     </TouchableOpacity>
                   );
-                })}
-              </View>
-            )}
+                  })}
+                </View>
+              );
+            })()}
 
             {/* Nút tạo thêm lớn (nếu chưa có hoặc muốn thêm) */}
             <TouchableOpacity
@@ -1501,5 +1618,25 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  statusFilterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  statusFilterChipActive: {
+    backgroundColor: '#059669',
+    borderColor: '#059669',
+  },
+  statusFilterText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  statusFilterTextActive: {
+    color: '#FFFFFF',
   },
 });

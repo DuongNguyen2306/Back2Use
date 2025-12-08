@@ -4,11 +4,11 @@ import { Ionicons } from "@expo/vector-icons"
 import AsyncStorage from "@react-native-async-storage/async-storage"
 import { router } from "expo-router"
 import { useEffect, useState } from "react"
-import { Image, SafeAreaView, StatusBar, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { Image, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import BusinessWelcomeModal from "../../../components/BusinessWelcomeModal"
 import { useAuth } from "../../../context/AuthProvider"
-import { businessesApi, productsApi } from "../../../src/services/api/businessService"
 import { borrowTransactionsApi } from "../../../src/services/api/borrowTransactionService"
+import { businessesApi, productsApi } from "../../../src/services/api/businessService"
 import { BusinessProfile } from "../../../src/types/business.types"
 
 const STORAGE_KEYS = {
@@ -208,16 +208,33 @@ export default function BusinessDashboard() {
   // Get greeting based on role
   const greeting = authState.role === 'staff' as any 
     ? "Hello Staff" 
-    : `Hello, ${businessOwnerName}!`;
-  const subtitle = authState.role === 'staff' as any
-    ? "Staff Dashboard"
-    : (businessProfile ? `${businessName} - Business Management` : "Business Management");
+    : `Hello, ${businessOwnerName || "Business Owner"}!`;
+  
+  // Build subtitle with rating if available
+  let subtitle: string | null = null;
+  if (authState.role === 'staff' as any) {
+    subtitle = "Staff Dashboard";
+  } else if (businessProfile) {
+    if (businessProfile.averageRating && authState.role !== 'staff' as any) {
+      const rating = businessProfile.averageRating.toFixed(1);
+      const reviews = businessProfile.totalReviews || 0;
+      subtitle = `${businessName} ⭐ ${rating} (${reviews} reviews)`;
+    } else {
+      subtitle = `${businessName} - Business Management`;
+    }
+  } else {
+    subtitle = "Business Management";
+  }
+  
+  // Ensure all string values are defined
+  const safeGreeting = greeting || "Hello";
+  const safeSubtitle = subtitle || "Business Management";
 
   const businessAlerts =
     stats.overdueItems > 0
       ? [
           {
-            message: `You have ${stats.overdueItems} items overdue that need attention.`,
+            message: `You have ${String(stats.overdueItems || 0)} items overdue that need attention.`,
           },
         ]
       : []
@@ -250,10 +267,10 @@ export default function BusinessDashboard() {
         <View style={styles.header}>
           <View style={styles.headerLeft} />
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>{loading ? "Loading..." : greeting}</Text>
-            {subtitle && (
-              <Text style={styles.headerSubtitle}>{subtitle}</Text>
-            )}
+            <Text style={styles.headerTitle}>{loading ? "Loading..." : safeGreeting}</Text>
+            {safeSubtitle ? (
+              <Text style={styles.headerSubtitle}>{safeSubtitle}</Text>
+            ) : null}
           </View>
           <View style={styles.headerRight}>
             <TouchableOpacity 
@@ -271,7 +288,7 @@ export default function BusinessDashboard() {
                   <Image source={{ uri: businessProfile.businessLogoUrl }} style={styles.avatarImage} />
                 ) : (
                   <Text style={styles.avatarText}>
-                    {(businessProfile.userId?.username || 'U').charAt(0).toUpperCase()}
+                    {((businessProfile.userId?.username || businessProfile.userId?.email || 'U').charAt(0).toUpperCase())}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -292,7 +309,7 @@ export default function BusinessDashboard() {
                   </View>
                   <View style={styles.alertTextContainer}>
                     <Text style={styles.alertTitle}>Alert</Text>
-                    <Text style={styles.alertMessage}>{businessAlerts[0]?.message}</Text>
+                    <Text style={styles.alertMessage}>{businessAlerts[0]?.message || ''}</Text>
                   </View>
                 </View>
               </View>
@@ -304,7 +321,7 @@ export default function BusinessDashboard() {
                   <View style={[styles.kpiIconContainer, { backgroundColor: "#C8E6C9" }]}>
                     <Ionicons name="checkmark-circle" size={28} color="#00704A" />
                   </View>
-                  <Text style={[styles.kpiValue, { color: "#00704A" }]}>{stats.availableItems}</Text>
+                  <Text style={[styles.kpiValue, { color: "#00704A" }]}>{String(stats.availableItems ?? 0)}</Text>
                   <Text style={styles.kpiLabel}>Available</Text>
                 </View>
               </View>
@@ -314,7 +331,7 @@ export default function BusinessDashboard() {
                   <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
                     <Ionicons name="people" size={28} color="#F57C00" />
                   </View>
-                  <Text style={[styles.kpiValue, { color: "#F57C00" }]}>{stats.borrowedItems}</Text>
+                  <Text style={[styles.kpiValue, { color: "#F57C00" }]}>{String(stats.borrowedItems ?? 0)}</Text>
                   <Text style={styles.kpiLabel}>Borrowed</Text>
                 </View>
               </View>
@@ -324,7 +341,7 @@ export default function BusinessDashboard() {
                   <View style={[styles.kpiIconContainer, { backgroundColor: "#FFCDD2" }]}>
                     <Ionicons name="time" size={28} color="#D32F2F" />
                   </View>
-                  <Text style={[styles.kpiValue, { color: "#D32F2F" }]}>{stats.overdueItems}</Text>
+                  <Text style={[styles.kpiValue, { color: "#D32F2F" }]}>{String(stats.overdueItems ?? 0)}</Text>
                   <Text style={styles.kpiLabel}>Overdue</Text>
                 </View>
               </View>
@@ -334,11 +351,43 @@ export default function BusinessDashboard() {
                   <View style={[styles.kpiIconContainer, { backgroundColor: "#E0E0E0" }]}>
                     <Ionicons name="close-circle" size={28} color="#666666" />
                   </View>
-                  <Text style={[styles.kpiValue, { color: "#666666" }]}>{stats.damagedItems}</Text>
+                  <Text style={[styles.kpiValue, { color: "#666666" }]}>{String(stats.damagedItems ?? 0)}</Text>
                   <Text style={styles.kpiLabel}>Damaged</Text>
                 </View>
               </View>
             </View>
+
+            {/* Eco Impact Card */}
+            {businessProfile && (businessProfile.co2Reduced || businessProfile.ecoPoints) && authState.role !== 'staff' as any && (
+              <View style={styles.ecoImpactCard}>
+                <View style={styles.ecoImpactHeader}>
+                  <View style={styles.ecoImpactIconContainer}>
+                    <Ionicons name="leaf" size={28} color="#10B981" />
+                  </View>
+                  <Text style={styles.ecoImpactTitle}>Green Impact & Achievements</Text>
+                </View>
+                <View style={styles.ecoImpactStats}>
+                  <View style={styles.ecoImpactStat}>
+                    <Ionicons name="earth" size={20} color="#059669" />
+                    <View style={styles.ecoImpactStatContent}>
+                      <Text style={styles.ecoImpactValue}>
+                        {businessProfile.co2Reduced ? String(businessProfile.co2Reduced.toFixed(2)) : '0.00'} kg
+                      </Text>
+                      <Text style={styles.ecoImpactLabel}>CO₂ Reduced</Text>
+                    </View>
+                  </View>
+                  <View style={styles.ecoImpactStat}>
+                    <Ionicons name="trophy" size={20} color="#059669" />
+                    <View style={styles.ecoImpactStatContent}>
+                      <Text style={styles.ecoImpactValue}>
+                        {businessProfile.ecoPoints ? String(Math.round(businessProfile.ecoPoints)) : '0'}
+                      </Text>
+                      <Text style={styles.ecoImpactLabel}>Eco Points</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            )}
 
             {/* Quick Actions for Business Owner */}
             {authState.role !== 'staff' as any && (
@@ -463,9 +512,9 @@ export default function BusinessDashboard() {
                     const productName = transaction.productId?.productGroupId?.name || 'Unknown Product';
                     
                     // Get customer name (same as transaction-processing)
-                    const customerName = typeof transaction.customerId === 'object' 
+                    const customerName = typeof transaction.customerId === 'object' && transaction.customerId?.fullName
                       ? transaction.customerId.fullName 
-                      : 'Unknown';
+                      : 'Unknown Customer';
                     
                     // Calculate overdue info (same logic as transaction-processing)
                     const calculateOverdueInfo = (t: any) => {
@@ -532,6 +581,11 @@ export default function BusinessDashboard() {
                       ? new Date(transaction.returnedAt) 
                       : (transaction.borrowDate ? new Date(transaction.borrowDate) : new Date());
                     
+                    // Ensure transactionDate is valid
+                    const safeTransactionDate = transactionDate && !isNaN(transactionDate.getTime()) 
+                      ? transactionDate 
+                      : new Date();
+                    
                     return (
                       <TouchableOpacity
                         key={transaction._id || transaction.id || index}
@@ -565,32 +619,34 @@ export default function BusinessDashboard() {
                           </View>
                           <View style={styles.activityItemInfo}>
                             <Text style={styles.activityItemTitle}>
-                              {productName}
+                              {String(productName || 'Unknown Product')}
                             </Text>
                             <Text style={styles.activityItemSubtitle}>
-                              Borrower: {customerName}
+                              Borrower: {String(customerName || 'Unknown Customer')}
                             </Text>
                           </View>
                         </View>
                         <View style={styles.activityItemRight}>
                           <Text style={styles.activityItemDate}>
-                            {transactionDate.toLocaleDateString('en-US')}
+                            {String(safeTransactionDate.toLocaleDateString('en-US'))}
                           </Text>
-                          <View
-                            style={[
-                              styles.statusBadge,
-                              { backgroundColor: status.bgColor }
-                            ]}
-                          >
-                            <Text
+                          {status && status.text ? (
+                            <View
                               style={[
-                                styles.statusText,
-                                { color: status.color }
+                                styles.statusBadge,
+                                { backgroundColor: status.bgColor || '#F3F4F6' }
                               ]}
                             >
-                              {status.text}
-                            </Text>
-                          </View>
+                              <Text
+                                style={[
+                                  styles.statusText,
+                                  { color: status.color || '#6B7280' }
+                                ]}
+                              >
+                                {String(status.text)}
+                              </Text>
+                            </View>
+                          ) : null}
                         </View>
                       </TouchableOpacity>
                     )
@@ -1030,5 +1086,68 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#999999",
     textAlign: "center",
+  },
+  // Eco Impact Card
+  ecoImpactCard: {
+    backgroundColor: '#ECFDF5',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: '#10B981',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  ecoImpactHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    gap: 12,
+  },
+  ecoImpactIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#D1FAE5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ecoImpactTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#059669',
+    flex: 1,
+  },
+  ecoImpactStats: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  ecoImpactStat: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+  },
+  ecoImpactStatContent: {
+    flex: 1,
+  },
+  ecoImpactValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#059669',
+    marginBottom: 4,
+  },
+  ecoImpactLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '600',
   },
 })

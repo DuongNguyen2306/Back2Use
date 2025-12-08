@@ -69,6 +69,7 @@ export const API_ENDPOINTS = {
     GET_ALL: '/subscriptions', // GET
     BUY: '/businesses/buy-subscription', // POST
     ACTIVATE_TRIAL: '/businesses/activate-trial', // POST
+    TOGGLE_AUTO_RENEW: '/businesses/subscription', // PATCH /businesses/subscription/{id}/auto-renew
   },
   PRODUCTS: {
     GET_BY_ID: '/products', // GET /products/{id}

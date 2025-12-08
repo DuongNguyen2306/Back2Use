@@ -4,27 +4,30 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Image,
-  Modal,
-  Platform,
-  RefreshControl,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Vibration,
-  View
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    FlatList,
+    Image,
+    Modal,
+    Platform,
+    RefreshControl,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    Vibration,
+    View
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
 import { borrowTransactionsApi } from '../../../src/services/api/borrowTransactionService';
 import { businessesApi } from '../../../src/services/api/businessService';
 import { BusinessProfile } from '../../../src/types/business.types';
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 interface BusinessTransaction {
   _id: string;
@@ -119,10 +122,25 @@ export default function TransactionProcessingScreen() {
   const [calculatedCondition, setCalculatedCondition] = useState<'good' | 'damaged'>('good');
   const [checkReturnResponse, setCheckReturnResponse] = useState<any>(null); // Lưu response từ checkReturn
   
-  // QR Scanner states
+  // QR Scanner states for return
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const [flashEnabled, setFlashEnabled] = useState(false);
+  const [laserLinePosition, setLaserLinePosition] = useState(0);
   const scanLock = useRef(false);
+  const laserAnimationRef = useRef<any>(null);
+  
+  // QR Scanner states for borrow confirmation
+  const [showBorrowQRScanner, setShowBorrowQRScanner] = useState(false);
+  const [hasBorrowCameraPermission, setHasBorrowCameraPermission] = useState<boolean | null>(null);
+  const [borrowFlashEnabled, setBorrowFlashEnabled] = useState(false);
+  const [borrowLaserLinePosition, setBorrowLaserLinePosition] = useState(0);
+  const borrowScanLock = useRef(false);
+  const borrowLaserAnimationRef = useRef<any>(null);
+  const [scannedBorrowTransaction, setScannedBorrowTransaction] = useState<BusinessTransaction | null>(null);
+  const [showBorrowConfirmModal, setShowBorrowConfirmModal] = useState(false);
+  const [scannedBorrowTransactionDetail, setScannedBorrowTransactionDetail] = useState<any>(null);
+  const [loadingScannedBorrowDetail, setLoadingScannedBorrowDetail] = useState(false);
 
   const [transactions, setTransactions] = useState<BusinessTransaction[]>([]);
 
@@ -470,6 +488,161 @@ export default function TransactionProcessingScreen() {
     }
   };
 
+  // Open QR Scanner for Borrow Confirmation
+  const openBorrowQRScanner = async () => {
+    try {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      setHasBorrowCameraPermission(status === 'granted');
+      if (status === 'granted') {
+        setShowBorrowQRScanner(true);
+      } else {
+        setHasBorrowCameraPermission(false);
+        Alert.alert('Camera Permission', 'Please grant camera permission to scan QR codes', [{ text: 'OK' }]);
+      }
+    } catch (error) {
+      console.error('Error requesting camera permission:', error);
+      Alert.alert('Error', 'Unable to open camera. Please try again.');
+    }
+  };
+
+  // Handle QR code scan for borrow confirmation
+  const onBorrowBarcodeScanned = async (e: any) => {
+    if (borrowScanLock.current) return;
+    borrowScanLock.current = true;
+    
+    const scannedData = e?.data ?? '';
+    console.log('📱 QR Code scanned for borrow confirmation:', scannedData);
+    
+    if (!scannedData || scannedData.trim() === '') {
+      Alert.alert('Error', 'Invalid QR code');
+      borrowScanLock.current = false;
+      return;
+    }
+    
+    Vibration.vibrate(Platform.OS === 'ios' ? 30 : 50);
+    setShowBorrowQRScanner(false);
+    
+    // Extract serialNumber from scanned data
+    let serialNumber = scannedData.trim();
+    
+    // Extract from deep link if present
+    if (scannedData.includes('://')) {
+      const match = scannedData.match(/(?:com\.)?back2use:\/\/item\/([^\/]+)/);
+      if (match && match[1]) {
+        serialNumber = match[1];
+      } else {
+        const parts = scannedData.split('/');
+        serialNumber = parts[parts.length - 1];
+      }
+    }
+    
+    // Check if it's a transaction ID
+    const isTransactionId = /^[0-9a-fA-F]{24}$/.test(serialNumber);
+    
+    try {
+      let foundTransaction: BusinessTransaction | null = null;
+      
+      if (isTransactionId) {
+        // If it's a transaction ID, get transaction directly
+        try {
+          const response = await borrowTransactionsApi.getBusinessDetail(serialNumber);
+          if (response.statusCode === 200 && response.data) {
+            foundTransaction = response.data;
+          }
+        } catch (error) {
+          console.log('Transaction not found by ID');
+        }
+      }
+      
+      // If not found by ID or not an ID, search by serial number
+      if (!foundTransaction) {
+        const apiResponse = await borrowTransactionsApi.getBusinessHistory({
+          page: 1,
+          limit: 1000, // Get more to search
+        });
+        const apiTransactions = apiResponse.data?.items || (Array.isArray(apiResponse.data) ? apiResponse.data : []);
+        
+        // Find transaction with matching serial number and status pending/waiting/pending_pickup
+        foundTransaction = apiTransactions.find((t: BusinessTransaction) => 
+          t.productId?.serialNumber === serialNumber &&
+          t.borrowTransactionType === 'borrow' &&
+          (t.status === 'pending' || t.status === 'waiting' || t.status === 'pending_pickup')
+        ) || null;
+      }
+      
+      if (foundTransaction) {
+        console.log('✅ Found transaction:', foundTransaction._id);
+        setScannedBorrowTransaction(foundTransaction);
+        // Load full transaction detail
+        try {
+          setLoadingScannedBorrowDetail(true);
+          const detailResponse = await borrowTransactionsApi.getBusinessDetail(foundTransaction._id);
+          if (detailResponse.statusCode === 200 && detailResponse.data) {
+            setScannedBorrowTransactionDetail(detailResponse.data);
+          }
+        } catch (error: any) {
+          console.error('Error loading transaction detail:', error);
+          // Use basic transaction data if detail fails
+          setScannedBorrowTransactionDetail(null);
+        } finally {
+          setLoadingScannedBorrowDetail(false);
+        }
+        setShowBorrowConfirmModal(true);
+      } else {
+        Alert.alert(
+          'No Borrow Request',
+          'This product does not have a borrow request',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error: any) {
+      console.error('Error finding transaction:', error);
+      Alert.alert(
+        'No Borrow Request',
+        'This product does not have a borrow request',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      borrowScanLock.current = false;
+    }
+  };
+
+  const stopBorrowScanning = () => {
+    setShowBorrowQRScanner(false);
+    setBorrowFlashEnabled(false);
+    if (borrowLaserAnimationRef.current) {
+      clearInterval(borrowLaserAnimationRef.current);
+      borrowLaserAnimationRef.current = null;
+    }
+  };
+
+  // Laser scanning line animation for borrow scanner
+  useEffect(() => {
+    if (showBorrowQRScanner && hasBorrowCameraPermission) {
+      const frameSize = screenWidth * 0.7;
+      let direction = 1;
+      let position = 10;
+      
+      borrowLaserAnimationRef.current = setInterval(() => {
+        position += direction * 3;
+        if (position >= frameSize - 10 || position <= 10) {
+          direction *= -1;
+        }
+        setBorrowLaserLinePosition(position);
+      }, 16);
+      
+      return () => {
+        if (borrowLaserAnimationRef.current) {
+          clearInterval(borrowLaserAnimationRef.current);
+          borrowLaserAnimationRef.current = null;
+        }
+        setBorrowLaserLinePosition(0);
+      };
+    } else {
+      setBorrowLaserLinePosition(0);
+    }
+  }, [showBorrowQRScanner, hasBorrowCameraPermission]);
+
   // Handle QR code scan
   const onBarcodeScanned = async (e: any) => {
     if (scanLock.current) return;
@@ -622,7 +795,39 @@ export default function TransactionProcessingScreen() {
 
   const stopScanning = () => {
     setShowQRScanner(false);
+    setFlashEnabled(false);
+    if (laserAnimationRef.current) {
+      clearInterval(laserAnimationRef.current);
+      laserAnimationRef.current = null;
+    }
   };
+
+  // Laser scanning line animation
+  useEffect(() => {
+    if (showQRScanner && hasCameraPermission) {
+      const frameSize = screenWidth * 0.7;
+      let direction = 1;
+      let position = 10;
+      
+      laserAnimationRef.current = setInterval(() => {
+        position += direction * 3;
+        if (position >= frameSize - 10 || position <= 10) {
+          direction *= -1;
+        }
+        setLaserLinePosition(position);
+      }, 16);
+      
+      return () => {
+        if (laserAnimationRef.current) {
+          clearInterval(laserAnimationRef.current);
+          laserAnimationRef.current = null;
+        }
+        setLaserLinePosition(0);
+      };
+    } else {
+      setLaserLinePosition(0);
+    }
+  }, [showQRScanner, hasCameraPermission]);
 
   const categorizeReturnTransaction = (transaction: BusinessTransaction) => {
     if (transaction.borrowTransactionType !== 'return') return null;
@@ -912,9 +1117,15 @@ export default function TransactionProcessingScreen() {
           <View style={styles.headerRight}>
             <TouchableOpacity 
               style={styles.scanButton}
-              onPress={openQRScanner}
+              onPress={openBorrowQRScanner}
             >
               <Ionicons name="qr-code-outline" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.scanButton}
+              onPress={openQRScanner}
+            >
+              <Ionicons name="return-down-back-outline" size={24} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
@@ -1971,37 +2182,614 @@ export default function TransactionProcessingScreen() {
         </View>
       </Modal>
 
+      {/* QR Scanner Modal for Borrow Confirmation */}
+      {showBorrowQRScanner && hasBorrowCameraPermission && (
+        <Modal
+          visible={showBorrowQRScanner}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={stopBorrowScanning}
+        >
+          <View style={styles.qrScannerContainer}>
+            <StatusBar hidden />
+            <CameraView 
+              style={StyleSheet.absoluteFillObject} 
+              barcodeScannerSettings={{ barcodeTypes: ['qr'] }} 
+              onBarcodeScanned={onBorrowBarcodeScanned}
+              enableTorch={borrowFlashEnabled}
+            />
+            
+            <View style={styles.overlayMask}>
+              <View style={styles.overlayTop} />
+              <View style={styles.overlayBottom} />
+              <View style={styles.overlayLeft} />
+              <View style={styles.overlayRight} />
+            </View>
+
+            <View style={styles.brandingContainer}>
+              <Text style={styles.brandingText}>Powered by Back2Use</Text>
+            </View>
+
+            <TouchableOpacity 
+              style={styles.closeButtonTop} 
+              onPress={stopBorrowScanning}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <View style={styles.scanningFrameContainer}>
+              <View style={styles.scanningFrame}>
+                <View style={[styles.cornerBracket, styles.topLeftCorner]}>
+                  <View style={styles.cornerBracketHorizontal} />
+                  <View style={styles.cornerBracketVertical} />
+                </View>
+                <View style={[styles.cornerBracket, styles.topRightCorner]}>
+                  <View style={styles.cornerBracketHorizontal} />
+                  <View style={styles.cornerBracketVertical} />
+                </View>
+                <View style={[styles.cornerBracket, styles.bottomLeftCorner]}>
+                  <View style={styles.cornerBracketHorizontal} />
+                  <View style={styles.cornerBracketVertical} />
+                </View>
+                <View style={[styles.cornerBracket, styles.bottomRightCorner]}>
+                  <View style={styles.cornerBracketHorizontal} />
+                  <View style={styles.cornerBracketVertical} />
+                </View>
+                
+                <View 
+                  style={[
+                    styles.laserLine,
+                    { top: borrowLaserLinePosition }
+                  ]}
+                />
+              </View>
+            </View>
+
+            <View style={styles.instructionsContainer}>
+              <Text style={styles.instructionsText}>
+                Align the QR code within the frame to scan
+              </Text>
+            </View>
+
+            <View style={styles.floatingControls}>
+              <TouchableOpacity 
+                style={styles.floatingButton}
+                onPress={() => {
+                  Alert.alert('My QR', 'Feature coming soon');
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="qr-code-outline" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.floatingButton, styles.flashButton]}
+                onPress={() => setBorrowFlashEnabled(!borrowFlashEnabled)}
+                activeOpacity={0.8}
+              >
+                <Ionicons 
+                  name={borrowFlashEnabled ? "flash" : "flash-outline"} 
+                  size={28} 
+                  color={borrowFlashEnabled ? "#FCD34D" : "#FFFFFF"} 
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.floatingButton}
+                onPress={() => {
+                  Alert.alert('Upload Image', 'Feature coming soon');
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="image-outline" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Borrow Confirmation Modal - Full Transaction Detail */}
+      <Modal
+        visible={showBorrowConfirmModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          setShowBorrowConfirmModal(false);
+          setScannedBorrowTransaction(null);
+          setScannedBorrowTransactionDetail(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Transaction Details</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowBorrowConfirmModal(false);
+                  setScannedBorrowTransaction(null);
+                  setScannedBorrowTransactionDetail(null);
+                }}
+              >
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            
+            {loadingScannedBorrowDetail ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#0F4D3A" />
+                <Text style={styles.loadingText}>Loading transaction details...</Text>
+              </View>
+            ) : scannedBorrowTransaction && (
+              <ScrollView style={styles.modalBody}>
+                {/* Basic Information */}
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Transaction ID</Text>
+                  <Text style={styles.detailValue}>{scannedBorrowTransactionDetail?._id || scannedBorrowTransaction._id}</Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Type</Text>
+                  <View style={[
+                    styles.typeBadge,
+                    (scannedBorrowTransactionDetail?.borrowTransactionType || scannedBorrowTransaction.borrowTransactionType) === 'borrow' ? styles.borrowBadge : styles.returnBadge
+                  ]}>
+                    <Text style={styles.typeText}>
+                      {(scannedBorrowTransactionDetail?.borrowTransactionType || scannedBorrowTransaction.borrowTransactionType) === 'borrow' ? 'BORROW' : 'RETURN'}
+                    </Text>
+                  </View>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Product</Text>
+                  <Text style={styles.detailValue}>
+                    {scannedBorrowTransactionDetail?.productId?.productGroupId?.name || scannedBorrowTransaction.productId?.productGroupId?.name || 'N/A'} - {scannedBorrowTransactionDetail?.productId?.productSizeId?.sizeName || scannedBorrowTransaction.productId?.productSizeId?.sizeName || 'N/A'}
+                  </Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Material</Text>
+                  <Text style={styles.detailValue}>
+                    {scannedBorrowTransactionDetail?.productId?.productGroupId?.materialId?.materialName || 'N/A'}
+                  </Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Serial Number</Text>
+                  <Text style={styles.detailValue}>
+                    {scannedBorrowTransactionDetail?.productId?.serialNumber || scannedBorrowTransaction.productId?.serialNumber || 'N/A'}
+                  </Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Borrow Date</Text>
+                  <Text style={styles.detailValue}>
+                    {new Date(scannedBorrowTransactionDetail?.borrowDate || scannedBorrowTransaction.borrowDate).toLocaleString('en-US')}
+                  </Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Due Date</Text>
+                  <Text style={styles.detailValue}>
+                    {new Date(scannedBorrowTransactionDetail?.dueDate || scannedBorrowTransaction.dueDate).toLocaleString('en-US')}
+                  </Text>
+                </View>
+                
+                {scannedBorrowTransactionDetail?.returnDate && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Return Date</Text>
+                    <Text style={styles.detailValue}>
+                      {new Date(scannedBorrowTransactionDetail.returnDate).toLocaleString('en-US')}
+                    </Text>
+                  </View>
+                )}
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Deposit Amount</Text>
+                  <Text style={styles.detailValue}>
+                    {(scannedBorrowTransactionDetail?.depositAmount || scannedBorrowTransaction.depositAmount)?.toLocaleString('en-US')} VND
+                  </Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Status</Text>
+                  <Text style={styles.detailValue}>
+                    {scannedBorrowTransactionDetail?.status || scannedBorrowTransaction.status}
+                  </Text>
+                </View>
+
+                {/* Customer Information */}
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Customer Information</Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Customer Name</Text>
+                  <Text style={styles.detailValue}>
+                    {scannedBorrowTransactionDetail?.customerId?.fullName || (typeof scannedBorrowTransaction.customerId === 'object' ? scannedBorrowTransaction.customerId.fullName : 'N/A')}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Phone Number</Text>
+                  <Text style={styles.detailValue}>
+                    {scannedBorrowTransactionDetail?.customerId?.phone || (typeof scannedBorrowTransaction.customerId === 'object' ? scannedBorrowTransaction.customerId.phone || 'N/A' : 'N/A')}
+                  </Text>
+                </View>
+
+                {/* Condition Information */}
+                {scannedBorrowTransactionDetail && (
+                  <>
+                    {scannedBorrowTransactionDetail.totalConditionPoints !== undefined && (
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Total Condition Points</Text>
+                        <Text style={styles.detailValue}>{scannedBorrowTransactionDetail.totalConditionPoints}</Text>
+                      </View>
+                    )}
+
+                    {/* Previous Condition Images */}
+                    {scannedBorrowTransactionDetail.previousConditionImages && (
+                      <>
+                        <View style={styles.sectionHeader}>
+                          <Text style={styles.sectionTitle}>Previous Condition Images</Text>
+                        </View>
+                        <View style={styles.imageGrid}>
+                          {scannedBorrowTransactionDetail.previousConditionImages.frontImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Front</Text>
+                              <Image source={{ uri: scannedBorrowTransactionDetail.previousConditionImages.frontImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {scannedBorrowTransactionDetail.previousConditionImages.backImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Back</Text>
+                              <Image source={{ uri: scannedBorrowTransactionDetail.previousConditionImages.backImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {scannedBorrowTransactionDetail.previousConditionImages.leftImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Left</Text>
+                              <Image source={{ uri: scannedBorrowTransactionDetail.previousConditionImages.leftImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {scannedBorrowTransactionDetail.previousConditionImages.rightImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Right</Text>
+                              <Image source={{ uri: scannedBorrowTransactionDetail.previousConditionImages.rightImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {scannedBorrowTransactionDetail.previousConditionImages.topImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Top</Text>
+                              <Image source={{ uri: scannedBorrowTransactionDetail.previousConditionImages.topImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {scannedBorrowTransactionDetail.previousConditionImages.bottomImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Bottom</Text>
+                              <Image source={{ uri: scannedBorrowTransactionDetail.previousConditionImages.bottomImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                        </View>
+                      </>
+                    )}
+
+                    {/* Current Condition Images */}
+                    {scannedBorrowTransactionDetail.currentConditionImages && (
+                      <>
+                        <View style={styles.sectionHeader}>
+                          <Text style={styles.sectionTitle}>Current Condition Images</Text>
+                        </View>
+                        <View style={styles.imageGrid}>
+                          {scannedBorrowTransactionDetail.currentConditionImages.frontImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Front</Text>
+                              <Image source={{ uri: scannedBorrowTransactionDetail.currentConditionImages.frontImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {scannedBorrowTransactionDetail.currentConditionImages.backImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Back</Text>
+                              <Image source={{ uri: scannedBorrowTransactionDetail.currentConditionImages.backImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {scannedBorrowTransactionDetail.currentConditionImages.leftImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Left</Text>
+                              <Image source={{ uri: scannedBorrowTransactionDetail.currentConditionImages.leftImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {scannedBorrowTransactionDetail.currentConditionImages.rightImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Right</Text>
+                              <Image source={{ uri: scannedBorrowTransactionDetail.currentConditionImages.rightImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {scannedBorrowTransactionDetail.currentConditionImages.topImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Top</Text>
+                              <Image source={{ uri: scannedBorrowTransactionDetail.currentConditionImages.topImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                          {scannedBorrowTransactionDetail.currentConditionImages.bottomImage && (
+                            <View style={styles.imageItem}>
+                              <Text style={styles.imageLabel}>Bottom</Text>
+                              <Image source={{ uri: scannedBorrowTransactionDetail.currentConditionImages.bottomImage }} style={styles.conditionImage} />
+                            </View>
+                          )}
+                        </View>
+                      </>
+                    )}
+
+                    {/* Previous Damage Faces */}
+                    {scannedBorrowTransactionDetail.previousDamageFaces && scannedBorrowTransactionDetail.previousDamageFaces.length > 0 && (
+                      <>
+                        <View style={styles.sectionHeader}>
+                          <Text style={styles.sectionTitle}>Previous Damage Assessment</Text>
+                        </View>
+                        {scannedBorrowTransactionDetail.previousDamageFaces.map((face: any, index: number) => (
+                          <View key={index} style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>{face.face.charAt(0).toUpperCase() + face.face.slice(1)}</Text>
+                            <Text style={styles.detailValue}>{face.issue}</Text>
+                          </View>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Current Damage Faces */}
+                    {scannedBorrowTransactionDetail.currentDamageFaces && scannedBorrowTransactionDetail.currentDamageFaces.length > 0 && (
+                      <>
+                        <View style={styles.sectionHeader}>
+                          <Text style={styles.sectionTitle}>Current Damage Assessment</Text>
+                        </View>
+                        {scannedBorrowTransactionDetail.currentDamageFaces.map((face: any, index: number) => (
+                          <View key={index} style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>{face.face.charAt(0).toUpperCase() + face.face.slice(1)}</Text>
+                            <Text style={styles.detailValue}>{face.issue}</Text>
+                          </View>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Points and Changes */}
+                    {(scannedBorrowTransactionDetail.co2Changed !== undefined || scannedBorrowTransactionDetail.ecoPointChanged !== undefined || 
+                      scannedBorrowTransactionDetail.rankingPointChanged !== undefined || scannedBorrowTransactionDetail.rewardPointChanged !== undefined) && (
+                      <>
+                        <View style={styles.sectionHeader}>
+                          <Text style={styles.sectionTitle}>Points & Changes</Text>
+                        </View>
+                        {scannedBorrowTransactionDetail.co2Changed !== undefined && (
+                          <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>CO2 Changed</Text>
+                            <Text style={[styles.detailValue, scannedBorrowTransactionDetail.co2Changed < 0 && { color: '#ef4444' }, scannedBorrowTransactionDetail.co2Changed > 0 && { color: '#16a34a' }]}>
+                              {scannedBorrowTransactionDetail.co2Changed > 0 ? '+' : ''}{scannedBorrowTransactionDetail.co2Changed}
+                            </Text>
+                          </View>
+                        )}
+                        {scannedBorrowTransactionDetail.ecoPointChanged !== undefined && (
+                          <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>Eco Point Changed</Text>
+                            <Text style={[styles.detailValue, scannedBorrowTransactionDetail.ecoPointChanged < 0 && { color: '#ef4444' }, scannedBorrowTransactionDetail.ecoPointChanged > 0 && { color: '#16a34a' }]}>
+                              {scannedBorrowTransactionDetail.ecoPointChanged > 0 ? '+' : ''}{scannedBorrowTransactionDetail.ecoPointChanged}
+                            </Text>
+                          </View>
+                        )}
+                        {scannedBorrowTransactionDetail.rankingPointChanged !== undefined && (
+                          <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>Ranking Point Changed</Text>
+                            <Text style={[styles.detailValue, scannedBorrowTransactionDetail.rankingPointChanged < 0 && { color: '#ef4444' }, scannedBorrowTransactionDetail.rankingPointChanged > 0 && { color: '#16a34a' }]}>
+                              {scannedBorrowTransactionDetail.rankingPointChanged > 0 ? '+' : ''}{scannedBorrowTransactionDetail.rankingPointChanged}
+                            </Text>
+                          </View>
+                        )}
+                        {scannedBorrowTransactionDetail.rewardPointChanged !== undefined && (
+                          <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>Reward Point Changed</Text>
+                            <Text style={[styles.detailValue, scannedBorrowTransactionDetail.rewardPointChanged < 0 && { color: '#ef4444' }, scannedBorrowTransactionDetail.rewardPointChanged > 0 && { color: '#16a34a' }]}>
+                              {scannedBorrowTransactionDetail.rewardPointChanged > 0 ? '+' : ''}{scannedBorrowTransactionDetail.rewardPointChanged}
+                            </Text>
+                          </View>
+                        )}
+                      </>
+                    )}
+
+                    {/* Wallet Transactions */}
+                    {scannedBorrowTransactionDetail.walletTransactions && scannedBorrowTransactionDetail.walletTransactions.length > 0 && (
+                      <>
+                        <View style={styles.sectionHeader}>
+                          <Text style={styles.sectionTitle}>Wallet Transactions</Text>
+                        </View>
+                        {scannedBorrowTransactionDetail.walletTransactions.map((walletTx: any, index: number) => (
+                          <View key={index} style={styles.walletTransactionCard}>
+                            <View style={styles.detailRow}>
+                              <Text style={styles.detailLabel}>Type</Text>
+                              <Text style={styles.detailValue}>{walletTx.transactionType}</Text>
+                            </View>
+                            <View style={styles.detailRow}>
+                              <Text style={styles.detailLabel}>Amount</Text>
+                              <Text style={[styles.detailValue, walletTx.direction === 'in' ? { color: '#16a34a' } : { color: '#ef4444' }]}>
+                                {walletTx.direction === 'in' ? '+' : '-'}{walletTx.amount.toLocaleString('en-US')} VND
+                              </Text>
+                            </View>
+                            <View style={styles.detailRow}>
+                              <Text style={styles.detailLabel}>Description</Text>
+                              <Text style={styles.detailValue}>{walletTx.description}</Text>
+                            </View>
+                            <View style={styles.detailRow}>
+                              <Text style={styles.detailLabel}>Status</Text>
+                              <Text style={styles.detailValue}>{walletTx.status}</Text>
+                            </View>
+                            <View style={styles.detailRow}>
+                              <Text style={styles.detailLabel}>Date</Text>
+                              <Text style={styles.detailValue}>
+                                {new Date(walletTx.createdAt).toLocaleString('en-US')}
+                              </Text>
+                            </View>
+                          </View>
+                        ))}
+                      </>
+                    )}
+                  </>
+                )}
+
+                {/* Confirm Borrow Button - Show for borrow transactions with pending status */}
+                {scannedBorrowTransaction.borrowTransactionType === 'borrow' && 
+                 (scannedBorrowTransaction.status === 'pending' || 
+                  scannedBorrowTransaction.status === 'waiting' || 
+                  scannedBorrowTransaction.status === 'pending_pickup') && (
+                  <TouchableOpacity
+                    style={[styles.processReturnButton, { backgroundColor: '#3B82F6' }]}
+                    onPress={async () => {
+                      try {
+                        await borrowTransactionsApi.confirmBorrow(scannedBorrowTransaction._id);
+                        Alert.alert(
+                          'Success',
+                          'Borrow transaction confirmed successfully!',
+                          [
+                            {
+                              text: 'OK',
+                              onPress: async () => {
+                                setShowBorrowConfirmModal(false);
+                                setScannedBorrowTransaction(null);
+                                setScannedBorrowTransactionDetail(null);
+                                await loadTransactions();
+                              }
+                            }
+                          ]
+                        );
+                      } catch (error: any) {
+                        console.error('Error confirming borrow:', error);
+                        Alert.alert('Error', error.message || 'Failed to confirm borrow transaction');
+                      }
+                    }}
+                  >
+                    <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                    <Text style={styles.processReturnButtonText}>Confirm Borrow</Text>
+                  </TouchableOpacity>
+                )}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* QR Scanner Modal for Return Processing */}
       {showQRScanner && hasCameraPermission && (
         <Modal
           visible={showQRScanner}
+          animationType="fade"
           transparent={true}
-          animationType="slide"
           onRequestClose={stopScanning}
         >
-          <View style={styles.qrScannerOverlay}>
-            <TouchableOpacity 
-              style={styles.qrScannerBackdrop} 
-              onPress={stopScanning} 
-              activeOpacity={1} 
+          <View style={styles.qrScannerContainer}>
+            <StatusBar hidden />
+            {/* Full Screen Camera */}
+            <CameraView 
+              style={StyleSheet.absoluteFillObject} 
+              barcodeScannerSettings={{ barcodeTypes: ['qr'] }} 
+              onBarcodeScanned={onBarcodeScanned}
+              enableTorch={flashEnabled}
             />
-            <View style={styles.qrScannerContainer}>
-              <View style={styles.qrScannerHeader}>
-                <Text style={styles.qrScannerTitle}>Scan QR Code for Return</Text>
-                <TouchableOpacity onPress={stopScanning}>
-                  <Ionicons name="close" size={24} color="#FFFFFF" />
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.qrScannerBox}>
-                <CameraView 
-                  style={styles.qrScannerCamera} 
-                  barcodeScannerSettings={{ barcodeTypes: ['qr'] }} 
-                  onBarcodeScanned={onBarcodeScanned} 
+            
+            {/* Overlay Mask - Dark Semi-transparent (60-70% opacity) with cutout */}
+            <View style={styles.overlayMask}>
+              <View style={styles.overlayTop} />
+              <View style={styles.overlayBottom} />
+              <View style={styles.overlayLeft} />
+              <View style={styles.overlayRight} />
+            </View>
+
+            {/* Branding - Top */}
+            <View style={styles.brandingContainer}>
+              <Text style={styles.brandingText}>Powered by Back2Use</Text>
+            </View>
+
+            {/* Close Button - Top Right */}
+            <TouchableOpacity 
+              style={styles.closeButtonTop} 
+              onPress={stopScanning}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            {/* Scanning Frame with Rounded Corner Brackets */}
+            <View style={styles.scanningFrameContainer}>
+              <View style={styles.scanningFrame}>
+                {/* Top Left Corner */}
+                <View style={[styles.cornerBracket, styles.topLeftCorner]}>
+                  <View style={styles.cornerBracketHorizontal} />
+                  <View style={styles.cornerBracketVertical} />
+                </View>
+                {/* Top Right Corner */}
+                <View style={[styles.cornerBracket, styles.topRightCorner]}>
+                  <View style={styles.cornerBracketHorizontal} />
+                  <View style={styles.cornerBracketVertical} />
+                </View>
+                {/* Bottom Left Corner */}
+                <View style={[styles.cornerBracket, styles.bottomLeftCorner]}>
+                  <View style={styles.cornerBracketHorizontal} />
+                  <View style={styles.cornerBracketVertical} />
+                </View>
+                {/* Bottom Right Corner */}
+                <View style={[styles.cornerBracket, styles.bottomRightCorner]}>
+                  <View style={styles.cornerBracketHorizontal} />
+                  <View style={styles.cornerBracketVertical} />
+                </View>
+                
+                {/* Laser Scanning Line */}
+                <View 
+                  style={[
+                    styles.laserLine,
+                    { top: laserLinePosition }
+                  ]}
                 />
               </View>
-              
-              <Text style={styles.qrScannerHint}>Align the QR code inside the frame to scan</Text>
+            </View>
+
+            {/* Instructions Text */}
+            <View style={styles.instructionsContainer}>
+              <Text style={styles.instructionsText}>
+                Align the QR code within the frame to scan
+              </Text>
+            </View>
+
+            {/* Floating Controls - Bottom */}
+            <View style={styles.floatingControls}>
+              {/* My QR Button */}
+              <TouchableOpacity 
+                style={styles.floatingButton}
+                onPress={() => {
+                  Alert.alert('My QR', 'Feature coming soon');
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="qr-code-outline" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+
+              {/* Flash/Torch Button - Center (Large) */}
+              <TouchableOpacity 
+                style={[styles.floatingButton, styles.flashButton]}
+                onPress={() => setFlashEnabled(!flashEnabled)}
+                activeOpacity={0.8}
+              >
+                <Ionicons 
+                  name={flashEnabled ? "flash" : "flash-outline"} 
+                  size={28} 
+                  color={flashEnabled ? "#FCD34D" : "#FFFFFF"} 
+                />
+              </TouchableOpacity>
+
+              {/* Upload Image Button */}
+              <TouchableOpacity 
+                style={styles.floatingButton}
+                onPress={() => {
+                  Alert.alert('Upload Image', 'Feature coming soon');
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="image-outline" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -2554,52 +3342,214 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  qrScannerOverlay: {
+  // QR Scanner - Professional Redesign
+  qrScannerContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#000000',
   },
-  qrScannerBackdrop: {
+  overlayMask: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  overlayTop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
+    height: screenHeight * 0.25,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  overlayBottom: {
+    position: 'absolute',
     bottom: 0,
+    left: 0,
+    right: 0,
+    height: screenHeight - (screenHeight * 0.25 + screenWidth * 0.7),
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
   },
-  qrScannerContainer: {
-    width: '100%',
-    maxWidth: 420,
+  overlayLeft: {
+    position: 'absolute',
+    top: screenHeight * 0.25,
+    left: 0,
+    width: screenWidth * 0.15,
+    height: screenWidth * 0.7,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  overlayRight: {
+    position: 'absolute',
+    top: screenHeight * 0.25,
+    right: 0,
+    width: screenWidth * 0.15,
+    height: screenWidth * 0.7,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  brandingContainer: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
     alignItems: 'center',
-    padding: 20,
+    zIndex: 10,
   },
-  qrScannerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  brandingText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  closeButtonTop: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
     alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  scanningFrameContainer: {
+    position: 'absolute',
+    top: screenHeight * 0.25,
+    left: screenWidth * 0.15,
+    width: screenWidth * 0.7,
+    height: screenWidth * 0.7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 5,
+  },
+  scanningFrame: {
     width: '100%',
-    marginBottom: 20,
+    height: '100%',
+    position: 'relative',
   },
-  qrScannerTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
+  cornerBracket: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
   },
-  qrScannerBox: {
-    width: '100%',
-    aspectRatio: 3 / 4,
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 12,
+  cornerBracketHorizontal: {
+    position: 'absolute',
+    width: 30,
+    height: 4,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 2,
   },
-  qrScannerCamera: {
-    flex: 1,
+  cornerBracketVertical: {
+    position: 'absolute',
+    width: 4,
+    height: 30,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 2,
   },
-  qrScannerHint: {
-    color: '#FFFFFF',
+  topLeftCorner: {
+    top: 0,
+    left: 0,
+  },
+  topRightCorner: {
+    top: 0,
+    right: 0,
+  },
+  bottomLeftCorner: {
+    bottom: 0,
+    left: 0,
+  },
+  bottomRightCorner: {
+    bottom: 0,
+    right: 0,
+  },
+  laserLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: '#10B981',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
+    elevation: 10,
     opacity: 0.9,
-    fontSize: 14,
+  },
+  instructionsContainer: {
+    position: 'absolute',
+    bottom: 180,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  instructionsText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
     textAlign: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 20,
+  },
+  floatingControls: {
+    position: 'absolute',
+    bottom: 60,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 24,
+    zIndex: 10,
+  },
+  floatingButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backdropFilter: 'blur(10px)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  flashButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  // Borrow Confirmation Modal Styles
+  transactionDetailCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  modalScrollView: {
+    maxHeight: screenHeight * 0.6,
+  },
+  confirmBorrowButton: {
+    backgroundColor: '#00704A',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginTop: 20,
+    gap: 10,
+    shadowColor: '#00704A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  confirmBorrowButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
   // New styles for redesigned Check Return Modal
   serialNumberLabel: {

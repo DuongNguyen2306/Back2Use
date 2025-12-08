@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -54,6 +53,7 @@ export default function BusinessWalletScreen() {
   const [wallet, setWallet] = useState<BusinessWallet | null>(null);
   const [loading, setLoading] = useState(true);
   const [transactionFilter, setTransactionFilter] = useState<'all' | 'external' | 'internal'>('all');
+  const [transactionTypeGroup, setTransactionTypeGroup] = useState<'personal' | 'deposit_refund' | 'penalty'>('personal');
   
   // Real transactions from API
   const [realTransactions, setRealTransactions] = useState<WalletTransaction[]>([]);
@@ -123,7 +123,7 @@ export default function BusinessWalletScreen() {
         
         const response = await walletTransactionsApi.getMy({
           walletType: 'business',
-          typeGroup: 'personal', // Chỉ lấy personal transactions (top_up, withdraw, subscription_fee)
+          typeGroup: transactionTypeGroup,
           page: 1,
           limit: 50,
         });
@@ -170,7 +170,7 @@ export default function BusinessWalletScreen() {
     };
 
     loadTransactions();
-  }, [wallet?._id]);
+  }, [wallet?._id, transactionTypeGroup]);
 
   // Listen for app state changes to refresh wallet after payment
   useEffect(() => {
@@ -695,17 +695,19 @@ export default function BusinessWalletScreen() {
           </View>
           <View style={styles.headerRight}>
             <TouchableOpacity 
-              style={styles.refreshButton}
+              style={styles.headerIconButton}
               onPress={forceRefresh}
             >
-              <Ionicons name="refresh" size={20} color="#FFFFFF" />
+              <Ionicons name="time-outline" size={24} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
       </SafeAreaView>
 
-      {/* Balance Card */}
-      <View style={styles.balanceCard}>
+      {/* Balance Overview - Dual Cards */}
+      <View style={styles.balanceCardsContainer}>
+        {/* Available Balance Card - Primary (Vibrant Dark Green Gradient) */}
+        <View style={[styles.balanceCard, styles.availableBalanceCardPrimary]}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>Available Balance</Text>
             <TouchableOpacity 
@@ -715,23 +717,47 @@ export default function BusinessWalletScreen() {
               <Ionicons
                 name={showBalance ? "eye" : "eye-off"}
                 size={20}
-                color="rgba(255,255,255,0.8)"
+                color="rgba(255,255,255,0.9)"
               />
             </TouchableOpacity>
           </View>
           
           <View style={styles.balanceContainer}>
             {showBalance ? (
-              <Text style={styles.balanceAmount}>
+              <Text style={styles.balanceAmountPrimary}>
                 {wallet?.availableBalance && typeof wallet.availableBalance === 'number' ? wallet.availableBalance.toLocaleString('vi-VN') : '0'} VNĐ
               </Text>
             ) : (
-              <Text style={styles.balanceHidden}>•••••••• VNĐ</Text>
+              <Text style={styles.balanceHiddenPrimary}>•••••••• VNĐ</Text>
             )}
           </View>
           
-          <Text style={styles.cardSubtitle}>Business Account</Text>
+          <Text style={styles.cardSubtitlePrimary}>Ready to use</Text>
         </View>
+
+        {/* Holding Balance Card - Secondary (Darker Grey-Green with Lock Watermark) */}
+        <View style={[styles.balanceCard, styles.holdingBalanceCardSecondary]}>
+          <View style={styles.lockWatermark}>
+            <Ionicons name="lock-closed" size={60} color="rgba(255,255,255,0.1)" />
+          </View>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitleSecondary}>Holding Balance</Text>
+            <Ionicons name="lock-closed" size={20} color="rgba(255,255,255,0.7)" />
+          </View>
+          
+          <View style={styles.balanceContainer}>
+            {showBalance ? (
+              <Text style={styles.balanceAmountSecondary}>
+                {wallet?.holdingBalance && typeof wallet.holdingBalance === 'number' ? wallet.holdingBalance.toLocaleString('vi-VN') : '0'} VNĐ
+              </Text>
+            ) : (
+              <Text style={styles.balanceHiddenSecondary}>•••••••• VNĐ</Text>
+            )}
+          </View>
+          
+          <Text style={styles.cardSubtitleSecondary}>Held Funds</Text>
+        </View>
+      </View>
 
       {/* White Background Content */}
       <View style={styles.whiteBackground}>
@@ -748,45 +774,43 @@ export default function BusinessWalletScreen() {
             />
           }
         >
-          {/* Summary Cards */}
-          <View style={styles.summarySection}>
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryIcon}>
-              <Ionicons name="trending-up" size={24} color="#10B981" />
+          {/* Quick Stats - Income/Expense */}
+          <View style={styles.quickStatsSection}>
+            <View style={styles.quickStatsCard}>
+              <View style={styles.quickStatsIconContainer}>
+                <Ionicons name="trending-up" size={20} color="#10B981" />
               </View>
-            <View style={styles.summaryContent}>
-              <Text style={styles.summaryLabel}>Total Income</Text>
-              <Text style={styles.summaryValue}>{totalIncome.toLocaleString('vi-VN')} VNĐ</Text>
-            </View>
+              <View style={styles.quickStatsContent}>
+                <Text style={styles.quickStatsLabel}>Income</Text>
+                <Text style={styles.quickStatsValue}>{totalIncome.toLocaleString('vi-VN')} VNĐ</Text>
               </View>
-          
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryIcon}>
-              <Ionicons name="trending-down" size={24} color="#EF4444" />
             </View>
-            <View style={styles.summaryContent}>
-              <Text style={styles.summaryLabel}>Total Expenses</Text>
-              <Text style={styles.summaryValue}>{totalExpenses.toLocaleString('vi-VN')} VNĐ</Text>
+            
+            <View style={styles.quickStatsCard}>
+              <View style={styles.quickStatsIconContainer}>
+                <Ionicons name="trending-down" size={20} color="#EF4444" />
+              </View>
+              <View style={styles.quickStatsContent}>
+                <Text style={styles.quickStatsLabel}>Expense</Text>
+                <Text style={styles.quickStatsValue}>{totalExpenses.toLocaleString('vi-VN')} VNĐ</Text>
+              </View>
             </View>
           </View>
-        </View>
 
-        {/* Action Buttons */}
-        <View style={styles.actionSection}>
+        {/* Action Buttons - Primary Actions */}
+        <View style={styles.actionButtonsSection}>
           <TouchableOpacity 
-            style={[styles.actionButton, styles.addFundsButton]}
+            style={styles.depositButton}
             onPress={() => setShowAddFunds(true)}
           >
-            <Ionicons name="add-circle" size={24} color="white" />
-            <Text style={styles.actionButtonText}>Deposit</Text>
+            <Text style={styles.depositButtonText}>Deposit</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={[styles.actionButton, styles.withdrawButton]}
+            style={styles.withdrawButtonPrimary}
             onPress={() => setShowWithdraw(true)}
           >
-            <Ionicons name="remove-circle" size={24} color="white" />
-            <Text style={styles.actionButtonText}>Withdraw</Text>
+            <Text style={styles.withdrawButtonText}>Withdraw</Text>
           </TouchableOpacity>
         </View>
 
@@ -794,36 +818,55 @@ export default function BusinessWalletScreen() {
         <View style={styles.transactionHistorySection}>
           <Text style={styles.sectionTitle}>Transaction History</Text>
           
-          {/* Filter Buttons */}
-          <View style={styles.filterContainer}>
+          {/* Segmented Control Tabs */}
+          <View style={styles.segmentedControl}>
             <TouchableOpacity
-              style={[styles.filterButton, transactionFilter === 'all' && styles.activeFilterButton]}
-              onPress={() => setTransactionFilter('all')}
+              style={[
+                styles.segmentedControlSegment,
+                styles.segmentedControlSegmentLeft,
+                transactionTypeGroup === 'personal' && styles.segmentedControlSegmentActive
+              ]}
+              onPress={() => setTransactionTypeGroup('personal')}
             >
-              <Text style={[styles.filterButtonText, transactionFilter === 'all' && styles.activeFilterButtonText]}>
-                    All
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-              style={[styles.filterButton, transactionFilter === 'external' && styles.activeFilterButton]}
-              onPress={() => setTransactionFilter('external')}
-                >
-              <Ionicons name="card-outline" size={16} color={transactionFilter === 'external' ? "#fff" : "#3B82F6"} />
-              <Text style={[styles.filterButtonText, transactionFilter === 'external' && styles.activeFilterButtonText]}>
-                External
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-              style={[styles.filterButton, transactionFilter === 'internal' && styles.activeFilterButton]}
-              onPress={() => setTransactionFilter('internal')}
-                >
-              <Ionicons name="swap-horizontal-outline" size={16} color={transactionFilter === 'internal' ? "#fff" : "#059669"} />
-              <Text style={[styles.filterButtonText, transactionFilter === 'internal' && styles.activeFilterButtonText]}>
-                Internal
-                  </Text>
-                </TouchableOpacity>
+              <Text style={[
+                styles.segmentedControlText,
+                transactionTypeGroup === 'personal' && styles.segmentedControlTextActive
+              ]}>
+                Personal
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.segmentedControlSegment,
+                styles.segmentedControlSegmentMiddle,
+                transactionTypeGroup === 'deposit_refund' && styles.segmentedControlSegmentActive
+              ]}
+              onPress={() => setTransactionTypeGroup('deposit_refund')}
+            >
+              <Text style={[
+                styles.segmentedControlText,
+                transactionTypeGroup === 'deposit_refund' && styles.segmentedControlTextActive
+              ]}>
+                Deposit/Refund
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.segmentedControlSegment,
+                styles.segmentedControlSegmentRight,
+                transactionTypeGroup === 'penalty' && styles.segmentedControlSegmentActive
+              ]}
+              onPress={() => setTransactionTypeGroup('penalty')}
+            >
+              <Text style={[
+                styles.segmentedControlText,
+                transactionTypeGroup === 'penalty' && styles.segmentedControlTextActive
+              ]}>
+                Penalty
+              </Text>
+            </TouchableOpacity>
           </View>
-              </View>
+        </View>
 
         {/* Transaction List */}
         <View style={styles.transactionSection}>
@@ -835,43 +878,55 @@ export default function BusinessWalletScreen() {
           ) : (
             <>
               {filteredTransactions.length > 0 ? (
-                filteredTransactions.map((transaction) => (
-                  <View key={transaction._id} style={styles.transactionCard}>
-                    <View style={[styles.transactionIcon, { backgroundColor: transaction.direction === 'in' ? '#E6F7F7' : '#FCE8E8' }]}>
-                      <Ionicons 
-                        name={transaction.direction === 'in' ? 'arrow-up' : 'arrow-down'} 
-                        size={18} 
-                        color={transaction.direction === 'in' ? '#10B981' : '#EF4444'} 
-                      />
+                filteredTransactions.map((transaction) => {
+                  const isIncome = transaction.direction === 'in';
+                  const amountColor = isIncome ? '#10B981' : '#EF4444';
+                  const amountPrefix = isIncome ? '+' : '-';
+                  
+                  return (
+                    <View key={transaction._id} style={styles.transactionCard}>
+                      <View style={[styles.transactionIcon, { backgroundColor: isIncome ? '#ECFDF5' : '#FEF2F2' }]}>
+                        <Ionicons 
+                          name={isIncome ? 'arrow-down' : 'arrow-up'} 
+                          size={18} 
+                          color={amountColor} 
+                        />
+                      </View>
+                      <View style={styles.transactionInfo}>
+                        <Text style={styles.transactionTitle}>{transaction.description}</Text>
+                        <Text style={styles.transactionDate}>
+                          {new Date(transaction.createdAt).toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric', 
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </Text>
+                      </View>
+                      <View style={styles.transactionAmount}>
+                        <Text style={[styles.amountText, { color: amountColor }]}>
+                          {amountPrefix}{transaction.amount.toLocaleString('vi-VN')} VNĐ
+                        </Text>
+                        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(transaction.status) + "20" }]}>
+                          <Text style={[styles.statusText, { color: getStatusColor(transaction.status) }]}>
+                            {getStatusText(transaction.status)}
+                          </Text>
+                        </View>
+                        {transaction.status === 'processing' && transaction.transactionType === 'deposit' && (
+                          <TouchableOpacity
+                            style={styles.retryButton}
+                            onPress={() => handleRetryPayment(transaction._id)}
+                            disabled={isProcessing}
+                          >
+                            <Ionicons name="refresh" size={14} color="#0F4D3A" />
+                            <Text style={styles.retryButtonText}>Retry</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
-                    <View style={styles.transactionInfo}>
-                      <Text style={styles.transactionTitle}>{transaction.description}</Text>
-                      <Text style={styles.transactionDate}>
-                        {new Date(transaction.createdAt).toLocaleDateString('en-US')}
-                      </Text>
-                    </View>
-                    <View style={styles.transactionAmount}>
-                      <Text style={[styles.amountText, { color: transaction.direction === 'in' ? '#10B981' : '#EF4444' }]}>
-                        {transaction.direction === 'in' ? '+' : '-'}{transaction.amount.toLocaleString('vi-VN')} VNĐ
-                  </Text>
-                      <View style={[styles.statusBadge, { backgroundColor: getStatusColor(transaction.status) + "20" }]}>
-                        <Text style={[styles.statusText, { color: getStatusColor(transaction.status) }]}>
-                          {getStatusText(transaction.status)}
-                  </Text>
-              </View>
-                      {transaction.status === 'processing' && transaction.transactionType === 'deposit' && (
-                        <TouchableOpacity
-                          style={styles.retryButton}
-                          onPress={() => handleRetryPayment(transaction._id)}
-                          disabled={isProcessing}
-                        >
-                          <Ionicons name="refresh" size={14} color="#0F4D3A" />
-                          <Text style={styles.retryButtonText}>Retry</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                    </View>
-                ))
+                  );
+                })
               ) : (
                 <View style={styles.emptyState}>
                   <Ionicons name="receipt-outline" size={48} color="#9CA3AF" />
@@ -1626,7 +1681,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     backgroundColor: '#00704A',
-    borderBottomLeftRadius: 20,
+  },
+  headerIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerLeft: {
     width: 40,
@@ -1662,19 +1724,84 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6B7280',
   },
-  // Balance Card
-  balanceCard: {
-    backgroundColor: '#00704A',
-    borderRadius: 20,
-    padding: 24,
-    marginHorizontal: 20,
+  // Balance Cards Container
+  balanceCardsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
     marginTop: 20,
     marginBottom: 20,
+    gap: 12,
+  },
+  // Balance Card
+  balanceCard: {
+    flex: 1,
+    backgroundColor: '#00704A',
+    borderRadius: 20,
+    padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 16,
     elevation: 12,
+  },
+  availableBalanceCardPrimary: {
+    backgroundColor: '#00704A',
+    // Vibrant Dark Green - primary card
+    shadowColor: '#00704A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  holdingBalanceCardSecondary: {
+    backgroundColor: '#4B5563', // Darker grey-green for locked funds
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  lockWatermark: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -30 }, { translateY: -30 }],
+    opacity: 0.15,
+  },
+  balanceAmountPrimary: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  balanceHiddenPrimary: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    letterSpacing: 4,
+  },
+  cardSubtitlePrimary: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: 8,
+    fontWeight: '500',
+  },
+  cardTitleSecondary: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: '500',
+  },
+  balanceAmountSecondary: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: 'rgba(255,255,255,0.9)',
+  },
+  balanceHiddenSecondary: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: 'rgba(255,255,255,0.9)',
+    letterSpacing: 4,
+  },
+  cardSubtitleSecondary: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 8,
   },
   whiteBackground: {
     flex: 1,
@@ -1720,12 +1847,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   balanceAmount: {
-    fontSize: 36,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
   balanceHidden: {
-    fontSize: 36,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
     letterSpacing: 4,
@@ -1735,50 +1862,89 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.8)',
     marginTop: 8,
   },
-  summarySection: {
+  // Quick Stats Styles
+  quickStatsSection: {
     flexDirection: 'row',
     marginBottom: 20,
     gap: 12,
   },
-  summaryCard: {
+  quickStatsCard: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  summaryIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  quickStatsIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
-  summaryContent: {
+  quickStatsContent: {
     flex: 1,
   },
-  summaryLabel: {
-    fontSize: 14,
+  quickStatsLabel: {
+    fontSize: 12,
     color: '#6B7280',
     marginBottom: 4,
+    fontWeight: '500',
   },
-  summaryValue: {
-    fontSize: 18,
-    fontWeight: '600',
+  quickStatsValue: {
+    fontSize: 16,
+    fontWeight: '700',
     color: '#1F2937',
   },
-  actionSection: {
+  // Action Buttons Section
+  actionButtonsSection: {
     flexDirection: 'row',
     marginBottom: 20,
     gap: 12,
+  },
+  depositButton: {
+    flex: 1,
+    backgroundColor: '#00704A',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  depositButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  withdrawButtonPrimary: {
+    flex: 1,
+    backgroundColor: '#F97316', // Orange
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  withdrawButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   transactionHistorySection: {
     backgroundColor: '#fff',
@@ -1796,6 +1962,49 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2937',
     marginBottom: 16,
+  },
+  // Segmented Control Styles
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+    padding: 4,
+    marginBottom: 16,
+  },
+  segmentedControlSegment: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentedControlSegmentLeft: {
+    borderTopLeftRadius: 8,
+    borderBottomLeftRadius: 8,
+  },
+  segmentedControlSegmentMiddle: {
+    // No border radius for middle
+  },
+  segmentedControlSegmentRight: {
+    borderTopRightRadius: 8,
+    borderBottomRightRadius: 8,
+  },
+  segmentedControlSegmentActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  segmentedControlText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  segmentedControlTextActive: {
+    color: '#00704A',
+    fontWeight: '600',
   },
   actionButton: {
     flex: 1,

@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
     Dimensions,
+    Image,
     ScrollView,
     StyleSheet,
     Text,
@@ -11,17 +12,22 @@ import {
 } from "react-native";
 import BusinessHeader from "../../../components/BusinessHeader";
 import { useAuth } from "../../../context/AuthProvider";
+import { useToast } from "../../../hooks/use-toast";
 import { useTokenRefresh } from "../../../hooks/useTokenRefresh";
 import { borrowTransactionsApi } from "../../../src/services/api/borrowTransactionService";
-import { businessesApi, productsApi } from "../../../src/services/api/businessService";
+import { businessesApi, productsApi, subscriptionsApi } from "../../../src/services/api/businessService";
 import { BusinessProfile } from "../../../src/types/business.types";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function BusinessOverview() {
   const { state } = useAuth();
+  const { toast } = useToast();
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeSubscription, setActiveSubscription] = useState<any[]>([]);
+  const [autoRenewStates, setAutoRenewStates] = useState<Record<string, boolean>>({});
+  const [togglingAutoRenew, setTogglingAutoRenew] = useState<Record<string, boolean>>({});
   const [stats, setStats] = useState({
     revenue: 0,
     orders: 0,
@@ -55,8 +61,29 @@ export default function BusinessOverview() {
           const profileResponse = await businessesApi.getProfileWithAutoRefresh();
           console.log('✅ Business profile loaded:', profileResponse);
           
-          if (profileResponse.data && profileResponse.data.business) {
+          if (profileResponse.data) {
+            if (profileResponse.data.business) {
             setBusinessProfile(profileResponse.data.business);
+            }
+            // Load active subscription
+            if (profileResponse.data.activeSubscription) {
+              const subscriptions = Array.isArray(profileResponse.data.activeSubscription) 
+                ? profileResponse.data.activeSubscription 
+                : [profileResponse.data.activeSubscription];
+              setActiveSubscription(subscriptions);
+              
+              // Load auto-renew states from active subscriptions
+              const autoRenewMap: Record<string, boolean> = {};
+              subscriptions.forEach((sub: any) => {
+                const subId = sub._id;
+                if (subId) {
+                  autoRenewMap[subId] = sub.autoRenew || false;
+                }
+              });
+              setAutoRenewStates(prev => ({ ...prev, ...autoRenewMap }));
+            } else {
+              setActiveSubscription([]);
+            }
           }
         } catch (error: any) {
           // Silently handle 403 errors (Access denied - role mismatch)
@@ -193,6 +220,50 @@ export default function BusinessOverview() {
   const businessOwnerName = businessProfile?.userId?.username || businessProfile?.userId?.email || "Business Owner";
   const businessLogo = businessProfile?.businessLogoUrl;
 
+  // Toggle auto-renew handler
+  const handleToggleAutoRenew = async (subscriptionId: string, currentValue: boolean) => {
+    try {
+      setTogglingAutoRenew(prev => ({ ...prev, [subscriptionId]: true }));
+      console.log('🔄 Toggling auto-renew for subscription:', subscriptionId);
+      
+      const newValue = !currentValue;
+      const response = await subscriptionsApi.toggleAutoRenew(subscriptionId, {
+        autoRenew: newValue,
+      });
+      
+      console.log('✅ Toggle auto-renew response:', response);
+      
+      // Update local state
+      setAutoRenewStates(prev => ({
+        ...prev,
+        [subscriptionId]: newValue,
+      }));
+      
+      // Update active subscription data
+      setActiveSubscription(prev => prev.map(sub => {
+        if (sub._id === subscriptionId) {
+          return { ...sub, autoRenew: newValue };
+        }
+        return sub;
+      }));
+      
+      toast({
+        title: "Success",
+        description: newValue 
+          ? "Auto-renewal has been enabled" 
+          : "Auto-renewal has been disabled",
+      });
+    } catch (error: any) {
+      console.error('❌ Error toggling auto-renew:', error);
+      toast({
+        title: "Error",
+        description: error?.response?.data?.message || error?.message || "Unable to change auto-renewal settings. Please try again.",
+      });
+    } finally {
+      setTogglingAutoRenew(prev => ({ ...prev, [subscriptionId]: false }));
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -236,6 +307,110 @@ export default function BusinessOverview() {
               <Text style={styles.sectionSubtitle}>Monitor your business performance and key metrics</Text>
             </View>
 
+            {/* Business Info Card with Rating */}
+            {businessProfile && (
+              <View style={styles.sectionPad}>
+                <View style={styles.businessInfoCard}>
+                  <View style={styles.businessInfoHeader}>
+                    <View style={styles.businessInfoLeft}>
+                      <Text style={styles.businessName}>{businessProfile.businessName}</Text>
+                      <View style={styles.ratingContainer}>
+                        <Ionicons name="star" size={18} color="#F59E0B" />
+                        <Text style={styles.ratingValue}>
+                          {businessProfile.averageRating ? businessProfile.averageRating.toFixed(1) : '0.0'}
+                        </Text>
+                        <Text style={styles.reviewsCount}>
+                          ({businessProfile.totalReviews || 0} reviews)
+                        </Text>
+                      </View>
+                    </View>
+                    {businessLogo && (
+                      <View style={styles.businessLogoContainer}>
+                        <Image 
+                          source={{ uri: businessLogo }} 
+                          style={styles.businessLogoImage}
+                          resizeMode="cover"
+                        />
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Subscription Card with Auto-Renew Toggle */}
+            {activeSubscription.length > 0 && (
+              <View style={styles.sectionPad}>
+                <View style={styles.subscriptionCard}>
+                  <View style={styles.subscriptionHeader}>
+                    <Ionicons name="card" size={24} color="#00704A" />
+                    <Text style={styles.subscriptionTitle}>Current Subscription Plan</Text>
+                  </View>
+                  {activeSubscription.map((sub: any, index: number) => {
+                    const subscriptionId = sub._id;
+                    const subscriptionName = sub.subscriptionId?.name || sub.subscription?.name || sub.name || 'Unknown Plan';
+                    const subscriptionPrice = sub.subscriptionId?.price || sub.subscription?.price || sub.price || 0;
+                    const startDate = sub.startDate || sub.startAt || sub.createdAt;
+                    const endDate = sub.endDate || sub.endAt || sub.expiresAt;
+                    const status = sub.status || (sub.isActive ? 'active' : 'inactive');
+                    const currentAutoRenew = autoRenewStates[subscriptionId] ?? sub.autoRenew ?? false;
+                    const isToggling = togglingAutoRenew[subscriptionId] || false;
+                    
+                    return (
+                      <View key={index} style={styles.subscriptionItem}>
+                        <View style={styles.subscriptionInfo}>
+                          <Text style={styles.subscriptionName}>{subscriptionName}</Text>
+                          {subscriptionPrice > 0 && (
+                            <Text style={styles.subscriptionPrice}>
+                              {subscriptionPrice.toLocaleString('en-US')} VND
+                            </Text>
+                          )}
+                          {startDate && endDate && (
+                            <Text style={styles.subscriptionDate}>
+                              {new Date(startDate).toLocaleDateString('en-US')} - {new Date(endDate).toLocaleDateString('en-US')}
+                            </Text>
+                          )}
+                          <View style={[
+                            styles.subscriptionStatus,
+                            status === 'active' && styles.subscriptionStatusActive,
+                            status === 'expired' && styles.subscriptionStatusExpired,
+                          ]}>
+                            <Text style={styles.subscriptionStatusText}>
+                              {status === 'active' ? 'Active' : status === 'expired' ? 'Expired' : status}
+                            </Text>
+                          </View>
+                          
+                          {/* Auto Renew Toggle - Only show for active subscriptions */}
+                          {status === 'active' && subscriptionId && (
+                            <View style={styles.subscriptionAutoRenewContainer}>
+                              <View style={styles.subscriptionAutoRenewInfo}>
+                                <Ionicons name="refresh" size={18} color="#00704A" />
+                                <Text style={styles.subscriptionAutoRenewLabel}>Auto Renew</Text>
+                              </View>
+                              <TouchableOpacity
+                                style={[
+                                  styles.subscriptionToggleSwitch,
+                                  currentAutoRenew && styles.subscriptionToggleSwitchActive,
+                                  isToggling && styles.subscriptionToggleSwitchDisabled
+                                ]}
+                                onPress={() => handleToggleAutoRenew(subscriptionId, currentAutoRenew)}
+                                disabled={isToggling}
+                              >
+                                <View style={[
+                                  styles.subscriptionToggleThumb,
+                                  currentAutoRenew && styles.subscriptionToggleThumbActive
+                                ]} />
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
             <View style={styles.sectionPad}>
               <View style={styles.statsGrid}>
                 <View style={[styles.statCard, styles.availableCard]}>
@@ -268,6 +443,40 @@ export default function BusinessOverview() {
                 </View>
               </View>
             </View>
+
+            {/* Eco Impact Card */}
+            {businessProfile && (businessProfile.co2Reduced || businessProfile.ecoPoints) && (
+              <View style={styles.sectionPad}>
+                <View style={styles.ecoImpactCard}>
+                  <View style={styles.ecoImpactHeader}>
+                    <View style={styles.ecoImpactIconContainer}>
+                      <Ionicons name="leaf" size={28} color="#10B981" />
+                    </View>
+                    <Text style={styles.ecoImpactTitle}>Green Impact & Achievements</Text>
+                  </View>
+                  <View style={styles.ecoImpactStats}>
+                    <View style={styles.ecoImpactStat}>
+                      <Ionicons name="earth" size={20} color="#059669" />
+                      <View style={styles.ecoImpactStatContent}>
+                        <Text style={styles.ecoImpactValue}>
+                          {businessProfile.co2Reduced ? businessProfile.co2Reduced.toFixed(2) : '0.00'} kg
+                        </Text>
+                        <Text style={styles.ecoImpactLabel}>CO₂ Reduced</Text>
+                      </View>
+                    </View>
+                    <View style={styles.ecoImpactStat}>
+                      <Ionicons name="trophy" size={20} color="#059669" />
+                      <View style={styles.ecoImpactStatContent}>
+                        <Text style={styles.ecoImpactValue}>
+                          {businessProfile.ecoPoints ? Math.round(businessProfile.ecoPoints) : 0}
+                        </Text>
+                        <Text style={styles.ecoImpactLabel}>Eco Points</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            )}
 
             <View style={styles.sectionPad}>
               <Text style={styles.sectionTitle}>Quick Actions</Text>
@@ -380,6 +589,123 @@ const styles = StyleSheet.create({
   },
   statValue: { fontSize: 24, fontWeight: '800', color: '#111827', marginTop: 4, marginBottom: 4 },
   statLabel: { fontSize: 12, color: '#6B7280', fontWeight: '600' },
+  // Business Info Card
+  businessInfoCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  businessInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  businessInfoLeft: {
+    flex: 1,
+  },
+  businessName: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  ratingValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  reviewsCount: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  businessLogoContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    overflow: 'hidden',
+  },
+  businessLogoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  // Eco Impact Card
+  ecoImpactCard: {
+    backgroundColor: '#ECFDF5',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 2,
+    borderColor: '#10B981',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  ecoImpactHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    gap: 12,
+  },
+  ecoImpactIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#D1FAE5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ecoImpactTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#059669',
+    flex: 1,
+  },
+  ecoImpactStats: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  ecoImpactStat: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+  },
+  ecoImpactStatContent: {
+    flex: 1,
+  },
+  ecoImpactValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#059669',
+    marginBottom: 4,
+  },
+  ecoImpactLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
   actionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   actionCard: { 
     width: (screenWidth - 32 - 12) / 2, 
@@ -391,4 +717,119 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB'
   },
   actionText: { fontSize: 14, fontWeight: '600', color: '#111827', marginTop: 8 },
+  // Subscription Card styles
+  subscriptionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  subscriptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  subscriptionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginLeft: 12,
+  },
+  subscriptionItem: {
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  subscriptionInfo: {
+    flex: 1,
+  },
+  subscriptionName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  subscriptionPrice: {
+    fontSize: 14,
+    color: '#00704A',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  subscriptionDate: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  subscriptionStatus: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    backgroundColor: '#F3F4F6',
+    marginBottom: 12,
+  },
+  subscriptionStatusActive: {
+    backgroundColor: '#D1FAE5',
+  },
+  subscriptionStatusExpired: {
+    backgroundColor: '#FEE2E2',
+  },
+  subscriptionStatusText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#1F2937',
+  },
+  subscriptionAutoRenewContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  subscriptionAutoRenewInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  subscriptionAutoRenewLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  subscriptionToggleSwitch: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#D1D5DB',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  subscriptionToggleSwitchActive: {
+    backgroundColor: '#00704A',
+  },
+  subscriptionToggleSwitchDisabled: {
+    opacity: 0.5,
+  },
+  subscriptionToggleThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  subscriptionToggleThumbActive: {
+    transform: [{ translateX: 20 }],
+  },
 });
