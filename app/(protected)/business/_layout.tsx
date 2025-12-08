@@ -9,22 +9,25 @@ export default function BusinessLayout() {
   const auth = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
   
-  // All navigation items
+  // All navigation items - Standard 5 tabs for business (includes Transaction)
   const allNavigationItems = [
     { id: "dashboard", label: "Home", icon: "home-button", route: "/(protected)/business" },
     { id: "wallet", label: "Wallet", icon: "wallet", route: "/(protected)/business/wallet" },
+    { id: "transaction", label: "Transaction", icon: "swap-horizontal", route: "/(protected)/business/transaction-processing" },
     { id: "materials", label: "Inventory", icon: "cube", route: "/(protected)/business/materials" },
-    { id: "transaction", label: "Transaction", icon: "receipt", route: "/(protected)/business/transaction-processing" },
     { id: "menu", label: "Menu", icon: "reorder-three", route: "/(protected)/business/menu" },
   ];
 
+  // Normalize role: handle both array and string formats
+  const normalizedRole = Array.isArray(auth.state.role) ? auth.state.role[0] : auth.state.role;
+  const isStaff = normalizedRole === 'staff';
+
   // Filter navigation items based on role
-  // Staff: only dashboard, transaction (return), menu (profile)
-  // Business: all items
-  const navigationItems = auth.state.role === 'staff' as any
+  // Staff: only dashboard, menu (profile) - QR button will be floating in center
+  // Business: all items (Home, Wallet, Inventory, Menu)
+  const navigationItems = isStaff
     ? allNavigationItems.filter(item => 
         item.id === 'dashboard' || 
-        item.id === 'transaction' || 
         item.id === 'menu'
       )
     : allNavigationItems;
@@ -51,8 +54,16 @@ export default function BusinessLayout() {
     router.push(route);
   };
 
+  const handleQRPress = () => {
+    // Navigate to QR scanner with mode switcher
+    router.push('/(protected)/business/qr-scanner');
+  };
+
   // Check if current page is dashboard
   const isDashboard = activeTab === "dashboard";
+  
+  // Hide bottom navigation only for qr-scanner screen (full-screen camera)
+  const shouldHideBottomNav = pathname.includes("qr-scanner");
 
   return (
     <View style={styles.container}>
@@ -69,9 +80,10 @@ export default function BusinessLayout() {
     </View>
     
 
-    {/* Bottom Navigation */}
+    {/* Bottom Navigation - Hidden for sub-screens */}
+    {!shouldHideBottomNav && (
     <View style={styles.navWrapper}>
-      <View style={styles.navigation}>
+      <View style={[styles.navigation, isStaff && styles.navigationWithQR]}>
       {navigationItems.map((item) => {
         const isActive = activeTab === item.id;
         return (
@@ -106,8 +118,22 @@ export default function BusinessLayout() {
           </TouchableOpacity>
         );
       })}
+      
+      {/* Floating QR Button for Staff - Center of navigation */}
+      {isStaff && (
+        <TouchableOpacity
+          style={styles.floatingQRButton}
+          onPress={handleQRPress}
+          activeOpacity={0.8}
+        >
+          <View style={styles.qrButtonInner}>
+            <Ionicons name="qr-code" size={28} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
+      )}
       </View>
     </View>
+    )}
     </View>
   );
 }
@@ -139,6 +165,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 12,
     elevation: 10,
+    position: "relative",
+  },
+  navigationWithQR: {
+    justifyContent: "space-around",
+    paddingHorizontal: 8,
   },
   navItem: {
     flex: 1,
@@ -174,5 +205,33 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 2,
     fontSize: 9,
+  },
+  floatingQRButton: {
+    position: "absolute",
+    bottom: 20,
+    left: "50%",
+    marginLeft: -32,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#00FF88",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#00FF88",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.6,
+    shadowRadius: 16,
+    elevation: 15,
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
+    zIndex: 1000,
+  },
+  qrButtonInner: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 32,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#00FF88",
   },
 });

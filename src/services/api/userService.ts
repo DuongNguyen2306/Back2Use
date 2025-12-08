@@ -1,4 +1,4 @@
-import { API_BASE_URL, API_ENDPOINTS, REQUEST_TIMEOUT } from '../../constants/api';
+import { API_ENDPOINTS, REQUEST_TIMEOUT } from '../../constants/api';
 import { UpdateProfileRequest, UploadAvatarResponse, User } from '../../types/auth.types';
 import { apiClient } from './client';
 
@@ -84,18 +84,143 @@ export const getCurrentUserProfileWithAutoRefresh = async (): Promise<User> => {
     throw new Error('No valid access token available');
   }
 
-  return getCurrentUserProfile(token);
+  // Try to decode token to check role
+  let tokenRole: string | null = null;
+  try {
+    const tokenParts = token.split('.');
+    if (tokenParts.length === 3) {
+      const payload = JSON.parse(atob(tokenParts[1]));
+      tokenRole = payload.role || null;
+    }
+  } catch (e) {
+    // Ignore token decode errors
+  }
+
+  // If role is staff, use staff API instead
+  if (tokenRole === 'staff') {
+    try {
+      const { staffApi } = await import('./staffService');
+      const staffProfileResponse = await staffApi.getProfile();
+      const staffProfile = staffProfileResponse.data;
+      
+      // Convert staff profile to User format
+      return {
+        _id: staffProfile.userId || staffProfile._id,
+        username: staffProfile.user?.username || staffProfile.email,
+        email: staffProfile.email,
+        fullName: staffProfile.fullName,
+        phone: staffProfile.phone,
+        role: 'staff',
+        avatar: staffProfile.avatar,
+      } as User;
+    } catch (staffError: any) {
+      // Silently handle staff API errors - return minimal user object
+      return {
+        _id: '',
+        username: '',
+        email: '',
+        fullName: '',
+        phone: '',
+        role: 'staff',
+      } as User;
+    }
+  }
+
+  // For customer and business, use user API
+  try {
+    return await getCurrentUserProfile(token);
+  } catch (error: any) {
+    // If 403 error and we haven't tried staff API yet, try it
+    if (error?.response?.status === 403 && tokenRole !== 'staff') {
+      try {
+        const { staffApi } = await import('./staffService');
+        const staffProfileResponse = await staffApi.getProfile();
+        const staffProfile = staffProfileResponse.data;
+        
+        // Convert staff profile to User format
+        return {
+          _id: staffProfile.userId || staffProfile._id,
+          username: staffProfile.user?.username || staffProfile.email,
+          email: staffProfile.email,
+          fullName: staffProfile.fullName,
+          phone: staffProfile.phone,
+          role: 'staff',
+          avatar: staffProfile.avatar,
+        } as User;
+      } catch (staffError) {
+        // Silently return minimal user object instead of throwing
+        return {
+          _id: '',
+          username: '',
+          email: '',
+          fullName: '',
+          phone: '',
+          role: 'staff',
+        } as User;
+      }
+    }
+    // For 403 errors, return minimal user object instead of throwing
+    if (error?.response?.status === 403) {
+      return {
+        _id: '',
+        username: '',
+        email: '',
+        fullName: '',
+        phone: '',
+        role: 'staff',
+      } as User;
+    }
+    throw error;
+  }
 };
 
 // Get current user profile - GET /users/me
 export const getCurrentUserProfile = async (token: string): Promise<User> => {
   try {
-    console.log('getCurrentUserProfile called with token:', token ? '***' + token.slice(-8) : 'None');
-    console.log('Token length:', token?.length || 0);
-    console.log('API Base URL:', API_BASE_URL);
-    
     if (!token) {
       throw new Error('No access token provided');
+    }
+
+    // Try to decode token to check role first
+    let tokenRole: string | null = null;
+    try {
+      const tokenParts = token.split('.');
+      if (tokenParts.length === 3) {
+        const payload = JSON.parse(atob(tokenParts[1]));
+        tokenRole = payload.role || null;
+      }
+    } catch (e) {
+      // Ignore token decode errors
+    }
+
+    // If role is staff, use staff API instead (don't even try /users/me)
+    if (tokenRole === 'staff') {
+      try {
+        const { staffApi } = await import('./staffService');
+        const staffProfileResponse = await staffApi.getProfile();
+        const staffProfile = staffProfileResponse.data;
+        
+        // Convert staff profile to User format
+        return {
+          _id: staffProfile.userId || staffProfile._id,
+          username: staffProfile.user?.username || staffProfile.email,
+          email: staffProfile.email,
+          fullName: staffProfile.fullName,
+          phone: staffProfile.phone,
+          role: 'staff',
+          avatar: staffProfile.avatar,
+        } as User;
+      } catch (staffError: any) {
+        // Silently handle staff API errors - return minimal user object
+        return {
+          _id: '',
+          username: '',
+          email: '',
+          fullName: '',
+          phone: '',
+          role: 'staff',
+        } as User;
+      }
     }
 
     const response = await apiClient.get('/users/me', {
@@ -113,15 +238,50 @@ export const getCurrentUserProfile = async (token: string): Promise<User> => {
       throw new Error(result.message || 'Failed to get user profile');
     }
   } catch (error: any) {
-    console.error('Error fetching current user profile:', error);
-    console.error('Error details:', {
-      message: error.message,
-      code: error.code,
-      response: error.response?.data,
-      status: error.response?.status,
-      url: error.config?.url
-    });
+    // If 403 error, try staff API as fallback
+    if (error?.response?.status === 403) {
+      try {
+        const { staffApi } = await import('./staffService');
+        const staffProfileResponse = await staffApi.getProfile();
+        const staffProfile = staffProfileResponse.data;
+        
+        // Convert staff profile to User format
+        return {
+          _id: staffProfile.userId || staffProfile._id,
+          username: staffProfile.user?.username || staffProfile.email,
+          email: staffProfile.email,
+          fullName: staffProfile.fullName,
+          phone: staffProfile.phone,
+          role: 'staff',
+          avatar: staffProfile.avatar,
+        } as User;
+      } catch (staffError) {
+        // Silently fail - don't log or throw
+        // Return a minimal user object to prevent crashes
+        return {
+          _id: '',
+          username: '',
+          email: '',
+          fullName: '',
+          phone: '',
+          role: 'staff',
+        } as User;
+      }
+    }
     
+    // For 403 errors, silently return minimal user object (staff role)
+    if (error?.response?.status === 403) {
+      return {
+        _id: '',
+        username: '',
+        email: '',
+        fullName: '',
+        phone: '',
+        role: 'staff',
+      } as User;
+    }
+    
+    // Only handle non-403 errors
     if (error.code === 'ECONNABORTED') {
       throw new Error('Request timeout. Please check your connection and try again.');
     }

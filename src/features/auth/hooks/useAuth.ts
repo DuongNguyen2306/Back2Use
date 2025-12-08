@@ -165,7 +165,22 @@ export function useAuthCore() {
         });
 
         const isAuthenticated = storedAuth === "true";
-        const role = storedRole as Role | null;
+        // Normalize role: handle both array (JSON string) and string formats
+        let role: Role | null = null;
+        if (storedRole) {
+          try {
+            // Try to parse as JSON (in case it's stored as array string)
+            const parsed = JSON.parse(storedRole);
+            if (Array.isArray(parsed)) {
+              role = (parsed[0] || parsed) as Role;
+            } else {
+              role = parsed as Role;
+            }
+          } catch {
+            // If not JSON, treat as string
+            role = storedRole as Role;
+          }
+        }
         const accessToken = storedAccessToken;
         const refreshToken = storedRefreshToken;
         const tokenExpiry = storedTokenExpiry ? parseInt(storedTokenExpiry, 10) : null;
@@ -188,43 +203,104 @@ export function useAuthCore() {
           // This is important when business registration was approved while user was offline
           if (updatedState.isAuthenticated && updatedState.accessToken) {
             try {
-              const { getCurrentUserProfile } = await import('../../../services/api/userService');
-              const userProfile = await getCurrentUserProfile(updatedState.accessToken);
-              const backendRole = userProfile?.role as Role;
+              // Check role from stored state first
+              const currentRole = updatedState.role;
               
-              if (backendRole) {
-                // Block admin access on mobile - clear auth if admin
-                if (backendRole === 'admin') {
-                  console.log("❌ Admin role detected on hydration - clearing auth and blocking access");
-                  // Clear auth storage
-                  await clearAuthData();
-                  // Set state to unauthenticated
-                  setState({
-                    isAuthenticated: false,
-                    role: null,
-                    isHydrated: true,
-                    accessToken: null,
-                    refreshToken: null,
-                    tokenExpiry: null,
-                    user: null,
-                  });
-                  return; // Exit early, don't set authenticated state
+              // If role is staff, use staff API instead
+              if (currentRole === 'staff') {
+                try {
+                  const { staffApi } = await import('../../../services/api/staffService');
+                  const staffProfileResponse = await staffApi.getProfile();
+                  const staffProfile = staffProfileResponse.data;
+                  
+                  // Convert staff profile to User format
+                  const userProfile: User = {
+                    _id: staffProfile.userId || staffProfile._id,
+                    username: staffProfile.user?.username || staffProfile.email,
+                    email: staffProfile.email,
+                    fullName: staffProfile.fullName,
+                    phone: staffProfile.phone,
+                    role: 'staff',
+                    avatar: staffProfile.avatar,
+                  };
+                  
+                  updatedState.role = 'staff';
+                  updatedState.user = userProfile;
+                  await AsyncStorage.setItem(STORAGE_KEYS.ROLE, 'staff');
+                  console.log(`✅ Staff profile loaded on hydration`);
+                } catch (staffError: any) {
+                  console.error("❌ Error loading staff profile on hydration:", staffError);
+                  // Continue with stored role if refresh fails
                 }
+              } else {
+                // For customer and business, use user API
+                const { getCurrentUserProfile } = await import('../../../services/api/userService');
+                const userProfile = await getCurrentUserProfile(updatedState.accessToken);
+                const backendRole = userProfile?.role as Role;
                 
-                // Always update role from backend to ensure we have the latest
-                if (backendRole !== updatedState.role) {
-                  console.log(`🔄 Role updated on hydration! Stored: ${updatedState.role}, Backend: ${backendRole}`);
-                } else {
-                  console.log(`✅ Role confirmed on hydration: ${backendRole}`);
+                if (backendRole) {
+                  // Block admin access on mobile - clear auth if admin
+                  if (backendRole === 'admin') {
+                    console.log("❌ Admin role detected on hydration - clearing auth and blocking access");
+                    // Clear auth storage
+                    await clearAuthData();
+                    // Set state to unauthenticated
+                    setState({
+                      isAuthenticated: false,
+                      role: null,
+                      isHydrated: true,
+                      accessToken: null,
+                      refreshToken: null,
+                      tokenExpiry: null,
+                      user: null,
+                    });
+                    return; // Exit early, don't set authenticated state
+                  }
+                  
+                  // Always update role from backend to ensure we have the latest
+                  if (backendRole !== updatedState.role) {
+                    console.log(`🔄 Role updated on hydration! Stored: ${updatedState.role}, Backend: ${backendRole}`);
+                  } else {
+                    console.log(`✅ Role confirmed on hydration: ${backendRole}`);
+                  }
+                  // Always update role in storage and state to ensure consistency
+                  // ✅ Đảm bảo role là string
+                  await AsyncStorage.setItem(STORAGE_KEYS.ROLE, String(backendRole));
+                  updatedState.role = backendRole;
+                  updatedState.user = userProfile as User;
                 }
-                // Always update role in storage and state to ensure consistency
-                // ✅ Đảm bảo role là string
-                await AsyncStorage.setItem(STORAGE_KEYS.ROLE, String(backendRole));
-                updatedState.role = backendRole;
-                updatedState.user = userProfile as User;
               }
-            } catch (error) {
-              console.error("❌ Error refreshing role on hydration:", error);
+            } catch (error: any) {
+              // Handle 403 error for staff role
+              if (error?.response?.status === 403 && error?.response?.data?.message?.includes('staff')) {
+                console.log("ℹ️ Staff role detected from 403 error, trying staff API...");
+                try {
+                  const { staffApi } = await import('../../../services/api/staffService');
+                  const staffProfileResponse = await staffApi.getProfile();
+                  const staffProfile = staffProfileResponse.data;
+                  
+                  // Convert staff profile to User format
+                  const userProfile: User = {
+                    _id: staffProfile.userId || staffProfile._id,
+                    username: staffProfile.user?.username || staffProfile.email,
+                    email: staffProfile.email,
+                    fullName: staffProfile.fullName,
+                    phone: staffProfile.phone,
+                    role: 'staff',
+                    avatar: staffProfile.avatar,
+                  };
+                  
+                  updatedState.role = 'staff';
+                  updatedState.user = userProfile;
+                  await AsyncStorage.setItem(STORAGE_KEYS.ROLE, 'staff');
+                  console.log(`✅ Staff profile loaded on hydration (from 403 error)`);
+                } catch (staffError) {
+                  console.error("❌ Error loading staff profile on hydration:", staffError);
+                }
+              } else {
+                console.error("❌ Error refreshing role on hydration:", error);
+              }
+              
               // Continue with stored role if refresh fails
               // But still check if stored role is admin and block it
               if (updatedState.role === 'admin') {
@@ -330,14 +406,26 @@ export function useAuthCore() {
         accessToken = response.data.accessToken || null;
         refreshToken = response.data.refreshToken || null;
         user = response.data.user || null;
-        role = user?.role as Role || null;
+        // Normalize role: handle both array and string formats
+        const rawRole = user?.role;
+        if (Array.isArray(rawRole)) {
+          role = (rawRole[0] || rawRole) as Role;
+        } else {
+          role = rawRole as Role || null;
+        }
       }
 
       // Fallback to legacy format
       if (!accessToken && (response as any).user) {
         user = (response as any).user;
-        role = user?.role as Role || null;
         accessToken = (response as any).accessToken || null;
+        // Normalize role from legacy format too
+        const rawRole = user?.role;
+        if (Array.isArray(rawRole)) {
+          role = (rawRole[0] || rawRole) as Role;
+        } else {
+          role = rawRole as Role || null;
+        }
       }
 
       if (!accessToken) {
@@ -347,14 +435,41 @@ export function useAuthCore() {
       // If role is not in response, try to fetch from user profile
       if (!role && accessToken) {
         try {
+          // Try user API first (for customer and business)
           const { getCurrentUserProfile } = await import('../../../services/api/userService');
           const userProfile = await getCurrentUserProfile(accessToken);
           role = userProfile?.role as Role || null;
           user = userProfile;
           console.log("📥 Fetched user profile, role:", role);
-        } catch (error) {
-          console.error("❌ Error fetching user profile:", error);
-          // Continue with role from login response
+        } catch (error: any) {
+          // If 403 error, try staff API
+          if (error?.response?.status === 403) {
+            try {
+              console.log("ℹ️ 403 error, trying staff API...");
+              const { staffApi } = await import('../../../services/api/staffService');
+              const staffProfileResponse = await staffApi.getProfile();
+              const staffProfile = staffProfileResponse.data;
+              
+              // Convert staff profile to User format
+              user = {
+                _id: staffProfile.userId || staffProfile._id,
+                username: staffProfile.user?.username || staffProfile.email,
+                email: staffProfile.email,
+                fullName: staffProfile.fullName,
+                phone: staffProfile.phone,
+                role: 'staff',
+                avatar: staffProfile.avatar,
+              } as User;
+              role = 'staff';
+              console.log("📥 Fetched staff profile, role:", role);
+            } catch (staffError) {
+              console.error("❌ Error fetching staff profile:", staffError);
+              // Continue with role from login response
+            }
+          } else {
+            console.error("❌ Error fetching user profile:", error);
+            // Continue with role from login response
+          }
         }
       }
 
@@ -578,19 +693,66 @@ export function useAuthCore() {
 
       // Try to get user profile directly first
       try {
-        const { getCurrentUserProfile } = await import('../../../services/api/userService');
-        const userProfile = await getCurrentUserProfile(state.accessToken);
-        const newRole = userProfile?.role as Role;
-        
-        if (newRole && newRole !== state.role) {
-          console.log(`🔄 Role changed from ${state.role} to ${newRole}`);
-          await updateRole(newRole);
+        // If current role is staff, use staff API
+        if (state.role === 'staff') {
+          const { staffApi } = await import('../../../services/api/staffService');
+          const staffProfileResponse = await staffApi.getProfile();
+          const staffProfile = staffProfileResponse.data;
+          
+          // Convert staff profile to User format
+          const userProfile: User = {
+            _id: staffProfile.userId || staffProfile._id,
+            username: staffProfile.user?.username || staffProfile.email,
+            email: staffProfile.email,
+            fullName: staffProfile.fullName,
+            phone: staffProfile.phone,
+            role: 'staff',
+            avatar: staffProfile.avatar,
+          };
+          
+          return { role: 'staff' as Role, user: userProfile };
+        } else {
+          // For customer and business, use user API
+          const { getCurrentUserProfile } = await import('../../../services/api/userService');
+          const userProfile = await getCurrentUserProfile(state.accessToken);
+          const newRole = userProfile?.role as Role;
+          
+          if (newRole && newRole !== state.role) {
+            console.log(`🔄 Role changed from ${state.role} to ${newRole}`);
+            await updateRole(newRole);
+            return { role: newRole, user: userProfile };
+          }
+          
           return { role: newRole, user: userProfile };
         }
-        
-        return { role: newRole, user: userProfile };
-      } catch (error) {
-        console.error('❌ Error fetching user profile:', error);
+      } catch (error: any) {
+        // Handle 403 error for staff role
+        if (error?.response?.status === 403 && state.role !== 'staff') {
+          console.log('ℹ️ 403 error, trying staff API...');
+          try {
+            const { staffApi } = await import('../../../services/api/staffService');
+            const staffProfileResponse = await staffApi.getProfile();
+            const staffProfile = staffProfileResponse.data;
+            
+            // Convert staff profile to User format
+            const userProfile: User = {
+              _id: staffProfile.userId || staffProfile._id,
+              username: staffProfile.user?.username || staffProfile.email,
+              email: staffProfile.email,
+              fullName: staffProfile.fullName,
+              phone: staffProfile.phone,
+              role: 'staff',
+              avatar: staffProfile.avatar,
+            };
+            
+            await updateRole('staff');
+            return { role: 'staff' as Role, user: userProfile };
+          } catch (staffError) {
+            console.error('❌ Error fetching staff profile:', staffError);
+          }
+        } else {
+          console.error('❌ Error fetching user profile:', error);
+        }
       }
 
       // Fallback: Refresh token to get updated user data

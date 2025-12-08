@@ -53,10 +53,39 @@ export default function CustomerLayout() {
         console.log('🔍 Current role in state:', authState.role);
         
         // Get role from backend (only for customer role)
-        const userProfile = await getCurrentUserProfileWithAutoRefresh();
-        const backendRole = userProfile?.role;
+        // Normalize role: handle both array and string formats
+        const normalizedCurrentRole = Array.isArray(authState.role) ? authState.role[0] : authState.role;
         
-        console.log('🔍 Role from backend:', backendRole);
+        // If current role is staff, use staff API instead
+        let backendRole: string | null = null;
+        if (normalizedCurrentRole === 'staff') {
+          try {
+            const { staffApi } = await import('../../../src/services/api/staffService');
+            const staffProfileResponse = await staffApi.getProfile();
+            backendRole = 'staff';
+            console.log('🔍 Role from backend (staff API):', backendRole);
+          } catch (staffError) {
+            console.error('❌ Error loading staff profile:', staffError);
+          }
+        } else {
+          try {
+            const userProfile = await getCurrentUserProfileWithAutoRefresh();
+            backendRole = userProfile?.role || null;
+            console.log('🔍 Role from backend (user API):', backendRole);
+          } catch (error: any) {
+            // If 403 error, might be staff - try staff API
+            if (error?.response?.status === 403) {
+              try {
+                const { staffApi } = await import('../../../src/services/api/staffService');
+                const staffProfileResponse = await staffApi.getProfile();
+                backendRole = 'staff';
+                console.log('🔍 Role from backend (staff API after 403):', backendRole);
+              } catch (staffError) {
+                console.error('❌ Error loading staff profile:', staffError);
+              }
+            }
+          }
+        }
         
         if (backendRole === ('business' as const) || backendRole === ('staff' as const)) {
           console.log(`✅ CustomerLayout: Backend role is ${backendRole}, updating auth state...`);

@@ -1,26 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Camera, CameraView } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    FlatList,
-    Image,
-    Modal,
-    Platform,
-    RefreshControl,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    Vibration,
-    View
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  FlatList,
+  Image,
+  Modal,
+  Platform,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Vibration,
+  View
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
 import { borrowTransactionsApi } from '../../../src/services/api/borrowTransactionService';
@@ -122,7 +122,16 @@ export default function TransactionProcessingScreen() {
   const [calculatedCondition, setCalculatedCondition] = useState<'good' | 'damaged'>('good');
   const [checkReturnResponse, setCheckReturnResponse] = useState<any>(null); // Lưu response từ checkReturn
   
-  // QR Scanner states for return
+  // Unified QR Scanner with mode switcher
+  const [showUnifiedQRScanner, setShowUnifiedQRScanner] = useState(false);
+  const [unifiedScannerMode, setUnifiedScannerMode] = useState<'borrow' | 'return'>('borrow');
+  const [hasUnifiedCameraPermission, setHasUnifiedCameraPermission] = useState<boolean | null>(null);
+  const [unifiedFlashEnabled, setUnifiedFlashEnabled] = useState(false);
+  const [unifiedLaserLinePosition, setUnifiedLaserLinePosition] = useState(0);
+  const unifiedScanLock = useRef(false);
+  const unifiedLaserAnimationRef = useRef<any>(null);
+  
+  // QR Scanner states for return (keep for backward compatibility)
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [flashEnabled, setFlashEnabled] = useState(false);
@@ -130,7 +139,7 @@ export default function TransactionProcessingScreen() {
   const scanLock = useRef(false);
   const laserAnimationRef = useRef<any>(null);
   
-  // QR Scanner states for borrow confirmation
+  // QR Scanner states for borrow confirmation (keep for backward compatibility)
   const [showBorrowQRScanner, setShowBorrowQRScanner] = useState(false);
   const [hasBorrowCameraPermission, setHasBorrowCameraPermission] = useState<boolean | null>(null);
   const [borrowFlashEnabled, setBorrowFlashEnabled] = useState(false);
@@ -488,7 +497,182 @@ export default function TransactionProcessingScreen() {
     }
   };
 
-  // Open QR Scanner for Borrow Confirmation
+  // Open Unified QR Scanner with Mode Switcher
+  const openUnifiedQRScanner = async () => {
+    try {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      setHasUnifiedCameraPermission(status === 'granted');
+      if (status === 'granted') {
+        setShowUnifiedQRScanner(true);
+        setUnifiedScannerMode('borrow'); // Default to borrow mode
+      } else {
+        setHasUnifiedCameraPermission(false);
+        Alert.alert('Camera Permission', 'Please grant camera permission to scan QR codes', [{ text: 'OK' }]);
+      }
+    } catch (error) {
+      console.error('Error requesting camera permission:', error);
+      Alert.alert('Error', 'Unable to open camera. Please try again.');
+    }
+  };
+
+  // Stop Unified QR Scanner
+  const stopUnifiedScanning = () => {
+    setShowUnifiedQRScanner(false);
+    setUnifiedFlashEnabled(false);
+    if (unifiedLaserAnimationRef.current) {
+      clearInterval(unifiedLaserAnimationRef.current);
+      unifiedLaserAnimationRef.current = null;
+    }
+    unifiedScanLock.current = false;
+  };
+
+  // Handle Unified QR Scanner barcode scan
+  const onUnifiedBarcodeScanned = async (e: any) => {
+    if (unifiedScanLock.current) return;
+    unifiedScanLock.current = true;
+    
+    const scannedData = e?.data ?? '';
+    console.log('📱 Unified QR Code scanned:', scannedData, 'Mode:', unifiedScannerMode);
+    
+    if (!scannedData || scannedData.trim() === '') {
+      Alert.alert('Error', 'Invalid QR code');
+      unifiedScanLock.current = false;
+      return;
+    }
+    
+    Vibration.vibrate(Platform.OS === 'ios' ? 30 : 50);
+    setShowUnifiedQRScanner(false);
+    
+    try {
+      if (unifiedScannerMode === 'borrow') {
+        // Handle borrow confirmation (same logic as onBorrowBarcodeScanned)
+        let serialNumber = scannedData.trim();
+        if (scannedData.includes('://')) {
+          const match = scannedData.match(/(?:com\.)?back2use:\/\/item\/([^\/]+)/);
+          if (match && match[1]) {
+            serialNumber = match[1];
+          } else {
+            const parts = scannedData.split('/');
+            serialNumber = parts[parts.length - 1];
+          }
+        }
+        
+        const isTransactionId = /^[0-9a-fA-F]{24}$/.test(serialNumber);
+        let foundTransaction: BusinessTransaction | null = null;
+        
+        if (isTransactionId) {
+          try {
+            const response = await borrowTransactionsApi.getBusinessDetail(serialNumber);
+            if (response.statusCode === 200 && response.data) {
+              foundTransaction = response.data;
+            }
+          } catch (error) {
+            console.log('Transaction not found by ID');
+          }
+        }
+        
+        if (!foundTransaction) {
+          const apiResponse = await borrowTransactionsApi.getBusinessHistory({
+            page: 1,
+            limit: 1000,
+          });
+          const apiTransactions = apiResponse.data?.items || (Array.isArray(apiResponse.data) ? apiResponse.data : []);
+          
+          foundTransaction = apiTransactions.find((t: BusinessTransaction) => 
+            t.productId?.serialNumber === serialNumber &&
+            t.borrowTransactionType === 'borrow' &&
+            (t.status === 'pending' || t.status === 'waiting' || t.status === 'pending_pickup')
+          ) || null;
+        }
+        
+        if (foundTransaction) {
+          setScannedBorrowTransaction(foundTransaction);
+          try {
+            setLoadingScannedBorrowDetail(true);
+            const detailResponse = await borrowTransactionsApi.getBusinessDetail(foundTransaction._id);
+            if (detailResponse.statusCode === 200 && detailResponse.data) {
+              setScannedBorrowTransactionDetail(detailResponse.data);
+            }
+          } catch (error: any) {
+            console.error('Error loading transaction detail:', error);
+            setScannedBorrowTransactionDetail(null);
+          } finally {
+            setLoadingScannedBorrowDetail(false);
+          }
+          setShowBorrowConfirmModal(true);
+        } else {
+          Alert.alert('No Borrow Request', 'This product does not have a borrow request');
+        }
+      } else {
+        // Handle return processing (same logic as onBarcodeScanned)
+        let serialNumber = scannedData.trim();
+        if (scannedData.includes('://')) {
+          const match = scannedData.match(/(?:com\.)?back2use:\/\/item\/([^\/]+)/);
+          if (match && match[1]) {
+            serialNumber = match[1];
+          } else {
+            const parts = scannedData.split('/');
+            serialNumber = parts[parts.length - 1];
+          }
+        }
+        
+        console.log('✅ Setting returnSerialNumber from unified scanner:', serialNumber);
+        setReturnSerialNumber(serialNumber);
+        setCheckData({
+          frontImage: null,
+          frontIssue: '',
+          backImage: null,
+          backIssue: '',
+          leftImage: null,
+          leftIssue: '',
+          rightImage: null,
+          rightIssue: '',
+          topImage: null,
+          topIssue: '',
+          bottomImage: null,
+          bottomIssue: '',
+        });
+        setReturnNote('');
+        setReturnImages([]);
+        setCalculatedPoints(0);
+        setCalculatedCondition('good');
+      }
+    } catch (error: any) {
+      console.error('Error processing QR scan:', error);
+      Alert.alert('Error', error.message || 'Failed to process QR code');
+    } finally {
+      unifiedScanLock.current = false;
+    }
+  };
+
+  // Laser scanning line animation for unified scanner
+  useEffect(() => {
+    if (showUnifiedQRScanner && hasUnifiedCameraPermission) {
+      const frameSize = screenWidth * 0.7;
+      let direction = 1;
+      let position = 10;
+      
+      unifiedLaserAnimationRef.current = setInterval(() => {
+        position += direction * 3;
+        if (position >= frameSize - 10 || position <= 10) {
+          direction *= -1;
+        }
+        setUnifiedLaserLinePosition(position);
+      }, 16);
+      
+      return () => {
+        if (unifiedLaserAnimationRef.current) {
+          clearInterval(unifiedLaserAnimationRef.current);
+          unifiedLaserAnimationRef.current = null;
+        }
+        setUnifiedLaserLinePosition(0);
+      };
+    } else {
+      setUnifiedLaserLinePosition(0);
+    }
+  }, [showUnifiedQRScanner, hasUnifiedCameraPermission]);
+
+  // Open QR Scanner for Borrow Confirmation (keep for backward compatibility)
   const openBorrowQRScanner = async () => {
     try {
       const { status } = await Camera.requestCameraPermissionsAsync();
@@ -1110,24 +1294,23 @@ export default function TransactionProcessingScreen() {
       <StatusBar barStyle="light-content" backgroundColor="#00704A" />
       <SafeAreaView style={styles.headerSafeArea}>
         <View style={styles.header}>
-          <View style={styles.headerLeft} />
+          <TouchableOpacity 
+            style={styles.headerLeft}
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Transaction History</Text>
+            <Text style={styles.headerTitle}>Borrowing History</Text>
           </View>
-          <View style={styles.headerRight}>
             <TouchableOpacity 
-              style={styles.scanButton}
-              onPress={openBorrowQRScanner}
+            style={styles.headerRight}
+            onPress={openUnifiedQRScanner}
+            activeOpacity={0.7}
             >
-              <Ionicons name="qr-code-outline" size={24} color="#FFFFFF" />
+            <Ionicons name="qr-code" size={24} color="#FFFFFF" />
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.scanButton}
-              onPress={openQRScanner}
-            >
-              <Ionicons name="return-down-back-outline" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
         </View>
       </SafeAreaView>
 
@@ -2301,27 +2484,29 @@ export default function TransactionProcessingScreen() {
         }}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Transaction Details</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowBorrowConfirmModal(false);
-                  setScannedBorrowTransaction(null);
-                  setScannedBorrowTransactionDetail(null);
-                }}
-              >
-                <Ionicons name="close" size={24} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
-            
-            {loadingScannedBorrowDetail ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#0F4D3A" />
-                <Text style={styles.loadingText}>Loading transaction details...</Text>
+          <View style={[styles.modalContent, { flexDirection: 'column', justifyContent: 'space-between' }]}>
+            <View>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Transaction Details</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowBorrowConfirmModal(false);
+                    setScannedBorrowTransaction(null);
+                    setScannedBorrowTransactionDetail(null);
+                  }}
+                >
+                  <Ionicons name="close" size={24} color="#6B7280" />
+                </TouchableOpacity>
               </View>
-            ) : scannedBorrowTransaction && (
-              <ScrollView style={styles.modalBody}>
+              
+              {loadingScannedBorrowDetail ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#0F4D3A" />
+                  <Text style={styles.loadingText}>Loading transaction details...</Text>
+                </View>
+              ) : (
+                scannedBorrowTransaction && (
+                  <ScrollView style={styles.modalBody}>
                 {/* Basic Information */}
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Transaction ID</Text>
@@ -2631,47 +2816,256 @@ export default function TransactionProcessingScreen() {
                     )}
                   </>
                 )}
+                  </ScrollView>
+                )
+              )}
+            </View>
 
-                {/* Confirm Borrow Button - Show for borrow transactions with pending status */}
-                {scannedBorrowTransaction.borrowTransactionType === 'borrow' && 
-                 (scannedBorrowTransaction.status === 'pending' || 
-                  scannedBorrowTransaction.status === 'waiting' || 
-                  scannedBorrowTransaction.status === 'pending_pickup') && (
-                  <TouchableOpacity
-                    style={[styles.processReturnButton, { backgroundColor: '#3B82F6' }]}
-                    onPress={async () => {
-                      try {
-                        await borrowTransactionsApi.confirmBorrow(scannedBorrowTransaction._id);
-                        Alert.alert(
-                          'Success',
-                          'Borrow transaction confirmed successfully!',
-                          [
-                            {
-                              text: 'OK',
-                              onPress: async () => {
-                                setShowBorrowConfirmModal(false);
-                                setScannedBorrowTransaction(null);
-                                setScannedBorrowTransactionDetail(null);
-                                await loadTransactions();
-                              }
+            {/* Confirm Borrow Button - Fixed at bottom, outside ScrollView */}
+            {scannedBorrowTransaction && 
+             scannedBorrowTransaction.borrowTransactionType === 'borrow' && 
+             (scannedBorrowTransaction.status === 'pending' || 
+              scannedBorrowTransaction.status === 'waiting' || 
+              scannedBorrowTransaction.status === 'pending_pickup') && (
+              <View style={styles.modalFooter}>
+                <TouchableOpacity
+                  style={[styles.processReturnButton, { backgroundColor: '#00704A', width: '100%' }]}
+                  onPress={async () => {
+                    try {
+                      await borrowTransactionsApi.confirmBorrow(scannedBorrowTransaction._id);
+                      Alert.alert(
+                        'Success',
+                        'Borrow transaction confirmed successfully!',
+                        [
+                          {
+                            text: 'OK',
+                            onPress: async () => {
+                              setShowBorrowConfirmModal(false);
+                              setScannedBorrowTransaction(null);
+                              setScannedBorrowTransactionDetail(null);
+                              await loadTransactions();
                             }
-                          ]
-                        );
-                      } catch (error: any) {
-                        console.error('Error confirming borrow:', error);
-                        Alert.alert('Error', error.message || 'Failed to confirm borrow transaction');
-                      }
-                    }}
-                  >
-                    <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-                    <Text style={styles.processReturnButtonText}>Confirm Borrow</Text>
-                  </TouchableOpacity>
-                )}
-              </ScrollView>
+                          }
+                        ]
+                      );
+                    } catch (error: any) {
+                      console.error('Error confirming borrow:', error);
+                      Alert.alert('Error', error.message || 'Failed to confirm borrow transaction');
+                    }
+                  }}
+                >
+                  <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                  <Text style={styles.processReturnButtonText}>Confirm Borrow</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         </View>
       </Modal>
+
+      {/* Unified QR Scanner Modal with Mode Switcher */}
+      {showUnifiedQRScanner && hasUnifiedCameraPermission && (
+        <Modal
+          visible={showUnifiedQRScanner}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={stopUnifiedScanning}
+        >
+            <View style={styles.qrScannerContainer}>
+            <StatusBar hidden />
+            <CameraView 
+              style={StyleSheet.absoluteFillObject} 
+              barcodeScannerSettings={{ barcodeTypes: ['qr'] }} 
+              onBarcodeScanned={onUnifiedBarcodeScanned}
+              enableTorch={unifiedFlashEnabled}
+            />
+            
+            <View style={styles.overlayMask}>
+              <View style={styles.overlayTop} />
+              <View style={styles.overlayBottom} />
+              <View style={styles.overlayLeft} />
+              <View style={styles.overlayRight} />
+            </View>
+
+            <View style={styles.brandingContainer}>
+              <Text style={styles.brandingText}>Powered by Back2Use</Text>
+            </View>
+
+            <TouchableOpacity 
+              style={styles.closeButtonTop} 
+              onPress={stopUnifiedScanning}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={28} color="#FFFFFF" />
+                </TouchableOpacity>
+
+            <View style={styles.scanningFrameContainer}>
+              <View style={[
+                styles.scanningFrame,
+                { 
+                  borderColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316'
+                }
+              ]}>
+                <View style={[
+                  styles.cornerBracket, 
+                  styles.topLeftCorner,
+                  { borderColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                ]}>
+                  <View style={[
+                    styles.cornerBracketHorizontal,
+                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                  ]} />
+                  <View style={[
+                    styles.cornerBracketVertical,
+                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                  ]} />
+                </View>
+                <View style={[
+                  styles.cornerBracket, 
+                  styles.topRightCorner,
+                  { borderColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                ]}>
+                  <View style={[
+                    styles.cornerBracketHorizontal,
+                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                  ]} />
+                  <View style={[
+                    styles.cornerBracketVertical,
+                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                  ]} />
+                </View>
+                <View style={[
+                  styles.cornerBracket, 
+                  styles.bottomLeftCorner,
+                  { borderColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                ]}>
+                  <View style={[
+                    styles.cornerBracketHorizontal,
+                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                  ]} />
+                  <View style={[
+                    styles.cornerBracketVertical,
+                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                  ]} />
+                </View>
+                <View style={[
+                  styles.cornerBracket, 
+                  styles.bottomRightCorner,
+                  { borderColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                ]}>
+                  <View style={[
+                    styles.cornerBracketHorizontal,
+                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                  ]} />
+                  <View style={[
+                    styles.cornerBracketVertical,
+                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                  ]} />
+              </View>
+              
+                <View 
+                  style={[
+                    styles.laserLine,
+                    { 
+                      top: unifiedLaserLinePosition,
+                      backgroundColor: unifiedScannerMode === 'borrow' 
+                        ? 'rgba(0, 255, 136, 0.8)' 
+                        : 'rgba(249, 115, 22, 0.8)'
+                    }
+                  ]}
+                />
+              </View>
+            </View>
+
+            <View style={styles.instructionsContainer}>
+              <Text style={styles.instructionsText}>
+                Align the QR code within the frame to scan
+              </Text>
+            </View>
+
+            {/* Mode Switcher - Segmented Control */}
+            <View style={styles.modeSwitcherContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.modeButton,
+                  unifiedScannerMode === 'borrow' && styles.modeButtonActive,
+                  unifiedScannerMode === 'borrow' && { backgroundColor: '#00FF88' }
+                ]}
+                onPress={() => setUnifiedScannerMode('borrow')}
+                activeOpacity={0.8}
+              >
+                <Ionicons 
+                  name="arrow-down-circle" 
+                  size={20} 
+                  color={unifiedScannerMode === 'borrow' ? '#FFFFFF' : '#9CA3AF'} 
+                />
+                <Text style={[
+                  styles.modeButtonText,
+                  unifiedScannerMode === 'borrow' && styles.modeButtonTextActive
+                ]}>
+                  Borrow
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.modeButton,
+                  unifiedScannerMode === 'return' && styles.modeButtonActive,
+                  unifiedScannerMode === 'return' && { backgroundColor: '#F97316' }
+                ]}
+                onPress={() => setUnifiedScannerMode('return')}
+                activeOpacity={0.8}
+              >
+                <Ionicons 
+                  name="arrow-up-circle" 
+                  size={20} 
+                  color={unifiedScannerMode === 'return' ? '#FFFFFF' : '#9CA3AF'} 
+                />
+                <Text style={[
+                  styles.modeButtonText,
+                  unifiedScannerMode === 'return' && styles.modeButtonTextActive
+                ]}>
+                  Return
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.floatingControls}>
+              <TouchableOpacity 
+                style={styles.floatingButton}
+                onPress={() => {
+                  Alert.alert('My QR', 'Feature coming soon');
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="qr-code-outline" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.floatingButton, styles.flashButton]}
+                onPress={() => setUnifiedFlashEnabled(!unifiedFlashEnabled)}
+                activeOpacity={0.8}
+              >
+                <Ionicons 
+                  name={unifiedFlashEnabled ? "flash" : "flash-outline"} 
+                  size={28} 
+                  color={unifiedFlashEnabled ? "#FCD34D" : "#FFFFFF"} 
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.floatingButton}
+                onPress={() => {
+                  Alert.alert('Upload Image', 'Feature coming soon');
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="image-outline" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* QR Scanner Modal for Return Processing */}
       {showQRScanner && hasCameraPermission && (
@@ -2684,10 +3078,10 @@ export default function TransactionProcessingScreen() {
           <View style={styles.qrScannerContainer}>
             <StatusBar hidden />
             {/* Full Screen Camera */}
-            <CameraView 
+                <CameraView 
               style={StyleSheet.absoluteFillObject} 
-              barcodeScannerSettings={{ barcodeTypes: ['qr'] }} 
-              onBarcodeScanned={onBarcodeScanned}
+                  barcodeScannerSettings={{ barcodeTypes: ['qr'] }} 
+                  onBarcodeScanned={onBarcodeScanned} 
               enableTorch={flashEnabled}
             />
             
@@ -2697,8 +3091,8 @@ export default function TransactionProcessingScreen() {
               <View style={styles.overlayBottom} />
               <View style={styles.overlayLeft} />
               <View style={styles.overlayRight} />
-            </View>
-
+              </View>
+              
             {/* Branding - Top */}
             <View style={styles.brandingContainer}>
               <Text style={styles.brandingText}>Powered by Back2Use</Text>
@@ -2873,6 +3267,40 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1F2937',
   },
+  quickActionRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+    gap: 12,
+  },
+  quickActionButtonBorrow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#00704A',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 25,
+    gap: 8,
+  },
+  quickActionButtonReturn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F97316',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 25,
+    gap: 8,
+  },
+  quickActionButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: 'white',
@@ -3020,6 +3448,13 @@ const styles = StyleSheet.create({
   modalBody: {
     flex: 1,
     maxHeight: '100%',
+  },
+  modalFooter: {
+    padding: 20,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
   },
   detailRow: {
     flexDirection: 'row',
@@ -3504,7 +3939,6 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    backdropFilter: 'blur(10px)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -3515,6 +3949,44 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: 36,
     backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  // Mode Switcher Styles
+  modeSwitcherContainer: {
+    position: 'absolute',
+    bottom: 140,
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 25,
+    padding: 4,
+    zIndex: 10,
+  },
+  modeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    gap: 8,
+  },
+  modeButtonActive: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modeButtonText: {
+    color: '#9CA3AF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  modeButtonTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   // Borrow Confirmation Modal Styles
   transactionDetailCard: {

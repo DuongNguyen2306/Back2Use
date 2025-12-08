@@ -1,8 +1,8 @@
-import { Redirect, useRouter, usePathname } from "expo-router";
-import { useEffect, useRef } from "react";
-import { ActivityIndicator, View, Alert } from "react-native";
-import { useAuth } from "../context/AuthProvider";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Redirect, usePathname, useRouter } from "expo-router";
+import { useEffect, useRef } from "react";
+import { ActivityIndicator, Alert, View } from "react-native";
+import { useAuth } from "../context/AuthProvider";
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const { state } = useAuth();
@@ -19,9 +19,12 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     pathname,
   });
 
+  // Normalize role: handle both array and string formats
+  const normalizedRole = Array.isArray(state.role) ? state.role[0] : state.role;
+
   // Block admin access on mobile - logout and redirect to login
   useEffect(() => {
-    if (state.isAuthenticated && state.isHydrated && state.role === "admin") {
+    if (state.isAuthenticated && state.isHydrated && normalizedRole === "admin") {
       console.log("❌ AuthGate: Admin user detected on mobile - blocking access and logging out");
       
       // Logout admin user and redirect to login
@@ -59,13 +62,13 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       
       logoutAdmin();
     }
-  }, [state.isAuthenticated, state.isHydrated, state.role, router]);
+  }, [state.isAuthenticated, state.isHydrated, normalizedRole, router]);
 
   // Điều hướng đến layout phù hợp dựa trên role
   // IMPORTANT: useEffect must be called at top level, not inside conditional
   useEffect(() => {
     // Only redirect if authenticated, hydrated, and have a role (and not admin)
-    if (!state.isAuthenticated || !state.isHydrated || !state.role || hasNavigatedRef.current || state.role === "admin") {
+    if (!state.isAuthenticated || !state.isHydrated || !normalizedRole || hasNavigatedRef.current || normalizedRole === "admin") {
       return;
     }
     
@@ -75,15 +78,15 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     const isOnAdminScreen = pathname?.includes('/admin');
     
     // Only redirect if user is on wrong screen for their role
-    if (state.role === "business" || state.role === "staff") {
+    if (normalizedRole === "business" || normalizedRole === "staff") {
       // If user is business/staff but on customer or admin screen, redirect to business
       if (isOnCustomerScreen || isOnAdminScreen) {
-        console.log(`🔄 AuthGate: User is ${state.role} but on wrong screen, redirecting to business dashboard`);
+        console.log(`🔄 AuthGate: User is ${normalizedRole} but on wrong screen, redirecting to business dashboard`);
         hasNavigatedRef.current = true;
         router.replace("/(protected)/business");
       }
       // If already on business screen, do nothing
-    } else if (state.role === "customer") {
+    } else if (normalizedRole === "customer") {
       // If user is customer but on business or admin screen, redirect to customer
       if (isOnBusinessScreen || isOnAdminScreen) {
         console.log("🔄 AuthGate: User is customer but on wrong screen, redirecting to customer dashboard");
@@ -99,7 +102,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     }, 3000);
     
     return () => clearTimeout(timeout);
-  }, [state.role, pathname, router, state.isHydrated, state.isAuthenticated]);
+  }, [state.role, pathname, router, state.isHydrated, state.isAuthenticated, normalizedRole]);
 
   // Chờ trạng thái được tải (hydrated)
   if (!state.isHydrated) {
@@ -113,10 +116,10 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
   // Nếu đã xác thực, kiểm tra role admin (block admin on mobile)
   if (state.isAuthenticated) {
-    console.log("🔐 AuthGate: ✅ User is authenticated, role:", state.role);
+    console.log("🔐 AuthGate: ✅ User is authenticated, role:", normalizedRole);
     
     // Block admin access on mobile - show loading while logging out
-    if (state.role === "admin") {
+    if (normalizedRole === "admin") {
       console.log("❌ AuthGate: Admin user detected on mobile - blocking access");
       return (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 20 }}>

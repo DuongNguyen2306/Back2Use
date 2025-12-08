@@ -536,6 +536,22 @@ export default function BusinessMenu() {
           ))}
         </View>
 
+        {/* Staff Menu Items */}
+        {auth.state.role === 'staff' as any && (
+          <View style={styles.settingsList}>
+            <TouchableOpacity
+              style={styles.settingsListItem}
+              onPress={() => router.push('/(protected)/business/transaction-processing')}
+            >
+              <View style={styles.settingsListItemLeft}>
+                <Ionicons name="receipt-outline" size={24} color="#00704A" />
+                <Text style={styles.settingsListItemText}>Borrowing History</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Collapsible Settings List */}
         <View style={styles.settingsList}>
           <TouchableOpacity
