@@ -7,19 +7,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Image,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import AvatarPicker from '../../../components/AvatarPicker';
 import { useAuth } from '../../../context/AuthProvider';
@@ -652,6 +651,122 @@ export default function ProfileDetail() {
               </View>
             </View>
 
+            {/* Wallet & Stats Section */}
+            {(() => {
+              const userData = user as any;
+              const wallet = userData?.wallet;
+              const rewardPoints = userData?.rewardPoints ?? 0;
+              const rankingPoints = userData?.rankingPoints ?? 0;
+              const returnSuccessCount = userData?.returnSuccessCount ?? 0;
+              const returnFailedCount = userData?.returnFailedCount ?? 0;
+              const returnRate = userData?.returnRate ?? 0;
+              const co2Reduced = userData?.co2Reduced ?? 0;
+              const availableBalance = wallet?.availableBalance ?? wallet?.balance ?? 0;
+              const holdingBalance = wallet?.holdingBalance ?? 0;
+
+              return (
+                <View style={styles.statsSection}>
+                  <Text style={styles.statsSectionTitle}>Statistics & Wallet</Text>
+                  
+                  {/* Wallet Card */}
+                  <View style={styles.statsCard}>
+                    <View style={styles.statsCardHeader}>
+                      <Ionicons name="wallet-outline" size={24} color="#00704A" />
+                      <Text style={styles.statsCardTitle}>Wallet Balance</Text>
+                    </View>
+                    <View style={styles.statsCardContent}>
+                      <View style={styles.balanceRow}>
+                        <Text style={styles.balanceLabel}>Available:</Text>
+                        <Text style={styles.balanceValue}>
+                          {availableBalance.toLocaleString('vi-VN')} VNĐ
+                        </Text>
+                      </View>
+                      {holdingBalance > 0 && (
+                        <View style={styles.balanceRow}>
+                          <Text style={styles.balanceLabel}>Holding:</Text>
+                          <Text style={styles.balanceValueHolding}>
+                            {holdingBalance.toLocaleString('vi-VN')} VNĐ
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Points Card */}
+                  <View style={styles.statsCard}>
+                    <View style={styles.statsCardHeader}>
+                      <Ionicons name="trophy-outline" size={24} color="#F59E0B" />
+                      <Text style={styles.statsCardTitle}>Points</Text>
+                    </View>
+                    <View style={styles.statsCardContent}>
+                      <View style={styles.statsRow}>
+                        <View style={styles.statItem}>
+                          <Ionicons name="star-outline" size={20} color="#F59E0B" />
+                          <Text style={styles.statLabel}>Reward Points</Text>
+                          <Text style={styles.statValue}>{rewardPoints}</Text>
+                        </View>
+                        <View style={styles.statItem}>
+                          <Ionicons name="medal-outline" size={20} color="#8B5CF6" />
+                          <Text style={styles.statLabel}>Ranking Points</Text>
+                          <Text style={styles.statValue}>{rankingPoints}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Return Stats Card */}
+                  <View style={styles.statsCard}>
+                    <View style={styles.statsCardHeader}>
+                      <Ionicons name="checkmark-circle-outline" size={24} color="#10B981" />
+                      <Text style={styles.statsCardTitle}>Return Statistics</Text>
+                    </View>
+                    <View style={styles.statsCardContent}>
+                      <View style={styles.statsRow}>
+                        <View style={styles.statItem}>
+                          <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                          <Text style={styles.statLabel}>Success</Text>
+                          <Text style={[styles.statValue, styles.statValueSuccess]}>
+                            {returnSuccessCount}
+                          </Text>
+                        </View>
+                        <View style={styles.statItem}>
+                          <Ionicons name="close-circle" size={20} color="#EF4444" />
+                          <Text style={styles.statLabel}>Failed</Text>
+                          <Text style={[styles.statValue, styles.statValueFailed]}>
+                            {returnFailedCount}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.returnRateRow}>
+                        <Text style={styles.returnRateLabel}>Return Rate:</Text>
+                        <Text style={styles.returnRateValue}>
+                          {returnRate.toFixed(1)}%
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Environmental Impact Card */}
+                  {co2Reduced !== 0 && (
+                    <View style={styles.statsCard}>
+                      <View style={styles.statsCardHeader}>
+                        <Ionicons name="leaf-outline" size={24} color="#10B981" />
+                        <Text style={styles.statsCardTitle}>Environmental Impact</Text>
+                      </View>
+                      <View style={styles.statsCardContent}>
+                        <View style={styles.co2Row}>
+                          <Text style={styles.co2Label}>CO₂ Reduced:</Text>
+                          <Text style={styles.co2Value}>
+                            {Math.abs(co2Reduced).toFixed(3)} kg
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })()}
+
             {/* Change Password Button */}
             <TouchableOpacity 
               style={styles.changePasswordButton}
@@ -998,6 +1113,119 @@ const styles = StyleSheet.create({
     color: '#00704A',
     marginLeft: 12,
     flex: 1,
+  },
+  statsSection: {
+    marginTop: 24,
+  },
+  statsSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 16,
+  },
+  statsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  statsCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  statsCardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginLeft: 8,
+  },
+  statsCardContent: {
+    marginTop: 8,
+  },
+  balanceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  balanceLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  balanceValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  balanceValueHolding: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#F59E0B',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 12,
+  },
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  statValueSuccess: {
+    color: '#10B981',
+  },
+  statValueFailed: {
+    color: '#EF4444',
+  },
+  returnRateRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  returnRateLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  returnRateValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  co2Row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  co2Label: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  co2Value: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#10B981',
   },
   modalOverlay: {
     flex: 1,

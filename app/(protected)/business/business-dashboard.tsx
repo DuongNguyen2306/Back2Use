@@ -284,10 +284,14 @@ export default function BusinessDashboard() {
             }
           }
         } catch (error: any) {
-          // Silently handle 400 errors (invalid parameters)
+          // Silently handle 400 and 403 errors (invalid parameters or forbidden)
           if (error?.response?.status === 400) {
             console.log('⚠️ Monthly transactions API returned 400 (invalid parameters)');
+          } else if (error?.response?.status === 403) {
+            // Silently handle 403 (forbidden) - don't show error to user
+            console.log('⚠️ Monthly transactions API returned 403 (forbidden - silently handled)');
           } else {
+            // Only log other errors, don't show to user
             console.log('⚠️ Monthly transactions API not available:', error?.message || error);
           }
         }

@@ -4,18 +4,18 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Modal,
-  RefreshControl,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Modal,
+    RefreshControl,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 /* -------------------------------------------------------------------------- */
@@ -631,6 +631,33 @@ export default function CustomerTransactionHistory() {
                     </Text>
                     <Text style={styles.storeName}>{businessName}</Text>
                     <Text style={styles.borrowDate}>Borrowed: {new Date(transaction.borrowDate).toLocaleDateString("en-US")}</Text>
+                    {/* Price per day */}
+                    {(() => {
+                      const basePrice = (transaction.productId?.productSizeId as any)?.basePrice;
+                      if (basePrice) {
+                        return (
+                          <Text style={{ fontSize: 12, color: '#059669', marginTop: 2 }}>
+                            {basePrice.toLocaleString('vi-VN')} VND/day
+                          </Text>
+                        );
+                      }
+                      return null;
+                    })()}
+                    {/* CO2 Reduced */}
+                    {(() => {
+                      const co2Reduced = (transaction.productId as any)?.co2Reduced;
+                      if (co2Reduced !== undefined && co2Reduced > 0) {
+                        return (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                            <Ionicons name="leaf" size={12} color="#10B981" />
+                            <Text style={{ fontSize: 11, color: '#10B981', marginLeft: 4 }}>
+                              CO₂: {co2Reduced.toFixed(3)} kg
+                            </Text>
+                          </View>
+                        );
+                      }
+                      return null;
+                    })()}
                   </View>
 
                   {/* Right: Price & Status */}

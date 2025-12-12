@@ -3,20 +3,20 @@ import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Dimensions,
-  Image,
-  ImageBackground,
-  Modal,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Dimensions,
+    Image,
+    ImageBackground,
+    Modal,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NotificationBadge from '../../../../components/NotificationBadge';
@@ -784,6 +784,7 @@ export default function StoreDetailScreen() {
       
       if (productData) {
         console.log('✅ Product data found:', productData);
+        console.log('🔄 reuseCount from API:', productData.reuseCount);
         
         // Xử lý productGroupId có thể là object hoặc string
         const productGroupName = productData.productGroupId && typeof productData.productGroupId === 'object' 
@@ -795,16 +796,23 @@ export default function StoreDetailScreen() {
           ? productData.productSizeId.sizeName || productData.productSizeId.name || productData.productSizeId.description
           : "Unknown";
         
+        // Đảm bảo reuseCount được giữ lại từ API response
         const formattedProduct = {
           id: productData._id || productData.id,
           name: productGroupName || "Product",
           size: productSizeName,
           type: "container",
           data: serialNumber,
-          product: productData, // Lưu thông tin sản phẩm đầy đủ từ scan API
+          product: {
+            ...productData, // Lưu thông tin sản phẩm đầy đủ, bao gồm reuseCount
+            reuseCount: productData.reuseCount !== undefined ? productData.reuseCount : 0, // Đảm bảo reuseCount được giữ lại
+          },
           qrCode: qrCode || productData.qrCode || '',
           status: productStatus || productData.status || 'available',
         };
+        
+        console.log('📱 Formatted product created:', formattedProduct);
+        console.log('🔄 reuseCount in formattedProduct:', formattedProduct.product.reuseCount);
         
         console.log('📱 Formatted product created:', formattedProduct);
         setSelectedProduct(formattedProduct);
@@ -884,8 +892,9 @@ export default function StoreDetailScreen() {
       return;
     }
     
-    // LẤY GIÁ CỌC 1 NGÀY - Ưu tiên rentalPrice vì đó là giá 1 ngày
+    // LẤY GIÁ CỌC 1 NGÀY - Ưu tiên basePrice (API mới)
     const pricePerDay = 
+      (product.productSizeId as any)?.basePrice ??
       (product.productSizeId as any)?.rentalPrice ??
       (product.productSizeId as any)?.rentalPricePerDay ??
       (product.productGroupId as any)?.rentalPrice ??
@@ -955,8 +964,9 @@ export default function StoreDetailScreen() {
     console.log('✅ Balance sufficient, proceeding to confirm...');
 
     // TÍNH LẠI TIỀN CỌC REALTIME CHO ALERT (vì người dùng có thể gõ lại số ngày)
-    // Ưu tiên rentalPrice vì đó là giá 1 ngày
+    // Ưu tiên basePrice (API mới)
     const realtimePricePerDay = 
+      (product.productSizeId as any)?.basePrice ??
       (product.productSizeId as any)?.rentalPrice ??
       (product.productSizeId as any)?.rentalPricePerDay ??
       (product.productGroupId as any)?.rentalPrice ??
@@ -1708,9 +1718,26 @@ export default function StoreDetailScreen() {
                     <Text style={styles.productCardDescription} numberOfLines={2}>
                       {groupDescription || 'No description available'}
                     </Text>
-                    <Text style={styles.productCardPrice}>
-                      {depositValue > 0 ? `${depositValue.toLocaleString('vi-VN')} VNĐ` : 'Free'}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                      <Text style={styles.productCardPrice}>
+                        {depositValue > 0 ? `${depositValue.toLocaleString('vi-VN')} VNĐ` : 'Free'}
+                      </Text>
+                    </View>
+                    {/* CO2 Reduced */}
+                    {(() => {
+                      const co2Reduced = (product as any)?.co2Reduced;
+                      if (co2Reduced !== undefined && co2Reduced > 0) {
+                        return (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                            <Ionicons name="leaf" size={12} color="#10B981" />
+                            <Text style={{ fontSize: 11, color: '#10B981', marginLeft: 4 }}>
+                              CO₂: {co2Reduced.toFixed(3)} kg
+                            </Text>
+                          </View>
+                        );
+                      }
+                      return null;
+                    })()}
                   </View>
 
                   {/* Add Button - Right */}
@@ -1981,20 +2008,17 @@ export default function StoreDetailScreen() {
                 )}
                 
                 {(() => {
-                  // Tính toán realtime tiền cọc - Ưu tiên rentalPrice vì đó là giá 1 ngày
-                  const pricePerDay = 
-                    (selectedProduct.product?.productSizeId as any)?.rentalPrice ??
-                    (selectedProduct.product?.productSizeId as any)?.rentalPricePerDay ??
-                    (selectedProduct.product?.productGroupId as any)?.rentalPrice ??
-                    (selectedProduct.product?.productGroupId as any)?.rentalPricePerDay ??
-                    (selectedProduct.product?.productSizeId as any)?.depositValue ??
-                    (selectedProduct.product?.productGroupId as any)?.depositValue ??
-                    3200;
+                  // Tính deposit theo số ngày để hiển thị trên UI - dùng depositValue (giá thuê)
+                  const depositValuePerDay = (selectedProduct.product?.productSizeId as any)?.depositValue ??
+                                             (selectedProduct.product?.productGroupId as any)?.depositValue ??
+                                             0;
                   
                   const days = Math.max(1, Math.min(30, parseInt(durationInDays) || 1));
-                  const depositValue = pricePerDay * days;
                   
-                  if (!pricePerDay || pricePerDay <= 0) return null;
+                  // Tính từ depositValue (giá thuê) × số ngày
+                  const displayDeposit = depositValuePerDay * days;
+                  
+                  if (!displayDeposit || displayDeposit <= 0) return null;
                   
                   return (
                     <View style={styles.depositInfo}>
@@ -2002,10 +2026,10 @@ export default function StoreDetailScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.depositLabel}>Deposit:</Text>
                         <Text style={styles.depositValue}>
-                          {depositValue.toLocaleString('vi-VN')} VND
+                          {displayDeposit.toLocaleString('vi-VN')} VND
                         </Text>
                         <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
-                          ({pricePerDay.toLocaleString('vi-VN')} VND/day × {days} days)
+                          ({depositValuePerDay.toLocaleString('vi-VN')} VND/day × {days} days)
                         </Text>
                       </View>
                     </View>
@@ -2023,19 +2047,13 @@ export default function StoreDetailScreen() {
                                           (userData as any)?.wallet?.balance ?? 
                                           0;
                       
-                      // Tính toán realtime tiền cọc - Ưu tiên rentalPrice vì đó là giá 1 ngày
-                      const pricePerDay = 
-                        (selectedProduct.product?.productSizeId as any)?.rentalPrice ??
-                        (selectedProduct.product?.productSizeId as any)?.rentalPricePerDay ??
-                        (selectedProduct.product?.productGroupId as any)?.rentalPrice ??
-                        (selectedProduct.product?.productGroupId as any)?.rentalPricePerDay ??
-                        (selectedProduct.product?.productSizeId as any)?.depositValue ??
-                        (selectedProduct.product?.productGroupId as any)?.depositValue ??
-                        3200;
-                      
+                      // Tính deposit theo số ngày để kiểm tra số dư (chỉ cho UI) - dùng depositValue (giá thuê)
+                      const depositValuePerDay = (selectedProduct.product?.productSizeId as any)?.depositValue ??
+                                                 (selectedProduct.product?.productGroupId as any)?.depositValue ??
+                                                 0;
                       const days = Math.max(1, Math.min(30, parseInt(durationInDays) || 1));
-                      const depositValue = pricePerDay * days;
-                      const isInsufficient = walletBalance < depositValue;
+                      const displayDeposit = depositValuePerDay * days;
+                      const isInsufficient = walletBalance < displayDeposit;
                       
                       return (
                         <>
@@ -2114,12 +2132,23 @@ export default function StoreDetailScreen() {
                     </View>
                   )}
 
-                  {selectedProduct.product?.reuseCount !== undefined && (
+                  {(selectedProduct.product?.reuseCount !== undefined && selectedProduct.product?.reuseCount !== null) && (
                     <View style={styles.detailRow}>
                       <Ionicons name="repeat-outline" size={18} color="#6B7280" />
                       <Text style={styles.detailLabel}>Reuse Count:</Text>
                       <Text style={styles.detailValue}>
-                        {selectedProduct.product.reuseCount}
+                        {String(selectedProduct.product.reuseCount || 0)}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* CO2 Reduced */}
+                  {selectedProduct.product?.co2Reduced !== undefined && (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="leaf-outline" size={18} color="#10B981" />
+                      <Text style={styles.detailLabel}>CO₂ Reduced:</Text>
+                      <Text style={[styles.detailValue, { color: '#10B981', fontWeight: '600' }]}>
+                        {selectedProduct.product.co2Reduced.toFixed(3)} kg
                       </Text>
                     </View>
                   )}

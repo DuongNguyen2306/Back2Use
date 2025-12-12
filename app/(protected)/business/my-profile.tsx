@@ -884,7 +884,7 @@ export default function BusinessProfileScreen() {
             </View>
         )}
 
-        {/* Account Actions Section */}
+        {/* Account Actions Section - Business */}
         {auth.state.role === 'business' && (
           <View style={styles.accountActionsCard}>
                 <TouchableOpacity
@@ -922,6 +922,34 @@ export default function BusinessProfileScreen() {
                 <Text style={[styles.accountActionText, styles.accountActionTextRed]}>Logout</Text>
               </View>
          </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Account Actions Section - Staff */}
+        {auth.state.role === 'staff' && (
+          <View style={styles.accountActionsCard}>
+            <TouchableOpacity
+              style={styles.accountActionItem}
+              onPress={() => setShowChangePasswordModal(true)}
+            >
+              <View style={styles.accountActionLeft}>
+                <Ionicons name="lock-closed-outline" size={20} color="#00704A" />
+                <Text style={styles.accountActionText}>Change Password</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+            
+            <View style={styles.accountActionDivider} />
+            
+            <TouchableOpacity 
+              style={styles.accountActionItem}
+              onPress={handleLogout}
+            >
+              <View style={styles.accountActionLeft}>
+                <Ionicons name="log-out-outline" size={20} color="#EF4444" />
+                <Text style={[styles.accountActionText, styles.accountActionTextRed]}>Logout</Text>
+              </View>
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>

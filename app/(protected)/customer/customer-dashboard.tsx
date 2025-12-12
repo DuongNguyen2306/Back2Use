@@ -413,16 +413,30 @@ export default function CustomerDashboard() {
       
       if (responseData.success && responseData.data) {
         // Trường hợp response có success: true
+        // API trả về: { success: true, data: { _id, reuseCount, ... } }
         const data: any = responseData.data;
+        // Nếu data có product thì lấy product, không thì lấy data (vì data chính là product object)
         productData = data.product || data;
         qrCode = data.qrCode || '';
         productStatus = data.status || '';
+        console.log('📦 Parsed productData (success:true):', {
+          hasProduct: !!data.product,
+          reuseCount: productData?.reuseCount,
+          keys: Object.keys(productData || {})
+        });
       } else if (responseData.statusCode === 200 && responseData.data) {
         // Trường hợp response có statusCode
+        // API trả về: { statusCode: 200, data: { _id, reuseCount, ... } }
         const data: any = responseData.data;
+        // Nếu data có product thì lấy product, không thì lấy data (vì data chính là product object)
         productData = data.product || data;
         qrCode = data.qrCode || '';
         productStatus = data.status || '';
+        console.log('📦 Parsed productData (statusCode:200):', {
+          hasProduct: !!data.product,
+          reuseCount: productData?.reuseCount,
+          keys: Object.keys(productData || {})
+        });
       }
       
       // Check if productData is empty or null
@@ -435,6 +449,7 @@ export default function CustomerDashboard() {
       
       if (productData) {
         console.log('✅ Product data found:', productData);
+        console.log('🔄 reuseCount from API:', productData.reuseCount);
         
         // Xử lý productGroupId có thể là object hoặc string
         const productGroupName = productData.productGroupId && typeof productData.productGroupId === 'object' 
@@ -446,18 +461,23 @@ export default function CustomerDashboard() {
           ? productData.productSizeId.sizeName
           : "Unknown";
         
+        // Đảm bảo reuseCount được giữ lại từ API response
         const scannedItem = {
           id: productData._id || productData.id,
           name: productGroupName || "Product",
           size: productSizeName,
         type: "container",
           data: actualId,
-          product: productData, // Lưu thông tin sản phẩm đầy đủ
+          product: {
+            ...productData, // Lưu thông tin sản phẩm đầy đủ, bao gồm reuseCount
+            reuseCount: productData.reuseCount !== undefined ? productData.reuseCount : 0, // Đảm bảo reuseCount được giữ lại
+          },
           qrCode: qrCode || productData.qrCode || '',
           status: productStatus || productData.status || 'available',
         };
         
         console.log('📱 Scanned item created:', scannedItem);
+        console.log('🔄 reuseCount in scannedItem:', scannedItem.product.reuseCount);
         setScannedItem(scannedItem);
         setDurationInDays('30'); // Reset về mặc định khi mở modal mới
         setShowProductModal(true);
@@ -517,12 +537,15 @@ export default function CustomerDashboard() {
     }
     
     // LẤY GIÁ CỌC 1 NGÀY
+    // LẤY GIÁ MƯỢN 1 NGÀY - Ưu tiên basePrice (API mới)
     const pricePerDay = 
-      (product.productSizeId as any)?.depositValue ??
+      (product.productSizeId as any)?.basePrice ??
       (product.productSizeId as any)?.rentalPrice ??
-      (product.productGroupId as any)?.depositValue ??
+      (product.productSizeId as any)?.rentalPricePerDay ??
       (product.productGroupId as any)?.rentalPrice ??
       (product.productGroupId as any)?.rentalPricePerDay ??
+      (product.productSizeId as any)?.depositValue ??
+      (product.productGroupId as any)?.depositValue ??
       3200; // fallback an toàn
     
     // TIỀN CỌC = GIÁ 1 NGÀY × SỐ NGÀY
@@ -586,12 +609,15 @@ export default function CustomerDashboard() {
     console.log('✅ Balance sufficient, proceeding to confirm...');
 
     // TÍNH LẠI TIỀN CỌC REALTIME CHO ALERT (vì người dùng có thể gõ lại số ngày)
+    // Ưu tiên basePrice (API mới)
     const realtimePricePerDay = 
-      (product.productSizeId as any)?.depositValue ??
+      (product.productSizeId as any)?.basePrice ??
       (product.productSizeId as any)?.rentalPrice ??
-      (product.productGroupId as any)?.depositValue ??
+      (product.productSizeId as any)?.rentalPricePerDay ??
       (product.productGroupId as any)?.rentalPrice ??
       (product.productGroupId as any)?.rentalPricePerDay ??
+      (product.productSizeId as any)?.depositValue ??
+      (product.productGroupId as any)?.depositValue ??
       3200;
 
     const realtimeDays = parseInt(durationInDays, 10) || 30;
@@ -620,7 +646,7 @@ export default function CustomerDashboard() {
 
               // LẤY depositValue CỐ ĐỊNH TỪ PRODUCT - KHÔNG TÍNH TOÁN
               // Chỉ lấy giá trị cố định từ productSizeId.depositValue hoặc productGroupId.depositValue
-              // KHÔNG tính toán từ rentalPrice * days
+              // KHÔNG tính toán từ basePrice * days
               const backendDepositValue = 
                 (product.productSizeId as any)?.depositValue ??
                 (product.productGroupId as any)?.depositValue ??
@@ -1062,12 +1088,18 @@ export default function CustomerDashboard() {
             </View>
                 <View style={styles.impactGrid}>
               <View style={styles.impactStat}>
-                    <Text style={styles.impactValue}>12</Text>
+                    <Text style={styles.impactValue}>
+                      {userData?.returnSuccessCount ?? 0}
+                    </Text>
                     <Text style={styles.impactLabel}>Returns</Text>
             </View>
               <View style={styles.impactStat}>
-                    <Text style={styles.impactValue}>2.4kg</Text>
-                    <Text style={styles.impactLabel}>Plastic Saved</Text>
+                    <Text style={styles.impactValue}>
+                      {userData?.co2Reduced 
+                        ? `${Math.abs(userData.co2Reduced).toFixed(2)}kg` 
+                        : '0kg'}
+                    </Text>
+                    <Text style={styles.impactLabel}>CO₂ Reduced</Text>
                   </View>
                 </View>
               </View>
@@ -1241,19 +1273,17 @@ export default function CustomerDashboard() {
                  )}
                  
                  {(() => {
-                   // Tính toán realtime tiền cọc
-                   const pricePerDay = 
-                     (scannedItem.product?.productSizeId as any)?.depositValue ??
-                     (scannedItem.product?.productSizeId as any)?.rentalPrice ??
-                     (scannedItem.product?.productGroupId as any)?.depositValue ??
-                     (scannedItem.product?.productGroupId as any)?.rentalPrice ??
-                     (scannedItem.product?.productGroupId as any)?.rentalPricePerDay ??
-                     3200;
+                   // Tính deposit theo số ngày để hiển thị trên UI - dùng depositValue (giá thuê)
+                   const depositValuePerDay = (scannedItem.product?.productSizeId as any)?.depositValue ??
+                                              (scannedItem.product?.productGroupId as any)?.depositValue ??
+                                              0;
                    
                    const days = Math.max(1, Math.min(30, parseInt(durationInDays) || 1));
-                   const depositValue = pricePerDay * days;
                    
-                   if (!pricePerDay || pricePerDay <= 0) return null;
+                   // Tính từ depositValue (giá thuê) × số ngày
+                   const displayDeposit = depositValuePerDay * days;
+                   
+                   if (!displayDeposit || displayDeposit <= 0) return null;
                    
                    return (
                    <View style={styles.depositInfo}>
@@ -1261,10 +1291,10 @@ export default function CustomerDashboard() {
                      <View style={{ flex: 1 }}>
                        <Text style={styles.depositLabel}>Deposit:</Text>
                        <Text style={styles.depositValue}>
-                           {depositValue.toLocaleString('vi-VN')} VND
+                           {displayDeposit.toLocaleString('vi-VN')} VND
                          </Text>
-                         <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
-                           ({pricePerDay.toLocaleString('vi-VN')} VND/day × {days} days)
+                       <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+                         ({depositValuePerDay.toLocaleString('vi-VN')} VND/day × {days} days)
                        </Text>
                      </View>
                    </View>
@@ -1282,18 +1312,14 @@ export default function CustomerDashboard() {
                                            (userData as any)?.wallet?.balance ?? 
                                            0;
                        
-                       // Tính toán realtime tiền cọc
-                       const pricePerDay = 
-                         (scannedItem.product?.productSizeId as any)?.depositValue ??
-                         (scannedItem.product?.productSizeId as any)?.rentalPrice ??
-                         (scannedItem.product?.productGroupId as any)?.depositValue ??
-                         (scannedItem.product?.productGroupId as any)?.rentalPrice ??
-                         (scannedItem.product?.productGroupId as any)?.rentalPricePerDay ??
-                         3200;
-                       
+                       // Lấy depositValue CỐ ĐỊNH từ product - không tính toán
+                       // Tính deposit theo số ngày để kiểm tra số dư (chỉ cho UI) - dùng depositValue (giá thuê)
+                       const depositValuePerDay = (scannedItem.product?.productSizeId as any)?.depositValue ??
+                                                  (scannedItem.product?.productGroupId as any)?.depositValue ??
+                                                  0;
                        const days = Math.max(1, Math.min(30, parseInt(durationInDays) || 1));
-                       const depositValue = pricePerDay * days;
-                       const isInsufficient = walletBalance < depositValue;
+                       const displayDeposit = depositValuePerDay * days;
+                       const isInsufficient = walletBalance < displayDeposit;
                        
                        return (
                          <>
@@ -1372,12 +1398,23 @@ export default function CustomerDashboard() {
                      </View>
                    )}
 
-                   {scannedItem.product?.reuseCount !== undefined && (
+                   {(scannedItem.product?.reuseCount !== undefined && scannedItem.product?.reuseCount !== null) && (
                      <View style={styles.detailRow}>
                        <Ionicons name="repeat-outline" size={18} color="#6B7280" />
                        <Text style={styles.detailLabel}>Reuse Count:</Text>
                        <Text style={styles.detailValue}>
-                         {scannedItem.product.reuseCount}
+                         {String(scannedItem.product.reuseCount || 0)}
+                       </Text>
+                     </View>
+                   )}
+
+                   {/* CO2 Reduced */}
+                   {scannedItem.product?.co2Reduced !== undefined && (
+                     <View style={styles.detailRow}>
+                       <Ionicons name="leaf-outline" size={18} color="#10B981" />
+                       <Text style={styles.detailLabel}>CO₂ Reduced:</Text>
+                       <Text style={[styles.detailValue, { color: '#10B981', fontWeight: '600' }]}>
+                         {scannedItem.product.co2Reduced.toFixed(3)} kg
                        </Text>
                      </View>
                    )}

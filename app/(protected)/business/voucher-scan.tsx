@@ -14,13 +14,13 @@ import {
     StatusBar,
     StyleSheet,
     Text,
-    TextInput,
     TouchableOpacity,
     Vibration,
     View
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
 import { businessVoucherApi, BusinessVoucherCode } from '../../../src/services/api/businessVoucherService';
+import { staffApi } from '../../../src/services/api/staffService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -35,12 +35,32 @@ export default function VoucherScanScreen() {
   const [showVoucherDetail, setShowVoucherDetail] = useState(false);
   const [flashEnabled, setFlashEnabled] = useState(false);
   const [laserLinePosition, setLaserLinePosition] = useState(0);
+  const [staffBusinessId, setStaffBusinessId] = useState<string | null>(null);
   const scanLock = useRef(false);
   const laserAnimationRef = useRef<any>(null);
 
   useEffect(() => {
     requestCameraPermission();
-  }, []);
+    // Load staff businessId if user is staff
+    if (auth.state.role === 'staff') {
+      loadStaffBusinessId();
+    }
+  }, [auth.state.role]);
+
+  const loadStaffBusinessId = async () => {
+    try {
+      const staffProfile = await staffApi.getProfile();
+      if (staffProfile.data?.businessId) {
+        const businessId = typeof staffProfile.data.businessId === 'object' 
+          ? staffProfile.data.businessId._id || staffProfile.data.businessId 
+          : staffProfile.data.businessId;
+        setStaffBusinessId(businessId);
+        console.log('✅ Staff businessId loaded:', businessId);
+      }
+    } catch (error) {
+      console.error('❌ Error loading staff businessId:', error);
+    }
+  };
 
   // Laser scanning line animation
   useEffect(() => {
@@ -119,12 +139,100 @@ export default function VoucherScanScreen() {
   const loadVoucherDetail = async (voucherCodeId: string) => {
     try {
       setLoading(true);
+      // Step 1: Get voucher details by ID to get fullCode
       const response = await businessVoucherApi.getVoucherByCodeId(voucherCodeId);
       
       if (response.statusCode === 200 && response.data) {
-        setVoucher(response.data);
-        setVoucherCode(response.data.fullCode || '');
-        setShowVoucherDetail(true);
+        const voucherData = response.data;
+        const fullCode = voucherData.fullCode;
+        
+        if (!fullCode) {
+          Alert.alert('Lỗi', 'Voucher không có mã code hợp lệ');
+          setLoading(false);
+          return;
+        }
+        
+        // Set voucher data
+        setVoucher(voucherData);
+        setVoucherCode(fullCode);
+        
+        // Step 2: Automatically use the voucher with fullCode
+        try {
+          setConfirming(true);
+          
+          // Log for debugging
+          console.log('🔍 Using voucher with code:', fullCode);
+          console.log('🔍 User role:', auth.state.role);
+          console.log('🔍 Voucher businessId:', voucherData.businessId);
+          console.log('🔍 Staff businessId:', staffBusinessId);
+          
+          // Verify staff belongs to the voucher's business
+          if (auth.state.role === 'staff' && voucherData.businessId && staffBusinessId) {
+            const voucherBusinessId = typeof voucherData.businessId === 'object' 
+              ? voucherData.businessId._id || voucherData.businessId 
+              : voucherData.businessId;
+            
+            if (voucherBusinessId !== staffBusinessId) {
+              Alert.alert(
+                'Lỗi quyền truy cập',
+                'Bạn không có quyền sử dụng voucher của business này. Voucher thuộc về business khác.',
+                [{ text: 'OK' }]
+              );
+              setShowVoucherDetail(true);
+              setConfirming(false);
+              return;
+            }
+          }
+          
+          const useResponse = await businessVoucherApi.useVoucherCode(fullCode);
+          
+          if (useResponse.statusCode === 201 || useResponse.statusCode === 200) {
+            // Update voucher status to 'used'
+            setVoucher({ ...voucherData, status: 'used' });
+            
+            Alert.alert(
+              'Thành công',
+              'Voucher đã được sử dụng thành công!',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    setShowVoucherDetail(true);
+                  }
+                }
+              ]
+            );
+          } else {
+            // If use fails, still show voucher detail
+            setShowVoucherDetail(true);
+            Alert.alert('Cảnh báo', useResponse.message || 'Không thể sử dụng voucher tự động. Vui lòng thử lại.');
+          }
+        } catch (useError: any) {
+          // If use fails, still show voucher detail
+          setShowVoucherDetail(true);
+          
+          // Log detailed error for debugging
+          console.error('❌ Error using voucher:', {
+            message: useError?.message,
+            response: useError?.response?.data,
+            status: useError?.response?.status,
+          });
+          
+          const useErrorMessage = useError?.response?.data?.message || useError?.message || 'Không thể sử dụng voucher tự động';
+          
+          // More specific error message
+          if (useErrorMessage.includes('cannot act on any business') || useErrorMessage.includes('User cannot act')) {
+            Alert.alert(
+              'Lỗi quyền truy cập',
+              'Staff không có quyền sử dụng voucher này. Vui lòng đảm bảo bạn đang đăng nhập với tài khoản staff của business sở hữu voucher này.',
+              [{ text: 'OK' }]
+            );
+          } else {
+            Alert.alert('Cảnh báo', useErrorMessage);
+          }
+        } finally {
+          setConfirming(false);
+        }
       } else {
         Alert.alert('Lỗi', 'Không tìm thấy voucher với mã này');
       }
@@ -527,44 +635,60 @@ export default function VoucherScanScreen() {
                   </View>
                 )}
 
-                {/* Confirm Use Section */}
+                {/* Voucher Status Section */}
                 <View style={styles.confirmSection}>
-                  <Text style={styles.sectionTitle}>Xác nhận sử dụng</Text>
+                  <Text style={styles.sectionTitle}>Trạng thái Voucher</Text>
                   <View style={styles.confirmCard}>
-                    <Text style={styles.confirmLabel}>
-                      Nhập mã voucher để xác nhận:
-                    </Text>
-                    <TextInput
-                      style={styles.codeInput}
-                      value={voucherCode}
-                      onChangeText={setVoucherCode}
-                      placeholder="Nhập mã voucher"
-                      placeholderTextColor="#9CA3AF"
-                      autoCapitalize="characters"
-                      editable={!confirming}
-                    />
-                    <Text style={styles.codeHint}>
-                      Mã: {voucher.fullCode}
-                    </Text>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.confirmButton,
-                        (confirming || voucher.status === 'used' || voucher.status === 'expired') && styles.confirmButtonDisabled
-                      ]}
-                      onPress={handleConfirmUse}
-                      disabled={confirming || voucher.status === 'used' || voucher.status === 'expired'}
-                    >
-                      {confirming ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <Text style={styles.confirmButtonText}>
-                          {voucher.status === 'used' ? 'Đã sử dụng' : 
-                           voucher.status === 'expired' ? 'Đã hết hạn' : 
-                           'Xác nhận sử dụng'}
+                    <View style={styles.statusInfoContainer}>
+                      <Ionicons 
+                        name={voucher.status === 'used' ? "checkmark-circle" : voucher.status === 'expired' ? "close-circle" : "time"} 
+                        size={48} 
+                        color={getStatusColor(voucher.status)} 
+                      />
+                      <Text style={[styles.statusText, { color: getStatusColor(voucher.status), fontSize: 18, marginTop: 12 }]}>
+                        {getStatusText(voucher.status)}
+                      </Text>
+                      {voucher.status === 'used' && (
+                        <Text style={styles.statusDescription}>
+                          Voucher đã được sử dụng thành công
                         </Text>
                       )}
-                    </TouchableOpacity>
+                      {voucher.status === 'expired' && (
+                        <Text style={styles.statusDescription}>
+                          Voucher đã hết hạn sử dụng
+                        </Text>
+                      )}
+                      {voucher.status === 'redeemed' && (
+                        <Text style={styles.statusDescription}>
+                          Voucher đã được nhận nhưng chưa sử dụng
+                        </Text>
+                      )}
+                    </View>
+                    
+                    <View style={styles.codeDisplayContainer}>
+                      <Text style={styles.codeLabel}>Mã voucher:</Text>
+                      <Text style={styles.codeDisplay}>{voucher.fullCode}</Text>
+                    </View>
+
+                    {/* Manual retry button if auto-use failed */}
+                    {voucher.status !== 'used' && voucher.status !== 'expired' && (
+                      <TouchableOpacity
+                        style={[
+                          styles.confirmButton,
+                          confirming && styles.confirmButtonDisabled
+                        ]}
+                        onPress={handleConfirmUse}
+                        disabled={confirming}
+                      >
+                        {confirming ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <Text style={styles.confirmButtonText}>
+                            Thử lại sử dụng voucher
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               </ScrollView>
@@ -1131,6 +1255,34 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  statusInfoContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  statusDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  codeDisplayContainer: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  codeLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  codeDisplay: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    letterSpacing: 2,
   },
   instructionsMainContainer: {
     flex: 1,

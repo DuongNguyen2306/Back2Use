@@ -251,7 +251,10 @@ export const borrowTransactionsApi = {
 
       return response.data;
     } catch (error: any) {
-      console.error('Error getting monthly transactions:', error);
+      // Silently handle 403 errors (forbidden) - don't log to console
+      if (error?.response?.status !== 403) {
+        console.error('Error getting monthly transactions:', error);
+      }
       throw error;
     }
   },
