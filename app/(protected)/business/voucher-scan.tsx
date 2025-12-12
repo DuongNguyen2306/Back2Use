@@ -139,7 +139,7 @@ export default function VoucherScanScreen() {
   const loadVoucherDetail = async (voucherCodeId: string) => {
     try {
       setLoading(true);
-      // Step 1: Get voucher details by ID to get fullCode
+      // Get voucher details by ID to get fullCode
       const response = await businessVoucherApi.getVoucherByCodeId(voucherCodeId);
       
       if (response.statusCode === 200 && response.data) {
@@ -152,87 +152,10 @@ export default function VoucherScanScreen() {
           return;
         }
         
-        // Set voucher data
+        // Set voucher data and show detail modal (don't auto-use)
         setVoucher(voucherData);
         setVoucherCode(fullCode);
-        
-        // Step 2: Automatically use the voucher with fullCode
-        try {
-          setConfirming(true);
-          
-          // Log for debugging
-          console.log('🔍 Using voucher with code:', fullCode);
-          console.log('🔍 User role:', auth.state.role);
-          console.log('🔍 Voucher businessId:', voucherData.businessId);
-          console.log('🔍 Staff businessId:', staffBusinessId);
-          
-          // Verify staff belongs to the voucher's business
-          if (auth.state.role === 'staff' && voucherData.businessId && staffBusinessId) {
-            const voucherBusinessId = typeof voucherData.businessId === 'object' 
-              ? voucherData.businessId._id || voucherData.businessId 
-              : voucherData.businessId;
-            
-            if (voucherBusinessId !== staffBusinessId) {
-              Alert.alert(
-                'Lỗi quyền truy cập',
-                'Bạn không có quyền sử dụng voucher của business này. Voucher thuộc về business khác.',
-                [{ text: 'OK' }]
-              );
-              setShowVoucherDetail(true);
-              setConfirming(false);
-              return;
-            }
-          }
-          
-          const useResponse = await businessVoucherApi.useVoucherCode(fullCode);
-          
-          if (useResponse.statusCode === 201 || useResponse.statusCode === 200) {
-            // Update voucher status to 'used'
-            setVoucher({ ...voucherData, status: 'used' });
-            
-            Alert.alert(
-              'Thành công',
-              'Voucher đã được sử dụng thành công!',
-              [
-                {
-                  text: 'OK',
-                  onPress: () => {
-                    setShowVoucherDetail(true);
-                  }
-                }
-              ]
-            );
-          } else {
-            // If use fails, still show voucher detail
-            setShowVoucherDetail(true);
-            Alert.alert('Cảnh báo', useResponse.message || 'Không thể sử dụng voucher tự động. Vui lòng thử lại.');
-          }
-        } catch (useError: any) {
-          // If use fails, still show voucher detail
-          setShowVoucherDetail(true);
-          
-          // Log detailed error for debugging
-          console.error('❌ Error using voucher:', {
-            message: useError?.message,
-            response: useError?.response?.data,
-            status: useError?.response?.status,
-          });
-          
-          const useErrorMessage = useError?.response?.data?.message || useError?.message || 'Không thể sử dụng voucher tự động';
-          
-          // More specific error message
-          if (useErrorMessage.includes('cannot act on any business') || useErrorMessage.includes('User cannot act')) {
-            Alert.alert(
-              'Lỗi quyền truy cập',
-              'Staff không có quyền sử dụng voucher này. Vui lòng đảm bảo bạn đang đăng nhập với tài khoản staff của business sở hữu voucher này.',
-              [{ text: 'OK' }]
-            );
-          } else {
-            Alert.alert('Cảnh báo', useErrorMessage);
-          }
-        } finally {
-          setConfirming(false);
-        }
+        setShowVoucherDetail(true);
       } else {
         Alert.alert('Lỗi', 'Không tìm thấy voucher với mã này');
       }
@@ -261,11 +184,49 @@ export default function VoucherScanScreen() {
       return;
     }
 
+    // Check if voucher is already used or expired
+    if (voucher.status === 'used') {
+      Alert.alert('Cảnh báo', 'Voucher này đã được sử dụng rồi.');
+      return;
+    }
+
+    if (voucher.status === 'expired') {
+      Alert.alert('Cảnh báo', 'Voucher này đã hết hạn.');
+      return;
+    }
+
     try {
       setConfirming(true);
+      
+      // Log for debugging
+      console.log('🔍 Using voucher with code:', voucherCode.trim());
+      console.log('🔍 User role:', auth.state.role);
+      console.log('🔍 Voucher businessId:', voucher.businessId);
+      console.log('🔍 Staff businessId:', staffBusinessId);
+      
+      // Verify staff belongs to the voucher's business
+      if (auth.state.role === 'staff' && voucher.businessId && staffBusinessId) {
+        const voucherBusinessId = typeof voucher.businessId === 'object' 
+          ? voucher.businessId._id || voucher.businessId 
+          : voucher.businessId;
+        
+        if (voucherBusinessId !== staffBusinessId) {
+          Alert.alert(
+            'Lỗi quyền truy cập',
+            'Bạn không có quyền sử dụng voucher của business này. Voucher thuộc về business khác.',
+            [{ text: 'OK' }]
+          );
+          setConfirming(false);
+          return;
+        }
+      }
+      
       const response = await businessVoucherApi.useVoucherCode(voucherCode.trim());
       
       if (response.statusCode === 201 || response.statusCode === 200) {
+        // Update voucher status to 'used'
+        setVoucher({ ...voucher, status: 'used' });
+        
         Alert.alert(
           'Thành công',
           'Voucher đã được sử dụng thành công!',
@@ -285,8 +246,25 @@ export default function VoucherScanScreen() {
         Alert.alert('Lỗi', response.message || 'Không thể sử dụng voucher');
       }
     } catch (error: any) {
+      // Log detailed error for debugging
+      console.error('❌ Error using voucher:', {
+        message: error?.message,
+        response: error?.response?.data,
+        status: error?.response?.status,
+      });
+      
       const errorMessage = error?.response?.data?.message || error?.message || 'Không thể sử dụng voucher';
-      Alert.alert('Lỗi', errorMessage);
+      
+      // More specific error message
+      if (errorMessage.includes('cannot act on any business') || errorMessage.includes('User cannot act')) {
+        Alert.alert(
+          'Lỗi quyền truy cập',
+          'Staff không có quyền sử dụng voucher này. Vui lòng đảm bảo bạn đang đăng nhập với tài khoản staff của business sở hữu voucher này.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Lỗi', errorMessage);
+      }
     } finally {
       setConfirming(false);
     }
@@ -670,7 +648,7 @@ export default function VoucherScanScreen() {
                       <Text style={styles.codeDisplay}>{voucher.fullCode}</Text>
                     </View>
 
-                    {/* Manual retry button if auto-use failed */}
+                    {/* Confirm use button */}
                     {voucher.status !== 'used' && voucher.status !== 'expired' && (
                       <TouchableOpacity
                         style={[
@@ -684,7 +662,7 @@ export default function VoucherScanScreen() {
                           <ActivityIndicator size="small" color="#FFFFFF" />
                         ) : (
                           <Text style={styles.confirmButtonText}>
-                            Thử lại sử dụng voucher
+                            Xác nhận sử dụng voucher
                           </Text>
                         )}
                       </TouchableOpacity>

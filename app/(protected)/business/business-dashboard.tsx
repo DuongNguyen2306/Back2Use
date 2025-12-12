@@ -46,6 +46,7 @@ export default function BusinessDashboard() {
   
   // Staff overview data (simple stats only)
   const [staffOverviewData, setStaffOverviewData] = useState<any>(null)
+  const [staffTopBorrowedItems, setStaffTopBorrowedItems] = useState<any[]>([])
 
   // Load business profile data
   useEffect(() => {
@@ -235,6 +236,21 @@ export default function BusinessDashboard() {
         }
       } catch (error) {
         console.log('⚠️ Staff Overview API not available:', error);
+      }
+
+      // Load top borrowed items for staff
+      try {
+        const topBorrowedResponse = await businessesApi.getTopBorrowed({ top: 5 });
+        console.log('📊 Staff Top borrowed response:', JSON.stringify(topBorrowedResponse, null, 2));
+        if (topBorrowedResponse?.statusCode === 200 && topBorrowedResponse?.data) {
+          const products = topBorrowedResponse.data.products || topBorrowedResponse.data;
+          setStaffTopBorrowedItems(Array.isArray(products) ? products : []);
+        } else if (topBorrowedResponse?.data) {
+          const products = topBorrowedResponse.data.products || topBorrowedResponse.data;
+          setStaffTopBorrowedItems(Array.isArray(products) ? products : []);
+        }
+      } catch (error) {
+        console.log('⚠️ Staff Top borrowed API not available:', error);
       }
     };
 
@@ -536,67 +552,168 @@ export default function BusinessDashboard() {
 
             {/* Staff Overview - Simple Stats */}
             {authState.role === 'staff' as any && staffOverviewData && (
-              <View style={styles.staffOverviewSection}>
-                <Text style={styles.sectionTitle}>Thông tin đơn</Text>
-                <View style={styles.staffStatsGrid}>
-                  <View style={styles.staffStatCard}>
-                    <Ionicons name="receipt-outline" size={24} color="#00704A" />
-                    <Text style={styles.staffStatValue}>{String(staffOverviewData.borrowTransactions || 0)}</Text>
-                    <Text style={styles.staffStatLabel}>Đơn mượn</Text>
-                  </View>
-                  <View style={styles.staffStatCard}>
-                    <Ionicons name="ticket-outline" size={24} color="#00704A" />
-                    <Text style={styles.staffStatValue}>{String(staffOverviewData.businessVouchers || 0)}</Text>
-                    <Text style={styles.staffStatLabel}>Voucher</Text>
-                  </View>
-                  <View style={styles.staffStatCard}>
-                    <Ionicons name="folder-outline" size={24} color="#00704A" />
-                    <Text style={styles.staffStatValue}>{String(staffOverviewData.productGroups || 0)}</Text>
-                    <Text style={styles.staffStatLabel}>Nhóm sản phẩm</Text>
-                  </View>
-                  <View style={styles.staffStatCard}>
-                    <Ionicons name="cube-outline" size={24} color="#00704A" />
-                    <Text style={styles.staffStatValue}>{String(staffOverviewData.products || 0)}</Text>
-                    <Text style={styles.staffStatLabel}>Sản phẩm</Text>
-                  </View>
-                </View>
-                
-                {/* Product Condition Stats */}
-                {staffOverviewData.productConditionStats && (
-                  <View style={styles.productConditionSection}>
-                    <Text style={styles.subSectionTitle}>Tình trạng sản phẩm</Text>
-                    <View style={styles.conditionGrid}>
-                      <View style={styles.conditionCard}>
-                        <View style={[styles.conditionIconContainer, { backgroundColor: "#D1FAE5" }]}>
-                          <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-                        </View>
-                        <Text style={styles.conditionValue}>{String(staffOverviewData.productConditionStats.good || 0)}</Text>
-                        <Text style={styles.conditionLabel}>Tốt</Text>
+              <View style={styles.operationalStatsSection}>
+                <Text style={styles.sectionTitle}>Operational Stats</Text>
+                <View style={styles.kpiGrid}>
+                  {/* Order Information Cards */}
+                  <View style={styles.kpiCard}>
+                    <View style={[styles.kpiGradient, { backgroundColor: "#E3F2FD" }]}>
+                      <View style={[styles.kpiIconContainer, { backgroundColor: "#BBDEFB" }]}>
+                        <Ionicons name="receipt-outline" size={28} color="#1976D2" />
                       </View>
-                      <View style={styles.conditionCard}>
-                        <View style={[styles.conditionIconContainer, { backgroundColor: "#FEE2E2" }]}>
-                          <Ionicons name="warning" size={20} color="#EF4444" />
-                        </View>
-                        <Text style={styles.conditionValue}>{String(staffOverviewData.productConditionStats.damaged || 0)}</Text>
-                        <Text style={styles.conditionLabel}>Hư hỏng</Text>
-                      </View>
-                      <View style={styles.conditionCard}>
-                        <View style={[styles.conditionIconContainer, { backgroundColor: "#FEF3C7" }]}>
-                          <Ionicons name="time-outline" size={20} color="#F59E0B" />
-                        </View>
-                        <Text style={styles.conditionValue}>{String(staffOverviewData.productConditionStats.expired || 0)}</Text>
-                        <Text style={styles.conditionLabel}>Hết hạn</Text>
-                      </View>
-                      <View style={styles.conditionCard}>
-                        <View style={[styles.conditionIconContainer, { backgroundColor: "#E5E7EB" }]}>
-                          <Ionicons name="close-circle" size={20} color="#6B7280" />
-                        </View>
-                        <Text style={styles.conditionValue}>{String(staffOverviewData.productConditionStats.lost || 0)}</Text>
-                        <Text style={styles.conditionLabel}>Mất</Text>
-                      </View>
+                      <Text style={[styles.kpiValue, { color: "#1976D2" }]}>
+                        {String(staffOverviewData.borrowTransactions || 0)}
+                      </Text>
+                      <Text style={styles.kpiLabel}>Borrowed Orders</Text>
                     </View>
                   </View>
-                )}
+                  <View style={styles.kpiCard}>
+                    <View style={[styles.kpiGradient, { backgroundColor: "#FFF8E1" }]}>
+                      <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
+                        <Ionicons name="people" size={28} color="#F57C00" />
+                      </View>
+                      <Text style={[styles.kpiValue, { color: "#F57C00" }]}>
+                        {String(stats.borrowedItems || 0)}
+                      </Text>
+                      <Text style={styles.kpiLabel}>Currently Borrowed</Text>
+                    </View>
+                  </View>
+                  <View style={styles.kpiCard}>
+                    <View style={[styles.kpiGradient, { backgroundColor: "#F3E5F5" }]}>
+                      <View style={[styles.kpiIconContainer, { backgroundColor: "#E1BEE7" }]}>
+                        <Ionicons name="ticket-outline" size={28} color="#7B1FA2" />
+                      </View>
+                      <Text style={[styles.kpiValue, { color: "#7B1FA2" }]}>
+                        {String(staffOverviewData.businessVouchers || 0)}
+                      </Text>
+                      <Text style={styles.kpiLabel}>Vouchers</Text>
+                    </View>
+                  </View>
+                  <View style={styles.kpiCard}>
+                    <View style={[styles.kpiGradient, { backgroundColor: "#E8F5E9" }]}>
+                      <View style={[styles.kpiIconContainer, { backgroundColor: "#C8E6C9" }]}>
+                        <Ionicons name="folder-outline" size={28} color="#00704A" />
+                      </View>
+                      <Text style={[styles.kpiValue, { color: "#00704A" }]}>
+                        {String(staffOverviewData.productGroups || 0)}
+                      </Text>
+                      <Text style={styles.kpiLabel}>Product Groups</Text>
+                    </View>
+                  </View>
+                  <View style={styles.kpiCard}>
+                    <View style={[styles.kpiGradient, { backgroundColor: "#FFF8E1" }]}>
+                      <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
+                        <Ionicons name="cube-outline" size={28} color="#F57C00" />
+                      </View>
+                      <Text style={[styles.kpiValue, { color: "#F57C00" }]}>
+                        {String(staffOverviewData.products || 0)}
+                      </Text>
+                      <Text style={styles.kpiLabel}>Products</Text>
+                    </View>
+                  </View>
+                  
+                  {/* Product Condition Stats */}
+                  {staffOverviewData.productConditionStats && (
+                    <>
+                      <View style={styles.kpiCard}>
+                        <View style={[styles.kpiGradient, { backgroundColor: "#E8F5E9" }]}>
+                          <View style={[styles.kpiIconContainer, { backgroundColor: "#C8E6C9" }]}>
+                            <Ionicons name="checkmark-circle" size={28} color="#00704A" />
+                          </View>
+                          <Text style={[styles.kpiValue, { color: "#00704A" }]}>
+                            {String(staffOverviewData.productConditionStats.good || 0)}
+                          </Text>
+                          <Text style={styles.kpiLabel}>Good</Text>
+                        </View>
+                      </View>
+                      <View style={styles.kpiCard}>
+                        <View style={[styles.kpiGradient, { backgroundColor: "#FFEBEE" }]}>
+                          <View style={[styles.kpiIconContainer, { backgroundColor: "#FFCDD2" }]}>
+                            <Ionicons name="warning" size={28} color="#D32F2F" />
+                          </View>
+                          <Text style={[styles.kpiValue, { color: "#D32F2F" }]}>
+                            {String(staffOverviewData.productConditionStats.damaged || 0)}
+                          </Text>
+                          <Text style={styles.kpiLabel}>Damaged</Text>
+                        </View>
+                      </View>
+                      <View style={styles.kpiCard}>
+                        <View style={[styles.kpiGradient, { backgroundColor: "#FFF8E1" }]}>
+                          <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
+                            <Ionicons name="time" size={28} color="#F57C00" />
+                          </View>
+                          <Text style={[styles.kpiValue, { color: "#F57C00" }]}>
+                            {String(staffOverviewData.productConditionStats.expired || 0)}
+                          </Text>
+                          <Text style={styles.kpiLabel}>Expired</Text>
+                        </View>
+                      </View>
+                      <View style={styles.kpiCard}>
+                        <View style={[styles.kpiGradient, { backgroundColor: "#F5F5F5" }]}>
+                          <View style={[styles.kpiIconContainer, { backgroundColor: "#E0E0E0" }]}>
+                            <Ionicons name="close-circle" size={28} color="#666666" />
+                          </View>
+                          <Text style={[styles.kpiValue, { color: "#666666" }]}>
+                            {String(staffOverviewData.productConditionStats.lost || 0)}
+                          </Text>
+                          <Text style={styles.kpiLabel}>Lost</Text>
+                        </View>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* Top Borrowed Items - Staff */}
+            {authState.role === 'staff' as any && staffTopBorrowedItems.length > 0 && (
+              <View style={styles.topBorrowedSection}>
+                <Text style={styles.sectionTitle}>Top Borrowed Items</Text>
+                <View style={styles.topBorrowedCard}>
+                  {staffTopBorrowedItems.map((item: any, index: number) => {
+                    // API returns: { _id, reuseCount, group: { name, imageUrl }, size: { sizeName }, ... }
+                    const productName = item.group?.name || item.name || 'Unknown Product';
+                    const productImage = item.group?.imageUrl || item.imageUrl;
+                    const reuseCount = item.reuseCount || 0;
+                    const maxCount = Math.max(...staffTopBorrowedItems.map((i: any) => i.reuseCount || 0), 1);
+                    const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+                    
+                    return (
+                      <View key={item._id || index} style={styles.topBorrowedItem}>
+                        <View style={styles.topBorrowedLeft}>
+                          <Text style={styles.rankEmoji}>{rankEmoji}</Text>
+                          {productImage ? (
+                            <Image source={{ uri: productImage }} style={styles.productThumbnail} />
+                          ) : (
+                            <View style={[styles.productThumbnail, styles.productThumbnailPlaceholder]}>
+                              <Ionicons name="cube-outline" size={24} color="#9CA3AF" />
+                            </View>
+                          )}
+                          <View style={styles.productNameContainer}>
+                            <Text style={styles.productName} numberOfLines={1}>
+                              {productName}
+                            </Text>
+                            {item.size?.sizeName && (
+                              <Text style={styles.productSize} numberOfLines={1}>
+                                {item.size.sizeName}
+                              </Text>
+                            )}
+                          </View>
+                        </View>
+                        <View style={styles.topBorrowedRight}>
+                          <ProgressBar
+                            value={reuseCount}
+                            maxValue={maxCount}
+                            height={8}
+                            color="#00704A"
+                            showLabel={true}
+                            label={`${reuseCount} times`}
+                          />
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
               </View>
             )}
 
@@ -891,7 +1008,7 @@ export default function BusinessDashboard() {
                       <View style={styles.quickActionIconContainer}>
                         <Ionicons name="qr-code-outline" size={32} color="#00704A" />
                       </View>
-                      <Text style={styles.quickActionText}>Quét Voucher</Text>
+                      <Text style={styles.quickActionText}>Scan Voucher</Text>
                     </View>
                   </TouchableOpacity>
 
@@ -904,7 +1021,7 @@ export default function BusinessDashboard() {
                       <View style={styles.quickActionIconContainer}>
                         <Ionicons name="receipt-outline" size={32} color="#00704A" />
                       </View>
-                      <Text style={styles.quickActionText}>Xử lý Trả hàng</Text>
+                      <Text style={styles.quickActionText}>Process Returns</Text>
                     </View>
                   </TouchableOpacity>
                 </View>
