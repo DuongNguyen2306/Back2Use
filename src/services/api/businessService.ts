@@ -522,6 +522,20 @@ export const businessesApi = {
 
     return businessesApi.getProfileWithToken(token);
   },
+  // Get business overview stats
+  getOverview: async (): Promise<any> => {
+    return apiCall<any>(API_ENDPOINTS.BUSINESSES.OVERVIEW, {
+      method: 'GET',
+    });
+  },
+  // Get top borrowed items
+  getTopBorrowed: async (params?: { top?: number }): Promise<any> => {
+    const { top = 5 } = params || {};
+    return apiCall<any>(API_ENDPOINTS.BUSINESSES.TOP_BORROWED, {
+      method: 'GET',
+      params: { top },
+    });
+  },
   updateProfile: async (updates: UpdateBusinessProfileRequest): Promise<BusinessProfileResponse> => {
     let token: string | null = null;
     

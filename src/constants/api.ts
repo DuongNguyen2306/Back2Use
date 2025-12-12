@@ -39,6 +39,8 @@ export const API_ENDPOINTS = {
     GET_BY_ID: '/businesses', // GET /businesses/{id}
     PROFILE: '/businesses/profile', // GET /businesses/profile
     UPDATE_PROFILE: '/businesses/profile', // PATCH /businesses/profile
+    OVERVIEW: '/business/dashboard/overview', // GET /business/dashboard/overview
+    TOP_BORROWED: '/business/dashboard/top-borrowed', // GET /business/dashboard/top-borrowed?top=5
   },
   ADMIN: {
     DASHBOARD: '/admin/dashboard',
@@ -57,6 +59,7 @@ export const API_ENDPOINTS = {
       },
       WALLET_TRANSACTIONS: {
         GET_MY: '/wallet-transactions/my', // GET ?typeGroup=&direction=&page=&limit=
+        MONTHLY: '/wallet-transactions/monthly', // GET /wallet-transactions/monthly?year=2025
       },
   MATERIALS: {
     CREATE: '/materials', // POST
@@ -94,6 +97,7 @@ export const API_ENDPOINTS = {
     CUSTOMER_DETAIL: '/borrow-transactions/customer', // GET /borrow-transactions/customer/{id}
     BUSINESS_HISTORY: '/borrow-transactions/business', // GET /borrow-transactions/business
     BUSINESS_DETAIL: '/borrow-transactions/business', // GET /borrow-transactions/business/{id}
+    MONTHLY: '/business/dashboard/borrow-transactions/monthly', // GET /business/dashboard/borrow-transactions/monthly?year=2025
     CONFIRM: '/borrow-transactions/confirm', // PATCH /borrow-transactions/confirm/{id}
     CUSTOMER_CANCEL: '/borrow-transactions/customer/cancel', // PATCH /borrow-transactions/customer/cancel/{id}
     CUSTOMER_EXTEND: '/borrow-transactions/customer/extend', // PATCH /borrow-transactions/customer/extend/{id}

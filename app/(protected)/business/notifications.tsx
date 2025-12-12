@@ -84,13 +84,64 @@ export default function BusinessNotificationsScreen() {
       // Use getByReceiver
       const response = await notificationApi.getByReceiver(receiverId, params);
       
-      if (response.statusCode === 200) {
-        // response.data is Notification[] according to NotificationListResponse
-        const notificationData = Array.isArray(response.data) ? response.data : [];
-        setNotifications(notificationData);
-      } else {
-        setNotifications([]);
+      console.log('📬 Business Notifications: API Response:', JSON.stringify(response, null, 2));
+      console.log('📬 Business Notifications: Response type:', typeof response);
+      console.log('📬 Business Notifications: Is array?', Array.isArray(response));
+      
+      // Handle multiple response formats (same as NotificationProvider)
+      let notificationData: Notification[] = [];
+      
+      if (Array.isArray(response)) {
+        // Case 1: Direct array
+        console.log('📬 Business Notifications: Response is direct array');
+        notificationData = response;
+      } else if (response && typeof response === 'object') {
+        const resp = response as any;
+        
+        if (resp.statusCode === 200 && resp.data) {
+          // Case 2: Standard format { statusCode: 200, data: [...] }
+          console.log('📬 Business Notifications: Response has statusCode 200 and data');
+          const responseData = resp.data;
+          
+          // Check if data is array
+          if (Array.isArray(responseData)) {
+            notificationData = responseData;
+          } else if (responseData?.data && Array.isArray(responseData.data)) {
+            // Nested: { data: { data: [...] } }
+            notificationData = responseData.data;
+          } else if (responseData?.notifications && Array.isArray(responseData.notifications)) {
+            // Nested: { data: { notifications: [...] } }
+            notificationData = responseData.notifications;
+          } else if (responseData?.items && Array.isArray(responseData.items)) {
+            // Nested: { data: { items: [...] } }
+            notificationData = responseData.items;
+          } else if (responseData?.results && Array.isArray(responseData.results)) {
+            // Nested: { data: { results: [...] } }
+            notificationData = responseData.results;
+          } else if (responseData?.list && Array.isArray(responseData.list)) {
+            // Nested: { data: { list: [...] } }
+            notificationData = responseData.list;
+          } else {
+            console.warn('📬 Business Notifications: Could not find array in response.data');
+            console.warn('📬 Business Notifications: responseData:', JSON.stringify(responseData, null, 2));
+          }
+        } else if (resp.data && Array.isArray(resp.data)) {
+          // Case 3: { data: [...] } without statusCode
+          console.log('📬 Business Notifications: Response has data array');
+          notificationData = resp.data;
+        } else if (Array.isArray(resp)) {
+          // Case 4: Response itself is array (shouldn't happen but handle it)
+          console.log('📬 Business Notifications: Response object is array');
+          notificationData = resp;
+        }
       }
+      
+      console.log('📬 Business Notifications: Parsed notifications count:', notificationData.length);
+      if (notificationData.length > 0) {
+        console.log('📬 Business Notifications: First notification:', JSON.stringify(notificationData[0], null, 2));
+      }
+      
+      setNotifications(notificationData);
     } catch (error: any) {
       console.error('Error loading notifications:', error);
       setNotifications([]);
@@ -218,6 +269,11 @@ export default function BusinessNotificationsScreen() {
     );
   };
 
+  // Filter notifications based on filter state
+  const filteredNotifications = filter === 'unread' 
+    ? notifications.filter(n => !n.isRead) 
+    : notifications;
+  
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   return (
@@ -271,7 +327,7 @@ export default function BusinessNotificationsScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#0F4D3A" />
         </View>
-      ) : notifications.length === 0 ? (
+      ) : filteredNotifications.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="notifications-off-outline" size={64} color="#D1D5DB" />
           <Text style={styles.emptyText}>
@@ -285,7 +341,7 @@ export default function BusinessNotificationsScreen() {
         </View>
       ) : (
         <FlatList
-          data={notifications}
+          data={filteredNotifications}
           renderItem={renderNotificationItem}
           keyExtractor={(item) => item._id}
           contentContainerStyle={[styles.listContent, { paddingBottom: bottom + 20 }]}

@@ -78,13 +78,8 @@ export default function BusinessWalletScreen() {
   const [paymentUrl, setPaymentUrl] = useState('');
   const [callbackUrl, setCallbackUrl] = useState<string | null>(null); // Lưu URL callback khi detect
   
-  // Payment result states
-  const [showPaymentResult, setShowPaymentResult] = useState(false);
-  const [paymentResult, setPaymentResult] = useState<'success' | 'failed' | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState(0);
+  // Payment amount state (for verification only)
   const [savedPaymentAmount, setSavedPaymentAmount] = useState(0);
-  const [isPaymentProcessing, setIsPaymentProcessing] = useState(false);
-  const [paymentResultShown, setPaymentResultShown] = useState(false);
   
   // Payment verification state
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
@@ -99,13 +94,12 @@ export default function BusinessWalletScreen() {
     console.log('🔍 Business Wallet State - showAddFunds:', showAddFunds);
     console.log('🔍 Business Wallet State - showWithdraw:', showWithdraw);
     console.log('🔍 Business Wallet State - amount:', amount);
-    console.log('🔍 Business Wallet State - isPaymentProcessing:', isPaymentProcessing);
-    console.log('🔍 Business Wallet State - paymentResultShown:', paymentResultShown);
+    console.log('🔍 Business Wallet State - isProcessing:', isProcessing);
     
     if (showWithdraw) {
       console.log('🔍 Withdraw modal should be visible now');
     }
-  }, [showAddFunds, showWithdraw, amount, isPaymentProcessing, paymentResultShown]);
+  }, [showAddFunds, showWithdraw, amount, isProcessing]);
 
   // Load user data and wallet
   useEffect(() => {
@@ -365,12 +359,13 @@ export default function BusinessWalletScreen() {
         }
         
         setIsVerifyingPayment(false);
-        setPaymentResult('success');
-        setShowPaymentResult(true);
         
-        // Refresh data
+        // Refresh data immediately
         await loadBusinessData();
         await loadTransactions();
+        
+        // Clear amount
+        setAmount('');
         
       } else if (paymentVerifyAttemptsRef.current >= 15) {
         // ❌ HẾT ATTEMPTS (45 giây)
@@ -513,9 +508,8 @@ export default function BusinessWalletScreen() {
           // Could save to state if needed for retry
         }
         
-        // Save payment amount for result display
+        // Save payment amount for verification
         setSavedPaymentAmount(Number(amount));
-        setPaymentAmount(Number(amount));
         
         // Clear callback URL cũ nếu có và reset flag
         setCallbackUrl(null);
@@ -614,18 +608,6 @@ export default function BusinessWalletScreen() {
 
   // Đã loại bỏ handlePaymentSuccess và handlePaymentFailure - xử lý trực tiếp trong WebView callback
 
-  const handlePaymentResultClose = async () => {
-    console.log('🔄 Closing payment result modal');
-    setShowPaymentResult(false);
-    setPaymentResult(null);
-    setPaymentResultShown(false);
-    setAmount('');
-    
-    // Refresh data when closing payment result
-    console.log('🔄 Refreshing data after closing payment result...');
-    await loadBusinessData();
-    await loadTransactions();
-  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -1196,7 +1178,7 @@ export default function BusinessWalletScreen() {
         visible={showPaymentWebView}
         animationType="slide"
         presentationStyle="fullScreen"
-        onRequestClose={() => {
+        onRequestClose={async () => {
           // Không cho đóng nếu đang verify
           if (!isVerifyingPayment) {
             // Xử lý tương tự như nút Back
@@ -1220,8 +1202,10 @@ export default function BusinessWalletScreen() {
                 if (responseCode === '00' && transactionStatus === '00') {
                   startPaymentVerification(Number(savedPaymentAmount));
                 } else {
-                  setPaymentResult('failed');
-                  setShowPaymentResult(true);
+                  // Payment failed - just refresh data
+                  await loadBusinessData();
+                  await loadTransactions();
+                  setAmount('');
                 }
               }
               // MoMo callback
@@ -1240,8 +1224,10 @@ export default function BusinessWalletScreen() {
                 if (resultCode === '0') {
                   startPaymentVerification(Number(savedPaymentAmount));
                 } else {
-                  setPaymentResult('failed');
-                  setShowPaymentResult(true);
+                  // Payment failed - just refresh data
+                  await loadBusinessData();
+                  await loadTransactions();
+                  setAmount('');
                 }
               } else {
                 setCallbackUrl(null);
@@ -1261,7 +1247,7 @@ export default function BusinessWalletScreen() {
           {/* Header */}
           <View style={styles.webViewHeader}>
             <TouchableOpacity
-              onPress={() => {
+              onPress={async () => {
                 if (!isVerifyingPayment) {
                   // Kiểm tra nếu có callback URL đã được lưu
                   if (callbackUrl && !callbackProcessedRef.current) {
@@ -1295,9 +1281,10 @@ export default function BusinessWalletScreen() {
                         // Bắt đầu verify payment
                         startPaymentVerification(Number(savedPaymentAmount));
                       } else {
-                        // Failed
-                        setPaymentResult('failed');
-                        setShowPaymentResult(true);
+                        // Failed - just refresh data
+                        await loadBusinessData();
+                        await loadTransactions();
+                        setAmount('');
                       }
                       return;
                     }
@@ -1327,9 +1314,10 @@ export default function BusinessWalletScreen() {
                         // Bắt đầu verify payment
                         startPaymentVerification(Number(savedPaymentAmount));
                       } else {
-                        // Failed
-                        setPaymentResult('failed');
-                        setShowPaymentResult(true);
+                        // Failed - just refresh data
+                        await loadBusinessData();
+                        await loadTransactions();
+                        setAmount('');
                       }
                 return;
               }
@@ -1340,7 +1328,7 @@ export default function BusinessWalletScreen() {
                   callbackProcessedRef.current = false; // Reset flag
                 setShowPaymentWebView(false);
                 setPaymentUrl('');
-                  loadBusinessData();
+                  await loadBusinessData();
                 }
               }}
               disabled={isVerifyingPayment}
@@ -1383,6 +1371,8 @@ export default function BusinessWalletScreen() {
                 console.log('🔍 Current paymentUrl:', paymentUrl);
 
                 // QUAN TRỌNG: Cho phép URL ban đầu (paymentUrl) load trước
+                // URL ban đầu thường là từ VNPay gateway hoặc MoMo gateway, không phải callback
+                // So sánh base URL (không có query params) để tránh vấn đề với redirect
                 const paymentBaseUrl = paymentUrl ? paymentUrl.split('?')[0] : '';
                 const requestBaseUrl = originalUrl.split('?')[0];
                 
@@ -1440,6 +1430,7 @@ export default function BusinessWalletScreen() {
                 }
 
                 // XỬ LÝ payment-success từ backend hoặc localhost
+                // Nếu là localhost payment-success, xử lý ngay (không cần load)
                 if (url.includes('payment-success')) {
                   if (originalUrl.includes('localhost') || originalUrl.includes('127.0.0.1')) {
                     console.log('✅ Localhost payment-success detected - processing immediately');
@@ -1449,29 +1440,19 @@ export default function BusinessWalletScreen() {
                     const txnRef = params.get('txnRef');
                     console.log('📊 Transaction ref:', txnRef);
                     
-                    // Set payment result TRƯỚC khi đóng WebView
-                  setPaymentResult('success');
-                    setPaymentAmount(savedPaymentAmount || Number(amount) || 0);
+                    // Đóng WebView và refresh data
+                    setShowPaymentWebView(false);
+                    setPaymentUrl('');
+                    setCallbackUrl(null);
+                    callbackProcessedRef.current = false;
+                    setAmount('');
                     
-                    // Đợi một chút để state được set xong rồi mới hiển thị modal
-                    setTimeout(() => {
-                  setShowPaymentResult(true);
-                    }, 100);
-                  
-                    // Đóng WebView sau khi đã set state
-                    setTimeout(() => {
-                      setShowPaymentWebView(false);
-                      setPaymentUrl('');
-                      setCallbackUrl(null);
-                      callbackProcessedRef.current = false;
-                      
-                      // Refresh ví ngay lập tức
-                      loadBusinessData();
-                      loadTransactions();
-                    }, 200);
+                    // Refresh ví ngay lập tức
+                    loadBusinessData();
+                    loadTransactions();
                     
                     return false; // Chặn load localhost
-                } else {
+                  } else {
                     // Backend payment-success - cho phép load, xử lý trong onLoadEnd
                     console.log('✅ Payment success page detected - allowing load first');
                     console.log('📊 URL:', originalUrl);
@@ -1484,9 +1465,9 @@ export default function BusinessWalletScreen() {
                     !originalUrl.includes('payment-success')) {
                   console.log('⚠️ Chặn localhost URL:', originalUrl);
                   return false;
-              }
+                }
 
-                // Cho phép tất cả các URL khác (VNPay gateway, ngân hàng, OTP, etc.)
+                // Cho phép tất cả các URL khác (VNPay gateway, MoMo gateway, ngân hàng, OTP, etc.)
                 console.log('✅ Allowing URL to load:', originalUrl);
                 return true;
               }}
@@ -1507,16 +1488,12 @@ export default function BusinessWalletScreen() {
                 
                   // Đợi 1 giây để WebView hiển thị xong rồi mới đóng
                   setTimeout(() => {
-                setShowPaymentWebView(false);
-                setPaymentUrl('');
+                    setShowPaymentWebView(false);
+                    setPaymentUrl('');
                     setCallbackUrl(null);
                     callbackProcessedRef.current = false;
-
-                    // Hiển thị màn hình thành công
-                  setPaymentResult('success');
-                    setPaymentAmount(savedPaymentAmount || Number(amount) || 0);
-                  setShowPaymentResult(true);
-                  
+                    setAmount('');
+                    
                     // Refresh ví ngay lập tức
                     loadBusinessData();
                     loadTransactions();
@@ -1623,44 +1600,6 @@ export default function BusinessWalletScreen() {
         </SafeAreaView>
       </Modal>
 
-      {/* Payment Result Modal */}
-      <Modal
-        visible={showPaymentResult}
-        animationType="fade"
-        transparent={true}
-      >
-        <View style={styles.resultModalContainer}>
-          <View style={styles.resultModalContent}>
-            <View style={styles.resultIcon}>
-              <Ionicons 
-                name={paymentResult === 'success' ? 'checkmark-circle' : 'close-circle'} 
-                size={64} 
-                color={paymentResult === 'success' ? '#10B981' : '#EF4444'} 
-              />
-            </View>
-            
-            <Text style={styles.resultTitle}>
-              {paymentResult === 'success' ? 'Payment Successful!' : 'Payment Failed'}
-            </Text>
-            
-            <Text style={styles.resultMessage}>
-              {paymentResult === 'success' 
-                ? `Successfully added ${savedPaymentAmount.toLocaleString('vi-VN')} VNĐ to your wallet`
-                : 'Payment could not be processed. Please try again.'
-              }
-            </Text>
-            
-            <TouchableOpacity 
-              style={[styles.resultButton, paymentResult === 'success' ? styles.successButton : styles.failureButton]}
-              onPress={handlePaymentResultClose}
-            >
-              <Text style={styles.resultButtonText}>
-                {paymentResult === 'success' ? 'Continue' : 'Try Again'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -2397,56 +2336,5 @@ const styles = StyleSheet.create({
   },
   webView: {
     flex: 1,
-  },
-  // Payment result modal styles
-  resultModalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  resultModalContent: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 24,
-    alignItems: 'center',
-    width: '100%',
-    maxWidth: 320,
-  },
-  resultIcon: {
-    marginBottom: 16,
-  },
-  resultTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  resultMessage: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 24,
-  },
-  resultButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    width: '100%',
-    alignItems: 'center',
-  },
-  successButton: {
-    backgroundColor: '#10B981',
-  },
-  failureButton: {
-    backgroundColor: '#EF4444',
-  },
-  resultButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
   },
 });

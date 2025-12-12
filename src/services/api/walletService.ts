@@ -66,6 +66,14 @@ export const walletTransactionsApi = {
     const endpoint = `${API_ENDPOINTS.WALLET_TRANSACTIONS.GET_MY}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
     return apiCall<WalletTransactionsResponse>(endpoint, { method: 'GET' });
   },
+  getMonthly: async (params?: { year?: number; walletType?: 'customer' | 'business' }): Promise<any> => {
+    const { year = new Date().getFullYear(), walletType } = params || {};
+    const queryParams = new URLSearchParams();
+    queryParams.append('year', String(year));
+    if (walletType) queryParams.append('walletType', walletType);
+    const endpoint = `${API_ENDPOINTS.WALLET_TRANSACTIONS.MONTHLY}?${queryParams.toString()}`;
+    return apiCall<any>(endpoint, { method: 'GET' });
+  },
 };
 
 export default { walletApi, walletTransactionsApi };

@@ -58,6 +58,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     console.log('📬 NotificationProvider: User ID from state:', userId, 'Mode:', mode, 'Role:', role);
     
     // FALLBACK: If user ID is not in state, fetch from API (like web app does)
+    // Only try if we have access token (silent fail if no token)
     if (!userId && auth.state.isAuthenticated && auth.state.accessToken) {
       console.log('📬 ⚠️ User ID not in state, fetching from API (fallback)...');
       try {
@@ -65,13 +66,25 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         userId = userProfile._id || null;
         console.log('📬 ✅ Got user ID from API:', userId);
       } catch (error: any) {
-        console.error('📬 ❌ Error fetching user profile:', error);
-        console.error('📬 Error details:', {
-          message: error?.message,
-          response: error?.response?.data,
-          status: error?.response?.status,
-        });
+        // Silent fail - don't log error or show to user
+        // This is expected if token is not available yet or API call fails
+        // Just return null userId and let the app continue
+        const errorMessage = error?.message || '';
+        const isTokenError = errorMessage.includes('token') || errorMessage.includes('Token');
+        
+        if (isTokenError) {
+          // Token not available - this is normal during initial load
+          // Don't log anything, just return null
+        } else {
+          // Other errors - log quietly (not as error, just info)
+          console.log('📬 ℹ️ Could not fetch user profile from API (will retry later)');
+        }
+        // Return null userId - don't throw error
+        userId = null;
       }
+    } else if (!userId && auth.state.isAuthenticated && !auth.state.accessToken) {
+      // No token available - this is normal, don't log as error
+      console.log('📬 ℹ️ User authenticated but no access token yet, waiting...');
     }
     
     console.log('📬 NotificationProvider: Final User ID:', userId, 'Mode:', mode);
@@ -123,8 +136,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       console.log('📬 ========== LOAD NOTIFICATIONS START ==========');
       const { userId } = await getUserIdAndMode();
       if (!userId) {
-        console.warn('📬 ⚠️ No userId after fallback, skipping load notifications');
-        console.warn('📬 This might mean user is not authenticated or API call failed');
+        // Silent fail - don't show error to user, just skip loading
+        // This is normal if user is not loaded yet or token is not available
+        console.log('📬 ℹ️ No userId available yet, skipping load notifications (will retry when user is loaded)');
         setLoading(false);
         return;
       }

@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_ENDPOINTS, REQUEST_TIMEOUT } from '../../constants/api';
 import {
-  CreateBorrowTransactionRequest,
-  CreateBorrowTransactionResponse
+    CreateBorrowTransactionRequest,
+    CreateBorrowTransactionResponse
 } from '../../types/product.types';
 import { apiClient } from './client';
 
@@ -211,6 +211,50 @@ export const borrowTransactionsApi = {
   },
 
   // Get business borrow transaction history
+  // Get monthly transactions for chart
+  getMonthlyTransactions: async (params?: { year?: number }): Promise<any> => {
+    try {
+      let accessToken: string | undefined;
+      if (getCurrentAccessToken) {
+        try {
+          accessToken = await getCurrentAccessToken() || undefined;
+        } catch (error) {
+          console.warn('Error getting token from provider:', error);
+        }
+      }
+
+      if (!accessToken) {
+        try {
+          accessToken = await AsyncStorage.getItem('ACCESS_TOKEN') || undefined;
+        } catch (error) {
+          console.warn('Error getting token from AsyncStorage:', error);
+        }
+      }
+
+      if (!accessToken) {
+        throw new Error('No access token available. Please log in first.');
+      }
+
+      const { year = new Date().getFullYear(), type, status } = params || {};
+      const queryParams = new URLSearchParams();
+      queryParams.append('year', String(year));
+      if (type) queryParams.append('type', type);
+      if (status) queryParams.append('status', status);
+      const endpoint = `${API_ENDPOINTS.BORROW_TRANSACTIONS.MONTHLY}?${queryParams.toString()}`;
+
+      const response = await apiClient.get(endpoint, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        timeout: REQUEST_TIMEOUT,
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Error getting monthly transactions:', error);
+      throw error;
+    }
+  },
   getBusinessHistory: async (params?: {
     status?: string;
     productName?: string;

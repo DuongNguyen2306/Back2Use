@@ -7,9 +7,13 @@ import { useEffect, useState } from "react"
 import { Image, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import BusinessWelcomeModal from "../../../components/BusinessWelcomeModal"
 import NotificationBadge from "../../../components/NotificationBadge"
+import ProgressBar from "../../../components/charts/ProgressBar"
+import SimpleBarChart from "../../../components/charts/SimpleBarChart"
+import SimpleLineChart from "../../../components/charts/SimpleLineChart"
 import { useAuth } from "../../../context/AuthProvider"
 import { borrowTransactionsApi } from "../../../src/services/api/borrowTransactionService"
 import { businessesApi, productsApi } from "../../../src/services/api/businessService"
+import { walletTransactionsApi } from "../../../src/services/api/walletService"
 import { BusinessProfile } from "../../../src/types/business.types"
 
 const STORAGE_KEYS = {
@@ -30,6 +34,18 @@ export default function BusinessDashboard() {
     overdueItems: 0,
     damagedItems: 0,
   })
+  
+  // Analytics data states
+  const [overviewData, setOverviewData] = useState<any>(null)
+  const [monthlyTransactions, setMonthlyTransactions] = useState<any[]>([])
+  const [monthlyTotals, setMonthlyTotals] = useState<any>(null) // Store totals from monthly API
+  const [topBorrowedItems, setTopBorrowedItems] = useState<any[]>([])
+  const [walletMonthlyData, setWalletMonthlyData] = useState<any>(null)
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
+  
+  // Staff overview data (simple stats only)
+  const [staffOverviewData, setStaffOverviewData] = useState<any>(null)
 
   // Load business profile data
   useEffect(() => {
@@ -201,12 +217,135 @@ export default function BusinessDashboard() {
       }
     }
   }, [authState.isHydrated, authState.accessToken, authState.isAuthenticated, authState.role, loading, businessProfile]);
+
+  // Load staff overview data (simple stats only)
+  useEffect(() => {
+    const loadStaffOverview = async () => {
+      if (!authState.isAuthenticated || authState.role !== 'staff' as any) {
+        return;
+      }
+
+      try {
+        const overviewResponse = await businessesApi.getOverview();
+        console.log('📊 Staff Overview API response:', JSON.stringify(overviewResponse, null, 2));
+        if (overviewResponse?.statusCode === 200 && overviewResponse?.data) {
+          setStaffOverviewData(overviewResponse.data);
+        } else if (overviewResponse?.data) {
+          setStaffOverviewData(overviewResponse.data);
+        }
+      } catch (error) {
+        console.log('⚠️ Staff Overview API not available:', error);
+      }
+    };
+
+    if (!loading) {
+      loadStaffOverview();
+    }
+  }, [authState.isAuthenticated, authState.role, loading]);
+
+  // Load analytics data (for business owners only)
+  useEffect(() => {
+    const loadAnalyticsData = async () => {
+      if (!authState.isAuthenticated || authState.role === 'staff' as any) {
+        return;
+      }
+
+      setAnalyticsLoading(true);
+      try {
+        // Load overview stats
+        try {
+          const overviewResponse = await businessesApi.getOverview();
+          console.log('📊 Overview API response:', JSON.stringify(overviewResponse, null, 2));
+          if (overviewResponse?.statusCode === 200 && overviewResponse?.data) {
+            setOverviewData(overviewResponse.data);
+          } else if (overviewResponse?.data) {
+            // Handle case where data is directly in response
+            setOverviewData(overviewResponse.data);
+          }
+        } catch (error) {
+          console.log('⚠️ Overview API not available, using profile data:', error);
+        }
+
+        // Load monthly transactions
+        try {
+          // Only send year parameter - backend will return all types and statuses by default
+          const monthlyResponse = await borrowTransactionsApi.getMonthlyTransactions({ 
+            year: selectedYear,
+          });
+          console.log('📊 Monthly transactions response:', JSON.stringify(monthlyResponse, null, 2));
+          if (monthlyResponse?.statusCode === 200) {
+            // API returns: { statusCode: 200, data: [{ month: 1-12, count: number }], totals: {...} }
+            if (monthlyResponse.data && Array.isArray(monthlyResponse.data)) {
+              setMonthlyTransactions(monthlyResponse.data);
+            }
+            // Store totals for overview (if overview API not available)
+            if (monthlyResponse.totals) {
+              setMonthlyTotals(monthlyResponse.totals);
+            }
+          }
+        } catch (error: any) {
+          // Silently handle 400 errors (invalid parameters)
+          if (error?.response?.status === 400) {
+            console.log('⚠️ Monthly transactions API returned 400 (invalid parameters)');
+          } else {
+            console.log('⚠️ Monthly transactions API not available:', error?.message || error);
+          }
+        }
+
+        // Load top borrowed items
+        try {
+          const topBorrowedResponse = await businessesApi.getTopBorrowed({ top: 5 });
+          console.log('📊 Top borrowed response:', JSON.stringify(topBorrowedResponse, null, 2));
+          if (topBorrowedResponse?.statusCode === 200 && topBorrowedResponse?.data) {
+            // API returns: { statusCode: 200, data: { top: 5, products: [...] } }
+            const products = topBorrowedResponse.data.products || topBorrowedResponse.data;
+            setTopBorrowedItems(Array.isArray(products) ? products : []);
+          } else if (topBorrowedResponse?.data) {
+            // Handle case where data structure is different
+            const products = topBorrowedResponse.data.products || topBorrowedResponse.data;
+            setTopBorrowedItems(Array.isArray(products) ? products : []);
+          }
+        } catch (error) {
+          console.log('⚠️ Top borrowed API not available:', error);
+        }
+
+        // Load wallet monthly data
+        try {
+          const walletMonthlyResponse = await walletTransactionsApi.getMonthly({ year: selectedYear, walletType: 'business' });
+          console.log('📊 Wallet monthly response:', JSON.stringify(walletMonthlyResponse, null, 2));
+          if (walletMonthlyResponse?.statusCode === 200 && walletMonthlyResponse?.data) {
+            // API returns: { statusCode: 200, data: [...], totals: {...} }
+            setWalletMonthlyData({
+              months: walletMonthlyResponse.data,
+              totals: walletMonthlyResponse.totals,
+            });
+          } else if (walletMonthlyResponse?.data) {
+            // Handle case where data structure is different
+            setWalletMonthlyData({
+              months: Array.isArray(walletMonthlyResponse.data) ? walletMonthlyResponse.data : [],
+              totals: walletMonthlyResponse.totals || null,
+            });
+          }
+        } catch (error) {
+          console.log('⚠️ Wallet monthly API not available:', error);
+        }
+      } catch (error: any) {
+        console.error('❌ Error loading analytics data:', error);
+      } finally {
+        setAnalyticsLoading(false);
+      }
+    };
+
+    if (!loading && businessProfile) {
+      loadAnalyticsData();
+    }
+  }, [authState.isAuthenticated, authState.role, loading, businessProfile, selectedYear]);
   
-  // Get business name from profile
-  const businessName = businessProfile?.businessName || "Business Owner";
-  const businessOwnerName = businessProfile?.userId?.username || businessProfile?.userId?.email || "Business Owner";
+  // Get business name from profile - ensure it's always a string
+  const businessName = String(businessProfile?.businessName || "Business Owner");
+  const businessOwnerName = String(businessProfile?.userId?.username || businessProfile?.userId?.email || "Business Owner");
   
-  // Get greeting based on role
+  // Get greeting based on role - ensure it's always a string
   const greeting = authState.role === 'staff' as any 
     ? "Hello Staff" 
     : `Hello, ${businessOwnerName || "Business Owner"}!`;
@@ -219,17 +358,17 @@ export default function BusinessDashboard() {
     if (businessProfile.averageRating && authState.role !== 'staff' as any) {
       const rating = businessProfile.averageRating.toFixed(1);
       const reviews = businessProfile.totalReviews || 0;
-      subtitle = `${businessName} ⭐ ${rating} (${reviews} reviews)`;
+      subtitle = `${businessName || "Business"} ⭐ ${rating} (${reviews} reviews)`;
     } else {
-      subtitle = `${businessName} - Business Management`;
+      subtitle = `${businessName || "Business"} - Business Management`;
     }
   } else {
     subtitle = "Business Management";
   }
   
-  // Ensure all string values are defined
-  const safeGreeting = greeting || "Hello";
-  const safeSubtitle = subtitle || "Business Management";
+  // Ensure all string values are defined and not null/undefined
+  const safeGreeting = String(greeting || "Hello");
+  const safeSubtitle = String(subtitle || "Business Management");
 
   const businessAlerts =
     stats.overdueItems > 0
@@ -268,9 +407,9 @@ export default function BusinessDashboard() {
         <View style={styles.header}>
           <View style={styles.headerLeft} />
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>{loading ? "Loading..." : safeGreeting}</Text>
+            <Text style={styles.headerTitle}>{loading ? "Loading..." : (safeGreeting || "Hello")}</Text>
             {safeSubtitle ? (
-              <Text style={styles.headerSubtitle}>{safeSubtitle}</Text>
+              <Text style={styles.headerSubtitle}>{String(safeSubtitle)}</Text>
             ) : null}
           </View>
           <View style={styles.headerRight}>
@@ -311,79 +450,364 @@ export default function BusinessDashboard() {
               </View>
             )}
 
-            <View style={styles.kpiGrid}>
-              <View style={styles.kpiCard}>
-                <View style={[styles.kpiGradient, { backgroundColor: "#E8F5E9" }]}>
-                  <View style={[styles.kpiIconContainer, { backgroundColor: "#C8E6C9" }]}>
-                    <Ionicons name="checkmark-circle" size={28} color="#00704A" />
+            {/* Section 1: Overview Cards (Upgraded Style) - Business Only */}
+            {authState.role !== 'staff' as any && (
+              <View style={styles.overviewSection}>
+                <Text style={styles.sectionTitle}>Overview</Text>
+                <View style={styles.kpiGrid}>
+                {/* CO2 Reduced */}
+                <View style={styles.overviewCard}>
+                  <View style={[styles.overviewCardContent, { backgroundColor: "#ECFDF5" }]}>
+                    <View style={[styles.overviewIconContainer, { backgroundColor: "#D1FAE5" }]}>
+                      <Ionicons name="earth" size={32} color="#10B981" />
+                    </View>
+                    <Text style={styles.overviewValue}>
+                      {overviewData?.co2Reduced !== undefined
+                        ? String(overviewData.co2Reduced.toFixed(2))
+                        : monthlyTotals?.totalCo2Reduced !== undefined
+                          ? String(monthlyTotals.totalCo2Reduced.toFixed(2))
+                          : businessProfile?.co2Reduced 
+                            ? String(businessProfile.co2Reduced.toFixed(2))
+                            : '0.00'} kg
+                    </Text>
+                    <Text style={styles.overviewLabel}>CO₂ Reduced</Text>
                   </View>
-                  <Text style={[styles.kpiValue, { color: "#00704A" }]}>{String(stats.availableItems ?? 0)}</Text>
-                  <Text style={styles.kpiLabel}>Available</Text>
                 </View>
-              </View>
 
-              <View style={styles.kpiCard}>
-                <View style={[styles.kpiGradient, { backgroundColor: "#FFF8E1" }]}>
-                  <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
-                    <Ionicons name="people" size={28} color="#F57C00" />
+                {/* Eco Points */}
+                <View style={styles.overviewCard}>
+                  <View style={[styles.overviewCardContent, { backgroundColor: "#FEF3C7" }]}>
+                    <View style={[styles.overviewIconContainer, { backgroundColor: "#FDE68A" }]}>
+                      <Ionicons name="trophy" size={32} color="#F59E0B" />
+                    </View>
+                    <Text style={styles.overviewValue}>
+                      {overviewData?.ecoPoints !== undefined
+                        ? String(Math.round(overviewData.ecoPoints))
+                        : monthlyTotals?.totalEcoPoints !== undefined
+                          ? String(Math.round(monthlyTotals.totalEcoPoints))
+                          : businessProfile?.ecoPoints 
+                            ? String(Math.round(businessProfile.ecoPoints))
+                            : '0'}
+                    </Text>
+                    <Text style={styles.overviewLabel}>Eco Points</Text>
                   </View>
-                  <Text style={[styles.kpiValue, { color: "#F57C00" }]}>{String(stats.borrowedItems ?? 0)}</Text>
-                  <Text style={styles.kpiLabel}>Borrowed</Text>
                 </View>
-              </View>
 
-              <View style={styles.kpiCard}>
-                <View style={[styles.kpiGradient, { backgroundColor: "#FFEBEE" }]}>
-                  <View style={[styles.kpiIconContainer, { backgroundColor: "#FFCDD2" }]}>
-                    <Ionicons name="time" size={28} color="#D32F2F" />
+                {/* Rating */}
+                <View style={styles.overviewCard}>
+                  <View style={[styles.overviewCardContent, { backgroundColor: "#FEE2E2" }]}>
+                    <View style={[styles.overviewIconContainer, { backgroundColor: "#FECACA" }]}>
+                      <Ionicons name="star" size={32} color="#EF4444" />
+                    </View>
+                    <Text style={styles.overviewValue}>
+                      {overviewData?.averageRating 
+                        ? String(overviewData.averageRating.toFixed(1))
+                        : businessProfile?.averageRating 
+                          ? String(businessProfile.averageRating.toFixed(1))
+                          : '0.0'}
+                    </Text>
+                    <Text style={styles.overviewLabel}>Rating</Text>
                   </View>
-                  <Text style={[styles.kpiValue, { color: "#D32F2F" }]}>{String(stats.overdueItems ?? 0)}</Text>
-                  <Text style={styles.kpiLabel}>Overdue</Text>
                 </View>
-              </View>
 
-              <View style={styles.kpiCard}>
-                <View style={[styles.kpiGradient, { backgroundColor: "#F5F5F5" }]}>
-                  <View style={[styles.kpiIconContainer, { backgroundColor: "#E0E0E0" }]}>
-                    <Ionicons name="close-circle" size={28} color="#666666" />
+                {/* Reviews */}
+                <View style={styles.overviewCard}>
+                  <View style={[styles.overviewCardContent, { backgroundColor: "#DBEAFE" }]}>
+                    <View style={[styles.overviewIconContainer, { backgroundColor: "#BFDBFE" }]}>
+                      <Ionicons name="chatbubbles" size={32} color="#3B82F6" />
+                    </View>
+                    <Text style={styles.overviewValue}>
+                      {overviewData?.totalReviews 
+                        ? String(overviewData.totalReviews)
+                        : businessProfile?.totalReviews 
+                          ? String(businessProfile.totalReviews)
+                          : '0'}
+                    </Text>
+                    <Text style={styles.overviewLabel}>Reviews</Text>
                   </View>
-                  <Text style={[styles.kpiValue, { color: "#666666" }]}>{String(stats.damagedItems ?? 0)}</Text>
-                  <Text style={styles.kpiLabel}>Damaged</Text>
                 </View>
               </View>
             </View>
+            )}
 
-            {/* Eco Impact Card */}
-            {businessProfile && (businessProfile.co2Reduced || businessProfile.ecoPoints) && authState.role !== 'staff' as any && (
-              <View style={styles.ecoImpactCard}>
-                <View style={styles.ecoImpactHeader}>
-                  <View style={styles.ecoImpactIconContainer}>
-                    <Ionicons name="leaf" size={28} color="#10B981" />
+            {/* Staff Overview - Simple Stats */}
+            {authState.role === 'staff' as any && staffOverviewData && (
+              <View style={styles.staffOverviewSection}>
+                <Text style={styles.sectionTitle}>Thông tin đơn</Text>
+                <View style={styles.staffStatsGrid}>
+                  <View style={styles.staffStatCard}>
+                    <Ionicons name="receipt-outline" size={24} color="#00704A" />
+                    <Text style={styles.staffStatValue}>{String(staffOverviewData.borrowTransactions || 0)}</Text>
+                    <Text style={styles.staffStatLabel}>Đơn mượn</Text>
                   </View>
-                  <Text style={styles.ecoImpactTitle}>Green Impact & Achievements</Text>
+                  <View style={styles.staffStatCard}>
+                    <Ionicons name="ticket-outline" size={24} color="#00704A" />
+                    <Text style={styles.staffStatValue}>{String(staffOverviewData.businessVouchers || 0)}</Text>
+                    <Text style={styles.staffStatLabel}>Voucher</Text>
+                  </View>
+                  <View style={styles.staffStatCard}>
+                    <Ionicons name="folder-outline" size={24} color="#00704A" />
+                    <Text style={styles.staffStatValue}>{String(staffOverviewData.productGroups || 0)}</Text>
+                    <Text style={styles.staffStatLabel}>Nhóm sản phẩm</Text>
+                  </View>
+                  <View style={styles.staffStatCard}>
+                    <Ionicons name="cube-outline" size={24} color="#00704A" />
+                    <Text style={styles.staffStatValue}>{String(staffOverviewData.products || 0)}</Text>
+                    <Text style={styles.staffStatLabel}>Sản phẩm</Text>
+                  </View>
                 </View>
-                <View style={styles.ecoImpactStats}>
-                  <View style={styles.ecoImpactStat}>
-                    <Ionicons name="earth" size={20} color="#059669" />
-                    <View style={styles.ecoImpactStatContent}>
-                      <Text style={styles.ecoImpactValue}>
-                        {businessProfile.co2Reduced ? String(businessProfile.co2Reduced.toFixed(2)) : '0.00'} kg
-                      </Text>
-                      <Text style={styles.ecoImpactLabel}>CO₂ Reduced</Text>
+                
+                {/* Product Condition Stats */}
+                {staffOverviewData.productConditionStats && (
+                  <View style={styles.productConditionSection}>
+                    <Text style={styles.subSectionTitle}>Tình trạng sản phẩm</Text>
+                    <View style={styles.conditionGrid}>
+                      <View style={styles.conditionCard}>
+                        <View style={[styles.conditionIconContainer, { backgroundColor: "#D1FAE5" }]}>
+                          <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                        </View>
+                        <Text style={styles.conditionValue}>{String(staffOverviewData.productConditionStats.good || 0)}</Text>
+                        <Text style={styles.conditionLabel}>Tốt</Text>
+                      </View>
+                      <View style={styles.conditionCard}>
+                        <View style={[styles.conditionIconContainer, { backgroundColor: "#FEE2E2" }]}>
+                          <Ionicons name="warning" size={20} color="#EF4444" />
+                        </View>
+                        <Text style={styles.conditionValue}>{String(staffOverviewData.productConditionStats.damaged || 0)}</Text>
+                        <Text style={styles.conditionLabel}>Hư hỏng</Text>
+                      </View>
+                      <View style={styles.conditionCard}>
+                        <View style={[styles.conditionIconContainer, { backgroundColor: "#FEF3C7" }]}>
+                          <Ionicons name="time-outline" size={20} color="#F59E0B" />
+                        </View>
+                        <Text style={styles.conditionValue}>{String(staffOverviewData.productConditionStats.expired || 0)}</Text>
+                        <Text style={styles.conditionLabel}>Hết hạn</Text>
+                      </View>
+                      <View style={styles.conditionCard}>
+                        <View style={[styles.conditionIconContainer, { backgroundColor: "#E5E7EB" }]}>
+                          <Ionicons name="close-circle" size={20} color="#6B7280" />
+                        </View>
+                        <Text style={styles.conditionValue}>{String(staffOverviewData.productConditionStats.lost || 0)}</Text>
+                        <Text style={styles.conditionLabel}>Mất</Text>
+                      </View>
                     </View>
                   </View>
-                  <View style={styles.ecoImpactStat}>
-                    <Ionicons name="trophy" size={20} color="#059669" />
-                    <View style={styles.ecoImpactStatContent}>
-                      <Text style={styles.ecoImpactValue}>
-                        {businessProfile.ecoPoints ? String(Math.round(businessProfile.ecoPoints)) : '0'}
-                      </Text>
-                      <Text style={styles.ecoImpactLabel}>Eco Points</Text>
+                )}
+              </View>
+            )}
+
+            {/* Section 2: Monthly Activity Chart - Business Only */}
+            {authState.role !== 'staff' as any && monthlyTransactions.length > 0 && (
+              <View style={styles.chartSection}>
+                <View style={styles.chartHeader}>
+                  <Text style={styles.sectionTitle}>Monthly Activity</Text>
+                  <TouchableOpacity 
+                    style={styles.yearSelector}
+                    onPress={() => {
+                      // Simple year selector - can be enhanced with modal
+                      const currentYear = new Date().getFullYear();
+                      setSelectedYear(selectedYear === currentYear ? currentYear - 1 : currentYear);
+                    }}
+                  >
+                    <Text style={styles.yearText}>{selectedYear}</Text>
+                    <Ionicons name="chevron-down" size={16} color="#6B7280" />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.chartCard}>
+                  <SimpleBarChart
+                    data={monthlyTransactions.map((item: any) => {
+                      // API returns: { month: 1-12, count: number }
+                      const monthNumber = item.month;
+                      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                      const monthLabel = monthNumber ? monthNames[monthNumber - 1] : 'N/A';
+                      const count = item.count || 0;
+                      
+                      return {
+                        label: monthLabel,
+                        value: count,
+                        color: '#00704A',
+                      };
+                    })}
+                    height={200}
+                  />
+                  <View style={styles.chartLegend}>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: '#00704A' }]} />
+                      <Text style={styles.legendText}>Transactions</Text>
                     </View>
                   </View>
                 </View>
               </View>
             )}
+
+            {/* Section 3: Top Borrowed Items - Business Only */}
+            {authState.role !== 'staff' as any && topBorrowedItems.length > 0 && (
+              <View style={styles.topBorrowedSection}>
+                <Text style={styles.sectionTitle}>Top Borrowed Items</Text>
+                <View style={styles.topBorrowedCard}>
+                  {topBorrowedItems.map((item: any, index: number) => {
+                    // API returns: { _id, reuseCount, group: { name, imageUrl }, size: { sizeName }, ... }
+                    const productName = item.group?.name || item.name || 'Unknown Product';
+                    const productImage = item.group?.imageUrl || item.imageUrl;
+                    const reuseCount = item.reuseCount || 0;
+                    const maxCount = Math.max(...topBorrowedItems.map((i: any) => i.reuseCount || 0), 1);
+                    const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+                    
+                    return (
+                      <View key={item._id || index} style={styles.topBorrowedItem}>
+                        <View style={styles.topBorrowedLeft}>
+                          <Text style={styles.rankEmoji}>{rankEmoji}</Text>
+                          {productImage ? (
+                            <Image source={{ uri: productImage }} style={styles.productThumbnail} />
+                          ) : (
+                            <View style={[styles.productThumbnail, styles.productThumbnailPlaceholder]}>
+                              <Ionicons name="cube-outline" size={24} color="#9CA3AF" />
+                            </View>
+                          )}
+                          <View style={styles.productNameContainer}>
+                            <Text style={styles.productName} numberOfLines={1}>
+                              {productName}
+                            </Text>
+                            {item.size?.sizeName && (
+                              <Text style={styles.productSize} numberOfLines={1}>
+                                {item.size.sizeName}
+                              </Text>
+                            )}
+                          </View>
+                        </View>
+                        <View style={styles.topBorrowedRight}>
+                          <ProgressBar
+                            value={reuseCount}
+                            maxValue={maxCount}
+                            height={8}
+                            color="#00704A"
+                            showLabel={true}
+                            label={`${reuseCount} times`}
+                          />
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* Section 4: Revenue Trend - Business Only */}
+            {authState.role !== 'staff' as any && walletMonthlyData && walletMonthlyData.months && walletMonthlyData.months.length > 0 && (
+              <View style={styles.revenueSection}>
+                <View style={styles.revenueHeader}>
+                  <Text style={styles.sectionTitle}>Cash Flow</Text>
+                  <TouchableOpacity onPress={() => router.push('/(protected)/business/wallet')}>
+                    <Text style={styles.goToWalletLink}>Go to Wallet →</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.revenueCard}>
+                  <SimpleLineChart
+                    datasets={[
+                      {
+                        data: walletMonthlyData.months.map((item: any) => {
+                          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                          return {
+                            label: monthNames[item.month - 1] || String(item.month),
+                            value: item.totalIn || 0, // Income
+                          };
+                        }),
+                        color: '#10B981',
+                        label: 'Income',
+                      },
+                      {
+                        data: walletMonthlyData.months.map((item: any) => {
+                          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                          return {
+                            label: monthNames[item.month - 1] || String(item.month),
+                            value: item.totalOut || 0, // Expenses
+                          };
+                        }),
+                        color: '#EF4444',
+                        label: 'Expenses',
+                      },
+                    ]}
+                    height={150}
+                  />
+                  <View style={styles.revenueLegend}>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: '#10B981' }]} />
+                      <Text style={styles.legendText}>Income</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: '#EF4444' }]} />
+                      <Text style={styles.legendText}>Expenses</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Operational Stats (Keep existing) */}
+            <View style={styles.operationalStatsSection}>
+              <Text style={styles.sectionTitle}>Operational Stats</Text>
+              <View style={styles.kpiGrid}>
+                <View style={styles.kpiCard}>
+                  <View style={[styles.kpiGradient, { backgroundColor: "#E8F5E9" }]}>
+                    <View style={[styles.kpiIconContainer, { backgroundColor: "#C8E6C9" }]}>
+                      <Ionicons name="checkmark-circle" size={28} color="#00704A" />
+                    </View>
+                    <Text style={[styles.kpiValue, { color: "#00704A" }]}>
+                      {String(
+                        overviewData?.productConditionStats?.good !== undefined
+                          ? overviewData.productConditionStats.good
+                          : stats.availableItems ?? 0
+                      )}
+                    </Text>
+                    <Text style={styles.kpiLabel}>Available</Text>
+                  </View>
+                </View>
+
+                <View style={styles.kpiCard}>
+                  <View style={[styles.kpiGradient, { backgroundColor: "#FFF8E1" }]}>
+                    <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
+                      <Ionicons name="people" size={28} color="#F57C00" />
+                    </View>
+                    <Text style={[styles.kpiValue, { color: "#F57C00" }]}>
+                      {String(
+                        overviewData?.borrowTransactions !== undefined
+                          ? overviewData.borrowTransactions
+                          : stats.borrowedItems ?? 0
+                      )}
+                    </Text>
+                    <Text style={styles.kpiLabel}>Borrowed</Text>
+                  </View>
+                </View>
+
+                <View style={styles.kpiCard}>
+                  <View style={[styles.kpiGradient, { backgroundColor: "#FFEBEE" }]}>
+                    <View style={[styles.kpiIconContainer, { backgroundColor: "#FFCDD2" }]}>
+                      <Ionicons name="time" size={28} color="#D32F2F" />
+                    </View>
+                    <Text style={[styles.kpiValue, { color: "#D32F2F" }]}>
+                      {String(stats.overdueItems ?? 0)}
+                    </Text>
+                    <Text style={styles.kpiLabel}>Overdue</Text>
+                  </View>
+                </View>
+
+                <View style={styles.kpiCard}>
+                  <View style={[styles.kpiGradient, { backgroundColor: "#F5F5F5" }]}>
+                    <View style={[styles.kpiIconContainer, { backgroundColor: "#E0E0E0" }]}>
+                      <Ionicons name="close-circle" size={28} color="#666666" />
+                    </View>
+                    <Text style={[styles.kpiValue, { color: "#666666" }]}>
+                      {String(
+                        overviewData?.productConditionStats?.damaged !== undefined
+                          ? overviewData.productConditionStats.damaged
+                          : stats.damagedItems ?? 0
+                      )}
+                    </Text>
+                    <Text style={styles.kpiLabel}>Damaged</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
 
             {/* Quick Actions for Business Owner */}
             {authState.role !== 'staff' as any && (
@@ -1145,5 +1569,278 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6B7280',
     fontWeight: '600',
+  },
+  // New Analytics Sections Styles
+  overviewSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 16,
+    letterSpacing: 0.2,
+  },
+  overviewCard: {
+    flex: 1,
+    minWidth: '47%',
+    marginBottom: 12,
+  },
+  overviewCardContent: {
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    minHeight: 140,
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  overviewIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  overviewValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#1A1A1A',
+    marginBottom: 4,
+    letterSpacing: -0.5,
+  },
+  overviewLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  chartSection: {
+    marginBottom: 24,
+  },
+  chartHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  yearSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    gap: 4,
+  },
+  yearText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  chartCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  chartLegend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 20,
+    marginTop: 16,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  legendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  legendText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  topBorrowedSection: {
+    marginBottom: 24,
+  },
+  topBorrowedCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  topBorrowedItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  topBorrowedLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  rankEmoji: {
+    fontSize: 24,
+    width: 32,
+    textAlign: 'center',
+  },
+  productThumbnail: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+  },
+  productThumbnailPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  productNameContainer: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  productName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 2,
+  },
+  productSize: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  topBorrowedRight: {
+    flex: 1,
+    maxWidth: 120,
+  },
+  revenueSection: {
+    marginBottom: 24,
+  },
+  revenueHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  goToWalletLink: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#00704A',
+  },
+  revenueCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  revenueLegend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 20,
+    marginTop: 16,
+  },
+  operationalStatsSection: {
+    marginBottom: 24,
+  },
+  staffOverviewSection: {
+    marginBottom: 24,
+  },
+  staffStatsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 20,
+  },
+  staffStatCard: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  staffStatValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  staffStatLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  productConditionSection: {
+    marginTop: 16,
+  },
+  subSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 12,
+  },
+  conditionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  conditionCard: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  conditionIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  conditionValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 4,
+  },
+  conditionLabel: {
+    fontSize: 12,
+    color: '#6B7280',
   },
 })
