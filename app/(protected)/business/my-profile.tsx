@@ -586,7 +586,7 @@ export default function BusinessProfileScreen() {
               <View style={styles.businessNameRow}>
                 <Text style={styles.headerBusinessName}>
                   {businessProfile.businessName || 'Business Name'}
-                </Text>
+        </Text>
                 <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" style={styles.verifiedBadge} />
               </View>
               <View style={styles.ratingBadge}>
@@ -612,50 +612,50 @@ export default function BusinessProfileScreen() {
       {auth.state.role === 'staff' && (
         <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
           <Text style={styles.headerTitle}>Staff Profile</Text>
-          <TouchableOpacity 
-            style={styles.settingsButton}
-            onPress={() => router.push('/(protected)/business/settings')}
-          >
-            <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity 
+          style={styles.settingsButton}
+          onPress={() => router.push('/(protected)/business/settings')}
+        >
+          <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
       )}
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Profile Card - Only for Staff */}
         {auth.state.role === 'staff' && (
-          <View style={styles.profileCard}>
-            <View style={styles.avatarContainer}>
-              <Image 
-                source={{ 
+        <View style={styles.profileCard}>
+          <View style={styles.avatarContainer}>
+            <Image 
+              source={{ 
                   uri: staffProfile?.avatar || 'https://via.placeholder.com/100'
-                }} 
-                style={styles.avatar}
-              />
-              <TouchableOpacity 
-                style={styles.avatarEditButton}
-                onPress={() => {/* Handle avatar upload */}}
-              >
-                <Ionicons name="camera" size={16} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-            
-            <Text style={styles.name}>
-              {staffProfile?.fullName || 'Staff Name'}
-            </Text>
-            <Text style={styles.email}>
-              {staffProfile?.email || ''}
-            </Text>
-            <Text style={styles.role}>Staff</Text>
-            
+              }} 
+              style={styles.avatar}
+            />
             <TouchableOpacity 
-              style={styles.editProfileButton}
-              onPress={() => setIsEditing(true)}
+              style={styles.avatarEditButton}
+              onPress={() => {/* Handle avatar upload */}}
             >
-              <Ionicons name="create-outline" size={16} color="#0F4D3A" />
-              <Text style={styles.editProfileButtonText}>Edit</Text>
+              <Ionicons name="camera" size={16} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
+          
+          <Text style={styles.name}>
+              {staffProfile?.fullName || 'Staff Name'}
+          </Text>
+          <Text style={styles.email}>
+              {staffProfile?.email || ''}
+          </Text>
+            <Text style={styles.role}>Staff</Text>
+          
+          <TouchableOpacity 
+            style={styles.editProfileButton}
+            onPress={() => setIsEditing(true)}
+          >
+            <Ionicons name="create-outline" size={16} color="#0F4D3A" />
+            <Text style={styles.editProfileButtonText}>Edit</Text>
+          </TouchableOpacity>
+        </View>
         )}
 
         {/* Main Stats Dashboard - Green Impact Section (2x2 Grid) */}
@@ -667,12 +667,12 @@ export default function BusinessProfileScreen() {
               <View style={styles.statCardWhite}>
                 <View style={[styles.statIconContainer, { backgroundColor: '#FEF3C7' }]}>
                   <Ionicons name="trophy" size={28} color="#F59E0B" />
-                </View>
+                  </View>
                 <Text style={styles.statValueLarge}>
                   {businessProfile.ecoPoints ? Math.round(businessProfile.ecoPoints) : '0'}
                 </Text>
                 <Text style={styles.statLabelLarge}>Eco Points</Text>
-              </View>
+                </View>
               
               {/* Card 2: CO2 Reduced */}
               <View style={styles.statCardWhite}>
@@ -789,26 +789,26 @@ export default function BusinessProfileScreen() {
                   <Text style={styles.businessInfoValueCompact}>
                     {businessProfile.businessAddress || 'Not set'}
                   </Text>
-                </View>
+              </View>
                 <View style={styles.businessInfoRowCompact}>
                   <Ionicons name="call" size={18} color="#00704A" style={styles.businessInfoIconCompact} />
                   <Text style={styles.businessInfoValueCompact}>
                     {businessProfile.businessPhone || 'Not set'}
                   </Text>
-                </View>
+            </View>
                 <View style={styles.businessInfoRowCompact}>
                   <Ionicons name="mail" size={18} color="#00704A" style={styles.businessInfoIconCompact} />
                   <Text style={styles.businessInfoValueCompact}>
                     {businessProfile.businessMail || businessProfile.userId?.email || 'Not set'}
-                  </Text>
-                </View>
-                {businessProfile.taxCode && (
+                </Text>
+            </View>
+            {businessProfile.taxCode && (
                   <View style={styles.businessInfoRowCompact}>
                     <Ionicons name="document-text" size={18} color="#00704A" style={styles.businessInfoIconCompact} />
                     <Text style={styles.businessInfoValueCompact}>
                       {businessProfile.taxCode}
                     </Text>
-                  </View>
+                </View>
                 )}
                 
                 {/* Edit Profile Button */}
@@ -833,27 +833,27 @@ export default function BusinessProfileScreen() {
                 <Text style={styles.subscriptionPremiumTitle}>
                   Current Plan: {activeSubscription[0]?.subscriptionId?.name || activeSubscription[0]?.subscription?.name || activeSubscription[0]?.name || 'Unknown'}
                 </Text>
-              </View>
+            </View>
               
-              {activeSubscription.map((sub: any, index: number) => {
-                const subscriptionId = sub._id;
-                const subscriptionPrice = sub.subscriptionId?.price || sub.subscription?.price || sub.price || 0;
-                const endDate = sub.endDate || sub.endAt || sub.expiresAt;
-                const status = sub.status || (sub.isActive ? 'active' : 'inactive');
-                const currentAutoRenew = autoRenewStates[subscriptionId] ?? sub.autoRenew ?? false;
-                const isToggling = togglingAutoRenew[subscriptionId] || false;
-                
-                return (
+            {activeSubscription.map((sub: any, index: number) => {
+              const subscriptionId = sub._id;
+              const subscriptionPrice = sub.subscriptionId?.price || sub.subscription?.price || sub.price || 0;
+              const endDate = sub.endDate || sub.endAt || sub.expiresAt;
+              const status = sub.status || (sub.isActive ? 'active' : 'inactive');
+              const currentAutoRenew = autoRenewStates[subscriptionId] ?? sub.autoRenew ?? false;
+              const isToggling = togglingAutoRenew[subscriptionId] || false;
+              
+              return (
                   <View key={index}>
                     <View style={styles.subscriptionPremiumDetails}>
                       <Text style={styles.subscriptionPremiumPrice}>
                         {subscriptionPrice > 0 ? `${subscriptionPrice.toLocaleString('en-US')} VNĐ` : 'Free'} 
                         {endDate && ` • Exp: ${new Date(endDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}`}
-                      </Text>
+                    </Text>
                       <View style={[styles.subscriptionPremiumStatus, status === 'active' && styles.subscriptionPremiumStatusActive]}>
                         <Text style={styles.subscriptionPremiumStatusText}>
                           {status === 'active' ? 'Active' : 'Expired'}
-                        </Text>
+                      </Text>
                       </View>
                     </View>
                     
@@ -877,26 +877,26 @@ export default function BusinessProfileScreen() {
                         </TouchableOpacity>
                       </View>
                     )}
-                  </View>
-                );
-              })}
-            </View>
+                </View>
+              );
+            })}
           </View>
+            </View>
         )}
 
         {/* Account Actions Section */}
         {auth.state.role === 'business' && (
           <View style={styles.accountActionsCard}>
-            <TouchableOpacity 
+                <TouchableOpacity
               style={styles.accountActionItem}
               onPress={() => setShowChangePasswordModal(true)}
-            >
+                >
               <View style={styles.accountActionLeft}>
                 <Ionicons name="lock-closed-outline" size={20} color="#00704A" />
                 <Text style={styles.accountActionText}>Change Password</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+                </TouchableOpacity>
             
             <View style={styles.accountActionDivider} />
             
@@ -907,7 +907,7 @@ export default function BusinessProfileScreen() {
               <View style={styles.accountActionLeft}>
                 <Ionicons name="swap-horizontal-outline" size={20} color="#00704A" />
                 <Text style={styles.accountActionText}>Switch to Customer Account</Text>
-              </View>
+            </View>
               <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
             </TouchableOpacity>
             
@@ -918,10 +918,10 @@ export default function BusinessProfileScreen() {
               onPress={handleLogout}
             >
               <View style={styles.accountActionLeft}>
-                <Ionicons name="log-out-outline" size={20} color="#EF4444" />
+           <Ionicons name="log-out-outline" size={20} color="#EF4444" />
                 <Text style={[styles.accountActionText, styles.accountActionTextRed]}>Logout</Text>
               </View>
-            </TouchableOpacity>
+         </TouchableOpacity>
           </View>
         )}
       </ScrollView>

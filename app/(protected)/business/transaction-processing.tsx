@@ -1,30 +1,31 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Camera, CameraView } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  FlatList,
-  Image,
-  Modal,
-  Platform,
-  RefreshControl,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Vibration,
-  View
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    FlatList,
+    Image,
+    Modal,
+    Platform,
+    RefreshControl,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    Vibration,
+    View
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
 import { borrowTransactionsApi } from '../../../src/services/api/borrowTransactionService';
 import { businessesApi } from '../../../src/services/api/businessService';
+import { Feedback, feedbackApi } from '../../../src/services/api/feedbackService';
 import { BusinessProfile } from '../../../src/types/business.types';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -130,6 +131,8 @@ export default function TransactionProcessingScreen() {
   const [unifiedLaserLinePosition, setUnifiedLaserLinePosition] = useState(0);
   const unifiedScanLock = useRef(false);
   const unifiedLaserAnimationRef = useRef<any>(null);
+  const userClosedScannerRef = useRef(false); // Flag to prevent auto-reopening when user manually closes
+  const lastOpenQRParamRef = useRef<string | null>(null); // Track last openQR param to detect new navigation
   
   // QR Scanner states for return (keep for backward compatibility)
   const [showQRScanner, setShowQRScanner] = useState(false);
@@ -149,6 +152,8 @@ export default function TransactionProcessingScreen() {
   const [scannedBorrowTransaction, setScannedBorrowTransaction] = useState<BusinessTransaction | null>(null);
   const [showBorrowConfirmModal, setShowBorrowConfirmModal] = useState(false);
   const [scannedBorrowTransactionDetail, setScannedBorrowTransactionDetail] = useState<any>(null);
+  const [transactionFeedback, setTransactionFeedback] = useState<Feedback | null>(null);
+  const [loadingFeedback, setLoadingFeedback] = useState(false);
   const [loadingScannedBorrowDetail, setLoadingScannedBorrowDetail] = useState(false);
 
   const [transactions, setTransactions] = useState<BusinessTransaction[]>([]);
@@ -286,25 +291,44 @@ export default function TransactionProcessingScreen() {
     loadBusinessData();
   }, [auth.state.isHydrated, auth.state.accessToken, auth.state.isAuthenticated, auth.state.role]);
 
+  // Ref to prevent infinite loop
+  const isLoadingTransactionsRef = useRef(false);
+
   useEffect(() => {
+    // Normalize role: handle both array and string formats
+    const normalizedRole = Array.isArray(auth.state.role) ? auth.state.role[0] : auth.state.role;
+    
     // Allow both business and staff to load transactions
-    if (auth.state.isHydrated && auth.state.accessToken && auth.state.isAuthenticated && (auth.state.role === 'business' || auth.state.role === 'staff')) {
+    if (auth.state.isHydrated && auth.state.accessToken && auth.state.isAuthenticated && (normalizedRole === 'business' || normalizedRole === 'staff')) {
+      // Prevent multiple simultaneous calls
+      if (!isLoadingTransactionsRef.current) {
       loadTransactions();
     }
-  }, [activeTab, searchTerm, auth.state.isHydrated, auth.state.accessToken, auth.state.isAuthenticated, auth.state.role]);
+    }
+  }, [activeTab, searchTerm, auth.state.isHydrated, auth.state.accessToken, auth.state.isAuthenticated]);
 
   const loadTransactions = async () => {
+    // Prevent multiple simultaneous calls
+    if (isLoadingTransactionsRef.current) {
+      console.log('⏸️ Already loading transactions, skipping...');
+      return;
+    }
+
     // Allow both business and staff to load transactions
     if (!auth.state.isHydrated || !auth.state.accessToken || !auth.state.isAuthenticated) {
       return;
     }
 
+    // Normalize role: handle both array and string formats
+    const normalizedRole = Array.isArray(auth.state.role) ? auth.state.role[0] : auth.state.role;
+
     // Only allow business and staff roles
-    if (auth.state.role !== 'business' && auth.state.role !== 'staff') {
+    if (normalizedRole !== 'business' && normalizedRole !== 'staff') {
       return;
     }
 
     try {
+      isLoadingTransactionsRef.current = true;
       setLoading(true);
       console.log('🔄 Loading business transactions...');
       
@@ -359,6 +383,7 @@ export default function TransactionProcessingScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      isLoadingTransactionsRef.current = false;
     }
   };
 
@@ -385,6 +410,79 @@ export default function TransactionProcessingScreen() {
     }
   }, [params?.openQRScanner]);
 
+  // Auto open unified QR scanner when navigated from navigation QR button (for staff)
+  useFocusEffect(
+    React.useCallback(() => {
+      // Check if this is staff and coming from navigation QR button
+      const normalizedRole = Array.isArray(auth.state.role) ? auth.state.role[0] : auth.state.role;
+      const isStaff = normalizedRole === 'staff';
+      
+      const currentOpenQR = params?.openQR;
+      
+      // Only reset flag if this is a NEW navigation from QR button (param changed)
+      // This prevents resetting flag if screen is just refocused with same param
+      if (currentOpenQR === 'true' && lastOpenQRParamRef.current !== 'true' && !showUnifiedQRScanner) {
+        userClosedScannerRef.current = false;
+        console.log('🔄 Reset closed flag - new navigation from QR button');
+      }
+      
+      // Update last param ref (handle array case)
+      const currentOpenQRString: string | null = Array.isArray(currentOpenQR) 
+        ? (currentOpenQR[0] || null)
+        : (currentOpenQR || null);
+      lastOpenQRParamRef.current = currentOpenQRString;
+      
+      // Only auto-open if staff and (coming from navigation QR button OR no params) and user hasn't manually closed it
+      // AND scanner is not currently showing
+      const shouldAutoOpen = isStaff && 
+        !showUnifiedQRScanner && 
+        !userClosedScannerRef.current &&
+        (currentOpenQR === 'true' || (!params?.openQRScanner && !params?.openBorrowQR && !params?.openReturnQR && !params?.transactionId));
+      
+      if (shouldAutoOpen) {
+        console.log('🚀 Auto-opening scanner...');
+        // Small delay to ensure screen is fully loaded
+        const timer = setTimeout(async () => {
+          // Double-check flag before opening (user might have closed it during delay)
+          if (userClosedScannerRef.current) {
+            console.log('⏸️ Scanner opening cancelled - user closed it');
+            return;
+          }
+          
+          try {
+            const { status } = await Camera.requestCameraPermissionsAsync();
+            if (status === 'granted') {
+              // Triple-check flag before actually opening
+              if (userClosedScannerRef.current) {
+                console.log('⏸️ Scanner opening cancelled - user closed it (after permission)');
+                return;
+              }
+              setHasUnifiedCameraPermission(true);
+              setShowUnifiedQRScanner(true);
+              // Default to borrow mode
+              setUnifiedScannerMode('borrow');
+              console.log('✅ Scanner opened');
+            } else {
+              setHasUnifiedCameraPermission(false);
+            }
+          } catch (error) {
+            console.error('Error requesting camera permission:', error);
+          }
+        }, 300);
+        return () => clearTimeout(timer);
+      } else {
+        console.log('⏸️ Not auto-opening scanner:', {
+          isStaff,
+          showUnifiedQRScanner,
+          userClosed: userClosedScannerRef.current,
+          hasOpenQR: currentOpenQR === 'true',
+          hasOtherParams: !!(params?.openQRScanner || params?.openBorrowQR || params?.openReturnQR || params?.transactionId),
+          lastOpenQR: lastOpenQRParamRef.current
+        });
+      }
+    }, [auth.state.role, params, showUnifiedQRScanner])
+  );
+
   // Auto open transaction details modal when navigated with transactionId
   useEffect(() => {
     if (params?.transactionId && transactions.length > 0) {
@@ -400,10 +498,39 @@ export default function TransactionProcessingScreen() {
   useEffect(() => {
     if (showDetailsModal && selectedTransaction?._id) {
       loadTransactionDetail(selectedTransaction._id);
+      loadTransactionFeedback(selectedTransaction._id);
     } else {
       setTransactionDetail(null);
+      setTransactionFeedback(null);
     }
   }, [showDetailsModal, selectedTransaction?._id]);
+
+  // Load feedback for transaction
+  const loadTransactionFeedback = async (transactionId: string) => {
+    try {
+      setLoadingFeedback(true);
+      // Get all feedbacks and find the one for this transaction
+      // Note: Business can see feedbacks via getByBusiness API
+      // For now, we'll try to get feedbacks for this business and find matching transaction
+      if (businessProfile?._id) {
+        const response = await feedbackApi.getByBusiness(businessProfile._id, {
+          page: 1,
+          limit: 100,
+        });
+        const feedbacks = Array.isArray(response.data) 
+          ? response.data 
+          : (response.data as any)?.items || [];
+        
+        const feedback = feedbacks.find((f: Feedback) => f.borrowTransactionId === transactionId);
+        setTransactionFeedback(feedback || null);
+      }
+    } catch (error) {
+      console.error('Error loading transaction feedback:', error);
+      setTransactionFeedback(null);
+    } finally {
+      setLoadingFeedback(false);
+    }
+  };
 
   const loadBusinessData = async () => {
     // Wait for auth state to be hydrated before making API calls
@@ -517,6 +644,10 @@ export default function TransactionProcessingScreen() {
 
   // Stop Unified QR Scanner
   const stopUnifiedScanning = () => {
+    console.log('🛑 Stopping unified scanning...');
+    // Mark that user manually closed the scanner FIRST to prevent auto-reopening
+    userClosedScannerRef.current = true;
+    // Then close the scanner
     setShowUnifiedQRScanner(false);
     setUnifiedFlashEnabled(false);
     if (unifiedLaserAnimationRef.current) {
@@ -524,11 +655,16 @@ export default function TransactionProcessingScreen() {
       unifiedLaserAnimationRef.current = null;
     }
     unifiedScanLock.current = false;
+    setUnifiedLaserLinePosition(0);
+    console.log('✅ Unified scanning stopped, userClosedScannerRef:', userClosedScannerRef.current);
   };
 
   // Handle Unified QR Scanner barcode scan
   const onUnifiedBarcodeScanned = async (e: any) => {
-    if (unifiedScanLock.current) return;
+    if (unifiedScanLock.current) {
+      console.log('🔒 Unified scanner is locked, ignoring scan');
+      return;
+    }
     unifiedScanLock.current = true;
     
     const scannedData = e?.data ?? '';
@@ -541,10 +677,17 @@ export default function TransactionProcessingScreen() {
     }
     
     Vibration.vibrate(Platform.OS === 'ios' ? 30 : 50);
+    
+    // Close scanner first before processing
     setShowUnifiedQRScanner(false);
+    stopUnifiedScanning();
+    
+    // Small delay to ensure scanner is fully closed
+    await new Promise(resolve => setTimeout(resolve, 300));
     
     try {
       if (unifiedScannerMode === 'borrow') {
+        console.log('🔍 Processing borrow confirmation scan...');
         // Handle borrow confirmation (same logic as onBorrowBarcodeScanned)
         let serialNumber = scannedData.trim();
         if (scannedData.includes('://')) {
@@ -557,50 +700,143 @@ export default function TransactionProcessingScreen() {
           }
         }
         
+        console.log('🔍 Extracted serial number:', serialNumber);
         const isTransactionId = /^[0-9a-fA-F]{24}$/.test(serialNumber);
         let foundTransaction: BusinessTransaction | null = null;
         
         if (isTransactionId) {
+          console.log('🔍 Searching by transaction ID...');
           try {
             const response = await borrowTransactionsApi.getBusinessDetail(serialNumber);
             if (response.statusCode === 200 && response.data) {
-              foundTransaction = response.data;
+              foundTransaction = response.data as BusinessTransaction;
+              console.log('✅ Found transaction by ID:', foundTransaction._id);
             }
           } catch (error) {
-            console.log('Transaction not found by ID');
+            console.log('❌ Transaction not found by ID:', error);
           }
         }
         
         if (!foundTransaction) {
-          const apiResponse = await borrowTransactionsApi.getBusinessHistory({
-            page: 1,
-            limit: 1000,
-          });
-          const apiTransactions = apiResponse.data?.items || (Array.isArray(apiResponse.data) ? apiResponse.data : []);
-          
-          foundTransaction = apiTransactions.find((t: BusinessTransaction) => 
-            t.productId?.serialNumber === serialNumber &&
-            t.borrowTransactionType === 'borrow' &&
-            (t.status === 'pending' || t.status === 'waiting' || t.status === 'pending_pickup')
-          ) || null;
+          console.log('🔍 Searching by serial number in history...');
+          try {
+            const apiResponse = await borrowTransactionsApi.getBusinessHistory({
+              page: 1,
+              limit: 1000,
+            });
+            console.log('📡 API Response:', {
+              statusCode: apiResponse.statusCode,
+              hasData: !!apiResponse.data,
+              dataType: Array.isArray(apiResponse.data) ? 'array' : typeof apiResponse.data,
+              itemsCount: apiResponse.data?.items?.length || (Array.isArray(apiResponse.data) ? apiResponse.data.length : 0)
+            });
+            
+            const apiTransactions = apiResponse.data?.items || (Array.isArray(apiResponse.data) ? apiResponse.data : []);
+            console.log('📋 Total transactions in history:', apiTransactions.length);
+            
+            if (apiTransactions.length === 0) {
+              console.log('⚠️ No transactions found in history');
+            }
+            
+            foundTransaction = apiTransactions.find((t: BusinessTransaction) => {
+              const matchesSerial = t.productId?.serialNumber === serialNumber;
+              const matchesType = t.borrowTransactionType === 'borrow';
+              const matchesStatus = (t.status === 'pending' || t.status === 'waiting' || t.status === 'pending_pickup');
+              
+              if (matchesSerial && matchesType) {
+                console.log('🔍 Found matching transaction:', {
+                  id: t._id,
+                  serialNumber: t.productId?.serialNumber,
+                  type: t.borrowTransactionType,
+                  status: t.status,
+                  matchesStatus
+                });
+              }
+              
+              return matchesSerial && matchesType && matchesStatus;
+            }) as BusinessTransaction | undefined || null;
+            
+            if (foundTransaction) {
+              console.log('✅ Found transaction by serial number:', foundTransaction._id, 'Status:', foundTransaction.status);
+            } else {
+              console.log('❌ No pending borrow transaction found for serial number:', serialNumber);
+              console.log('🔍 Available transactions with this serial:', 
+                apiTransactions.filter((t: BusinessTransaction) => t.productId?.serialNumber === serialNumber).map((t: BusinessTransaction) => ({
+                  id: t._id,
+                  type: t.borrowTransactionType,
+                  status: t.status
+                }))
+              );
+            }
+          } catch (error: any) {
+            console.error('❌ Error fetching transaction history:', error);
+            console.error('❌ Error details:', {
+              message: error.message,
+              status: error.response?.status,
+              data: error.response?.data
+            });
+            Alert.alert('Error', `Failed to fetch transactions: ${error.message || 'Unknown error'}`);
+          }
         }
         
         if (foundTransaction) {
-          setScannedBorrowTransaction(foundTransaction);
+          console.log('📝 Setting scanned transaction and loading details...');
+          console.log('📝 Found transaction ID:', foundTransaction._id);
+          console.log('📝 Found transaction status:', foundTransaction.status);
+          
+          // Store detail in local variable first
+          let transactionDetail: any = null;
+          
           try {
             setLoadingScannedBorrowDetail(true);
+            console.log('📡 Fetching transaction detail for ID:', foundTransaction._id);
+            
             const detailResponse = await borrowTransactionsApi.getBusinessDetail(foundTransaction._id);
+            console.log('📡 Detail response status:', detailResponse.statusCode);
+            console.log('📡 Detail response data:', detailResponse.data ? 'present' : 'missing');
+            
             if (detailResponse.statusCode === 200 && detailResponse.data) {
-              setScannedBorrowTransactionDetail(detailResponse.data);
+              console.log('✅ Transaction detail loaded successfully');
+              transactionDetail = detailResponse.data;
+            } else {
+              console.log('⚠️ Transaction detail response status:', detailResponse.statusCode);
             }
           } catch (error: any) {
-            console.error('Error loading transaction detail:', error);
-            setScannedBorrowTransactionDetail(null);
+            console.error('❌ Error loading transaction detail:', error);
+            console.error('❌ Error details:', {
+              message: error.message,
+              status: error.response?.status,
+              data: error.response?.data
+            });
+            // Even if detail fails, we can still show the transaction from history
+            transactionDetail = null;
           } finally {
             setLoadingScannedBorrowDetail(false);
           }
-          setShowBorrowConfirmModal(true);
+          
+          // Set both states together
+          setScannedBorrowTransaction(foundTransaction);
+          setScannedBorrowTransactionDetail(transactionDetail);
+          
+          // Ensure scanner is closed before opening modal
+          setShowUnifiedQRScanner(false);
+          stopUnifiedScanning();
+          
+          // Wait a bit longer to ensure scanner modal is fully closed
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Double-check that transaction is still set
+          console.log('📱 Opening borrow confirm modal...');
+          console.log('📱 Transaction ID:', foundTransaction._id);
+          console.log('📱 Transaction Detail:', transactionDetail ? 'loaded' : 'null');
+          
+          // Use setTimeout to ensure state updates are applied
+          setTimeout(() => {
+            setShowBorrowConfirmModal(true);
+            console.log('📱 Borrow confirm modal opened');
+          }, 200);
         } else {
+          console.log('❌ No transaction found, showing alert');
           Alert.alert('No Borrow Request', 'This product does not have a borrow request');
         }
       } else {
@@ -617,25 +853,34 @@ export default function TransactionProcessingScreen() {
         }
         
         console.log('✅ Setting returnSerialNumber from unified scanner:', serialNumber);
-        setReturnSerialNumber(serialNumber);
-        setCheckData({
-          frontImage: null,
-          frontIssue: '',
-          backImage: null,
-          backIssue: '',
-          leftImage: null,
-          leftIssue: '',
-          rightImage: null,
-          rightIssue: '',
-          topImage: null,
-          topIssue: '',
-          bottomImage: null,
-          bottomIssue: '',
-        });
-        setReturnNote('');
-        setReturnImages([]);
-        setCalculatedPoints(0);
-        setCalculatedCondition('good');
+        
+        // Ensure scanner is closed before opening return modal
+        setShowUnifiedQRScanner(false);
+        stopUnifiedScanning();
+        
+        // Small delay to ensure scanner UI is fully closed
+        setTimeout(() => {
+          setReturnSerialNumber(serialNumber);
+          setCheckData({
+            frontImage: null,
+            frontIssue: '',
+            backImage: null,
+            backIssue: '',
+            leftImage: null,
+            leftIssue: '',
+            rightImage: null,
+            rightIssue: '',
+            topImage: null,
+            topIssue: '',
+            bottomImage: null,
+            bottomIssue: '',
+          });
+          setReturnNote('');
+          setReturnImages([]);
+          setCalculatedPoints(0);
+          setCalculatedCondition('good');
+          setShowReturnModal(true);
+        }, 200);
       }
     } catch (error: any) {
       console.error('Error processing QR scan:', error);
@@ -1198,17 +1443,30 @@ export default function TransactionProcessingScreen() {
               e.stopPropagation();
               try {
                 await borrowTransactionsApi.confirmBorrow(transaction._id);
+                
+                // Close scanner if open
+                setShowUnifiedQRScanner(false);
+                stopUnifiedScanning();
+                
+                // Reload transactions
+                        await loadTransactions();
+                
+                // Find and show transaction detail
+                try {
+                  const detailResponse = await borrowTransactionsApi.getBusinessDetail(transaction._id);
+                  if (detailResponse.statusCode === 200 && detailResponse.data) {
+                    setTransactionDetail(detailResponse.data);
+                    setSelectedTransaction(transaction);
+                    setShowDetailsModal(true);
+                  }
+                } catch (error) {
+                  console.error('Error loading confirmed transaction detail:', error);
+                }
+                
                 Alert.alert(
                   'Success',
                   'Borrow transaction confirmed successfully!',
-                  [
-                    {
-                      text: 'OK',
-                      onPress: async () => {
-                        await loadTransactions();
-                      }
-                    }
-                  ]
+                  [{ text: 'OK' }]
                 );
               } catch (error: any) {
                 console.error('Error confirming borrow:', error);
@@ -1379,8 +1637,8 @@ export default function TransactionProcessingScreen() {
         animationType="slide"
         onRequestClose={() => setShowDetailsModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <SafeAreaView style={styles.returnModalOverlay}>
+          <View style={styles.returnModalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Transaction Details</Text>
               <TouchableOpacity onPress={() => setShowDetailsModal(false)}>
@@ -1715,18 +1973,29 @@ export default function TransactionProcessingScreen() {
                     onPress={async () => {
                       try {
                         await borrowTransactionsApi.confirmBorrow(selectedTransaction._id);
+                        
+                        // Close scanner if open
+                        setShowUnifiedQRScanner(false);
+                        stopUnifiedScanning();
+                        
+                        // Reload transactions
+                                await loadTransactions();
+                        
+                        // Reload transaction detail
+                        try {
+                          const detailResponse = await borrowTransactionsApi.getBusinessDetail(selectedTransaction._id);
+                          if (detailResponse.statusCode === 200 && detailResponse.data) {
+                            setTransactionDetail(detailResponse.data);
+                            // Keep modal open to show updated detail
+                          }
+                        } catch (error) {
+                          console.error('Error reloading transaction detail:', error);
+                        }
+                        
                         Alert.alert(
                           'Success',
                           'Borrow transaction confirmed successfully!',
-                          [
-                            {
-                              text: 'OK',
-                              onPress: async () => {
-                                setShowDetailsModal(false);
-                                await loadTransactions();
-                              }
-                            }
-                          ]
+                          [{ text: 'OK' }]
                         );
                       } catch (error: any) {
                         console.error('Error confirming borrow:', error);
@@ -1781,10 +2050,62 @@ export default function TransactionProcessingScreen() {
                     <Text style={styles.processReturnButtonText}>Check Return</Text>
                   </TouchableOpacity>
                 )}
+
+                {/* Feedback Section */}
+                {(transactionDetail?.status === 'returned' || transactionDetail?.status === 'completed' || 
+                  selectedTransaction?.status === 'returned' || selectedTransaction?.status === 'completed') && (
+                  <>
+                    <View style={styles.sectionHeader}>
+                      <Text style={styles.sectionTitle}>Customer Feedback</Text>
+                    </View>
+                    {loadingFeedback ? (
+                      <View style={styles.feedbackLoading}>
+                        <ActivityIndicator size="small" color="#0F4D3A" />
+                        <Text style={styles.feedbackLoadingText}>Loading feedback...</Text>
+                      </View>
+                    ) : transactionFeedback ? (
+                      <View style={styles.feedbackCard}>
+                        <View style={styles.feedbackHeader}>
+                          <View style={styles.feedbackRating}>
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Ionicons
+                                key={star}
+                                name={star <= transactionFeedback.rating ? 'star' : 'star-outline'}
+                                size={20}
+                                color="#FCD34D"
+                              />
+                            ))}
+                            <Text style={styles.feedbackRatingText}>
+                              {transactionFeedback.rating}/5
+                            </Text>
+                          </View>
+                          <Text style={styles.feedbackDate}>
+                            {new Date(transactionFeedback.createdAt).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric',
+                            })}
+                          </Text>
+                        </View>
+                        {transactionFeedback.comment && (
+                          <Text style={styles.feedbackComment}>{transactionFeedback.comment}</Text>
+                        )}
+                      </View>
+                    ) : (
+                      <View style={styles.feedbackEmpty}>
+                        <Ionicons name="star-outline" size={32} color="#9CA3AF" />
+                        <Text style={styles.feedbackEmptyText}>No feedback yet</Text>
+                        <Text style={styles.feedbackEmptySubtext}>
+                          Customer hasn't left feedback for this transaction
+                        </Text>
+                      </View>
+                    )}
+                  </>
+                )}
               </ScrollView>
             )}
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* User Details Modal */}
@@ -1794,8 +2115,8 @@ export default function TransactionProcessingScreen() {
         animationType="slide"
         onRequestClose={() => setShowUserModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <SafeAreaView style={styles.returnModalOverlay}>
+          <View style={styles.returnModalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>User Borrowing Details</Text>
               <TouchableOpacity onPress={() => setShowUserModal(false)}>
@@ -1839,7 +2160,7 @@ export default function TransactionProcessingScreen() {
               )}
             </ScrollView>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* Check Return Modal */}
@@ -1856,8 +2177,8 @@ export default function TransactionProcessingScreen() {
           }, 300);
         }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <SafeAreaView style={styles.returnModalOverlay}>
+          <View style={styles.returnModalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Check Return</Text>
               <TouchableOpacity 
@@ -2085,7 +2406,7 @@ export default function TransactionProcessingScreen() {
               </TouchableOpacity>
             </ScrollView>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* Confirm Return Modal */}
@@ -2095,8 +2416,8 @@ export default function TransactionProcessingScreen() {
         animationType="slide"
         onRequestClose={() => setShowConfirmModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <SafeAreaView style={styles.returnModalOverlay}>
+          <View style={styles.returnModalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Confirm Return</Text>
               <TouchableOpacity onPress={() => {
@@ -2304,7 +2625,7 @@ export default function TransactionProcessingScreen() {
                       finalCondition,
                     });
 
-                    await borrowTransactionsApi.confirmReturn(returnSerialNumber, {
+                    const confirmResponse = await borrowTransactionsApi.confirmReturn(returnSerialNumber, {
                       note: returnNote || undefined,
                       damageFaces,
                       tempImages,
@@ -2312,8 +2633,14 @@ export default function TransactionProcessingScreen() {
                       finalCondition,
                     });
 
-                    // Close modal and reset form immediately
+                    // Close all modals and scanner
                     setShowConfirmModal(false);
+                    setShowReturnModal(false);
+                    setShowUnifiedQRScanner(false);
+                    stopUnifiedScanning();
+                    
+                    // Reset form
+                    const savedSerialNumber = returnSerialNumber; // Save for finding transaction
                     setReturnSerialNumber('');
                     setReturnNote('');
                     setCheckReturnResponse(null); // Reset check response
@@ -2335,6 +2662,47 @@ export default function TransactionProcessingScreen() {
                     // Reload transactions immediately
                     await loadTransactions();
                     await loadBusinessData();
+
+                    // Find and show transaction detail
+                    try {
+                      // Try to find the transaction by serial number
+                      const updatedTransactions = await borrowTransactionsApi.getBusinessHistory({
+                        page: 1,
+                        limit: 1000,
+                      });
+                      const allTransactions = updatedTransactions.data?.items || (Array.isArray(updatedTransactions.data) ? updatedTransactions.data : []);
+                      
+                      // Find the return transaction that was just confirmed
+                      // Find all return transactions with this serial number, then get the most recent one
+                      const returnTransactions = allTransactions.filter((t: BusinessTransaction) => 
+                        t.productId?.serialNumber === savedSerialNumber &&
+                        t.borrowTransactionType === 'return'
+                      );
+                      
+                      // Sort by date (most recent first) and get the first one
+                      const returnedTransaction = returnTransactions.length > 0
+                        ? returnTransactions.sort((a: BusinessTransaction, b: BusinessTransaction) => {
+                            const dateA = new Date(a.borrowDate || a.createdAt || 0).getTime();
+                            const dateB = new Date(b.borrowDate || b.createdAt || 0).getTime();
+                            return dateB - dateA; // Most recent first
+                          })[0]
+                        : null;
+
+                      if (returnedTransaction) {
+                        console.log('✅ Found returned transaction:', returnedTransaction._id);
+                        // Load full transaction detail
+                        const detailResponse = await borrowTransactionsApi.getBusinessDetail(returnedTransaction._id);
+                        if (detailResponse.statusCode === 200 && detailResponse.data) {
+                          setTransactionDetail(detailResponse.data);
+                          setSelectedTransaction(returnedTransaction);
+                          setShowDetailsModal(true);
+                        }
+                      } else {
+                        console.log('⚠️ Could not find returned transaction for serial number:', savedSerialNumber);
+                      }
+                    } catch (error) {
+                      console.error('Error loading returned transaction detail:', error);
+                    }
 
                     // Show success alert
                     Alert.alert(
@@ -2362,7 +2730,7 @@ export default function TransactionProcessingScreen() {
               </TouchableOpacity>
             </ScrollView>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* QR Scanner Modal for Borrow Confirmation */}
@@ -2483,30 +2851,32 @@ export default function TransactionProcessingScreen() {
           setScannedBorrowTransactionDetail(null);
         }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { flexDirection: 'column', justifyContent: 'space-between' }]}>
-            <View>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Transaction Details</Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    setShowBorrowConfirmModal(false);
-                    setScannedBorrowTransaction(null);
-                    setScannedBorrowTransactionDetail(null);
-                  }}
-                >
-                  <Ionicons name="close" size={24} color="#6B7280" />
-                </TouchableOpacity>
+        <SafeAreaView style={styles.returnModalOverlay}>
+          <View style={[styles.returnModalContent, { flexDirection: 'column' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Borrow Transaction Details</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowBorrowConfirmModal(false);
+                  setScannedBorrowTransaction(null);
+                  setScannedBorrowTransactionDetail(null);
+                }}
+              >
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            
+            {loadingScannedBorrowDetail ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#0F4D3A" />
+                <Text style={styles.loadingText}>Loading borrow transaction details...</Text>
               </View>
-              
-              {loadingScannedBorrowDetail ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color="#0F4D3A" />
-                  <Text style={styles.loadingText}>Loading transaction details...</Text>
-                </View>
-              ) : (
-                scannedBorrowTransaction && (
-                  <ScrollView style={styles.modalBody}>
+            ) : scannedBorrowTransaction ? (
+                <ScrollView 
+                  style={styles.modalBody} 
+                  contentContainerStyle={{ paddingBottom: 20, flexGrow: 1 }}
+                  showsVerticalScrollIndicator={true}
+                >
                 {/* Basic Information */}
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Transaction ID</Text>
@@ -2816,10 +3186,23 @@ export default function TransactionProcessingScreen() {
                     )}
                   </>
                 )}
-                  </ScrollView>
-                )
-              )}
-            </View>
+                </ScrollView>
+            ) : (
+              <View style={styles.errorContainer}>
+                <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+                <Text style={styles.errorText}>Borrow transaction information not found</Text>
+                <TouchableOpacity
+                  style={styles.errorButton}
+                  onPress={() => {
+                    setShowBorrowConfirmModal(false);
+                    setScannedBorrowTransaction(null);
+                    setScannedBorrowTransactionDetail(null);
+                  }}
+                >
+                  <Text style={styles.errorButtonText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Confirm Borrow Button - Fixed at bottom, outside ScrollView */}
             {scannedBorrowTransaction && 
@@ -2833,20 +3216,45 @@ export default function TransactionProcessingScreen() {
                   onPress={async () => {
                     try {
                       await borrowTransactionsApi.confirmBorrow(scannedBorrowTransaction._id);
+                      
+                      // Close all modals and scanner
+                      setShowBorrowConfirmModal(false);
+                      setShowUnifiedQRScanner(false);
+                      stopUnifiedScanning();
+                      
+                      // Save transaction ID for showing detail
+                      const confirmedTransactionId = scannedBorrowTransaction._id;
+                      setScannedBorrowTransaction(null);
+                      setScannedBorrowTransactionDetail(null);
+                      
+                      // Reload transactions
+                      await loadTransactions();
+                      
+                      // Find and show transaction detail
+                      try {
+                        const detailResponse = await borrowTransactionsApi.getBusinessDetail(confirmedTransactionId);
+                        if (detailResponse.statusCode === 200 && detailResponse.data) {
+                          setTransactionDetail(detailResponse.data);
+                          // Find transaction in list
+                          const updatedTransactions = await borrowTransactionsApi.getBusinessHistory({
+                            page: 1,
+                            limit: 1000,
+                          });
+                          const allTransactions = updatedTransactions.data?.items || (Array.isArray(updatedTransactions.data) ? updatedTransactions.data : []);
+                          const foundTransaction = allTransactions.find((t: BusinessTransaction) => t._id === confirmedTransactionId);
+                          if (foundTransaction) {
+                            setSelectedTransaction(foundTransaction);
+                            setShowDetailsModal(true);
+                          }
+                        }
+                      } catch (error) {
+                        console.error('Error loading confirmed transaction detail:', error);
+                      }
+                      
                       Alert.alert(
                         'Success',
                         'Borrow transaction confirmed successfully!',
-                        [
-                          {
-                            text: 'OK',
-                            onPress: async () => {
-                              setShowBorrowConfirmModal(false);
-                              setScannedBorrowTransaction(null);
-                              setScannedBorrowTransactionDetail(null);
-                              await loadTransactions();
-                            }
-                          }
-                        ]
+                        [{ text: 'OK' }]
                       );
                     } catch (error: any) {
                       console.error('Error confirming borrow:', error);
@@ -2860,13 +3268,13 @@ export default function TransactionProcessingScreen() {
               </View>
             )}
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* Unified QR Scanner Modal with Mode Switcher */}
-      {showUnifiedQRScanner && hasUnifiedCameraPermission && (
+      {showUnifiedQRScanner && hasUnifiedCameraPermission && !showBorrowConfirmModal && (
         <Modal
-          visible={showUnifiedQRScanner}
+          visible={showUnifiedQRScanner && !showBorrowConfirmModal}
           animationType="fade"
           transparent={true}
           onRequestClose={stopUnifiedScanning}
@@ -3414,6 +3822,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  returnModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
   modalContent: {
     backgroundColor: 'white',
     borderTopLeftRadius: 24,
@@ -3423,7 +3835,17 @@ const styles = StyleSheet.create({
     padding: 20,
     width: '100%',
     maxHeight: '90%',
-    height: '85%',
+    minHeight: '50%',
+  },
+  returnModalContent: {
+    flex: 1,
+    backgroundColor: 'white',
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    padding: 20,
+    width: '100%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -3455,6 +3877,30 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
     backgroundColor: '#FFFFFF',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#EF4444',
+    marginTop: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  errorButton: {
+    backgroundColor: '#00704A',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  errorButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   detailRow: {
     flexDirection: 'row',
@@ -4188,5 +4634,63 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#E5E7EB',
+  },
+  // Feedback Styles
+  feedbackLoading: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  feedbackLoadingText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  feedbackCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+  },
+  feedbackHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  feedbackRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  feedbackRatingText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0F4D3A',
+    marginLeft: 8,
+  },
+  feedbackDate: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  feedbackComment: {
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 20,
+  },
+  feedbackEmpty: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  feedbackEmptyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginTop: 12,
+  },
+  feedbackEmptySubtext: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 8,
+    textAlign: 'center',
   },
 });

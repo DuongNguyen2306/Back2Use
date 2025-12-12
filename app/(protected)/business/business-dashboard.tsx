@@ -6,6 +6,7 @@ import { router } from "expo-router"
 import { useEffect, useState } from "react"
 import { Image, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import BusinessWelcomeModal from "../../../components/BusinessWelcomeModal"
+import NotificationBadge from "../../../components/NotificationBadge"
 import { useAuth } from "../../../context/AuthProvider"
 import { borrowTransactionsApi } from "../../../src/services/api/borrowTransactionService"
 import { businessesApi, productsApi } from "../../../src/services/api/businessService"
@@ -273,12 +274,7 @@ export default function BusinessDashboard() {
             ) : null}
           </View>
           <View style={styles.headerRight}>
-            <TouchableOpacity 
-              style={styles.notificationButton}
-              onPress={() => router.push('/(protected)/business/notifications')}
-            >
-              <Ionicons name="notifications-outline" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
+            <NotificationBadge />
             {businessProfile && (
               <TouchableOpacity 
                 style={styles.avatarButton}

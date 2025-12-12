@@ -2,17 +2,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Modal,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Modal,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useAuth } from '../../../../context/AuthProvider';
 import { borrowTransactionsApi } from '../../../../src/services/api/borrowTransactionService';
@@ -74,7 +74,7 @@ export default function ProductGroupScreen() {
         }
       } catch (error: any) {
         console.error('❌ Error loading products:', error);
-        Alert.alert('Lỗi', error.message || 'Không thể tải danh sách sản phẩm.');
+        Alert.alert('Error', error.message || 'Unable to load product list.');
         setProducts([]);
       } finally {
         setLoading(false);
@@ -335,7 +335,7 @@ export default function ProductGroupScreen() {
     // Kiểm tra số ngày mượn
     const days = parseInt(durationInDays, 10);
     if (isNaN(days) || days <= 0) {
-      Alert.alert('Lỗi', 'Vui lòng nhập số ngày mượn hợp lệ (lớn hơn 0)');
+      Alert.alert('Error', 'Please enter a valid number of days (greater than 0)');
       return;
     }
 
@@ -343,19 +343,19 @@ export default function ProductGroupScreen() {
 
     // Confirm borrow
     Alert.alert(
-      'Xác nhận đặt mượn',
-      `Bạn có chắc chắn muốn đặt mượn sản phẩm này?\n\n` +
-      `Tiền cọc: ${depositValue.toLocaleString('vi-VN')} VNĐ\n` +
-      `Số dư hiện tại: ${walletBalance.toLocaleString('vi-VN')} VNĐ\n` +
-      `Số dư sau khi trừ: ${(walletBalance - depositValue).toLocaleString('vi-VN')} VNĐ\n` +
-      `Thời gian mượn: ${days} ngày`,
+      'Confirm Borrow Request',
+      `Are you sure you want to borrow this product?\n\n` +
+      `Deposit: ${depositValue.toLocaleString('en-US')} VND\n` +
+      `Current balance: ${walletBalance.toLocaleString('en-US')} VND\n` +
+      `Balance after deduction: ${(walletBalance - depositValue).toLocaleString('en-US')} VND\n` +
+      `Borrow duration: ${days} days`,
       [
         {
-          text: 'Hủy',
+          text: 'Cancel',
           style: 'cancel',
         },
         {
-          text: 'Xác nhận',
+          text: 'Confirm',
           onPress: async () => {
             try {
               setBorrowing(true);
@@ -451,8 +451,8 @@ export default function ProductGroupScreen() {
               console.log('✅ Borrow transaction created:', response);
 
               Alert.alert(
-                'Thành công',
-                'Yêu cầu mượn đã được gửi! Vui lòng đến cửa hàng để nhận sản phẩm.',
+                'Success',
+                'Borrow request has been submitted! Please visit the store to receive the product.',
                 [
                   {
                     text: 'OK',
@@ -461,7 +461,17 @@ export default function ProductGroupScreen() {
                       setSelectedProduct(null);
                       // Reload user data để cập nhật số dư
                       if (state.accessToken) {
-                        getCurrentUserProfileWithAutoRefresh().then(setUserData).catch(console.error);
+                        getCurrentUserProfileWithAutoRefresh()
+                          .then(setUserData)
+                          .catch((error) => {
+                            // Silently handle network errors
+                            const isNetworkError = error?.message?.toLowerCase().includes('application failed to respond') ||
+                                                   error?.message?.toLowerCase().includes('network error') ||
+                                                   error?.message?.toLowerCase().includes('failed to fetch');
+                            if (!isNetworkError) {
+                              console.error('Error loading user data:', error);
+                            }
+                          });
                       }
                     },
                   },
@@ -547,8 +557,8 @@ export default function ProductGroupScreen() {
                 );
               } else {
                 Alert.alert(
-                  'Lỗi',
-                  'Không thể tạo yêu cầu mượn. Vui lòng thử lại sau.'
+                  'Error',
+                  'Unable to create borrow request. Please try again later.'
                 );
               }
             } finally {
@@ -578,7 +588,7 @@ export default function ProductGroupScreen() {
       }
     } catch (error: any) {
       console.error('❌ Error loading page:', error);
-      Alert.alert('Lỗi', 'Không thể tải trang này.');
+      Alert.alert('Error', 'Unable to load this page.');
     } finally {
       setLoading(false);
     }
@@ -895,7 +905,7 @@ export default function ProductGroupScreen() {
                   ) : (
                     <>
                       <Ionicons name="cube-outline" size={20} color="#FFFFFF" />
-                      <Text style={styles.borrowButtonText}>Mượn sản phẩm</Text>
+                      <Text style={styles.borrowButtonText}>Borrow Product</Text>
                     </>
                   )}
                 </TouchableOpacity>

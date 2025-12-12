@@ -757,7 +757,7 @@ export default function BusinessWalletScreen() {
           
           <Text style={styles.cardSubtitleSecondary}>Held Funds</Text>
         </View>
-      </View>
+        </View>
 
       {/* White Background Content */}
       <View style={styles.whiteBackground}>
@@ -783,19 +783,19 @@ export default function BusinessWalletScreen() {
               <View style={styles.quickStatsContent}>
                 <Text style={styles.quickStatsLabel}>Income</Text>
                 <Text style={styles.quickStatsValue}>{totalIncome.toLocaleString('vi-VN')} VNĐ</Text>
-              </View>
             </View>
-            
+              </View>
+          
             <View style={styles.quickStatsCard}>
               <View style={styles.quickStatsIconContainer}>
                 <Ionicons name="trending-down" size={20} color="#EF4444" />
-              </View>
+            </View>
               <View style={styles.quickStatsContent}>
                 <Text style={styles.quickStatsLabel}>Expense</Text>
                 <Text style={styles.quickStatsValue}>{totalExpenses.toLocaleString('vi-VN')} VNĐ</Text>
-              </View>
             </View>
           </View>
+        </View>
 
         {/* Action Buttons - Primary Actions */}
         <View style={styles.actionButtonsSection}>
@@ -833,9 +833,9 @@ export default function BusinessWalletScreen() {
                 transactionTypeGroup === 'personal' && styles.segmentedControlTextActive
               ]}>
                 Personal
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
               style={[
                 styles.segmentedControlSegment,
                 styles.segmentedControlSegmentMiddle,
@@ -848,25 +848,25 @@ export default function BusinessWalletScreen() {
                 transactionTypeGroup === 'deposit_refund' && styles.segmentedControlTextActive
               ]}>
                 Deposit/Refund
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
               style={[
                 styles.segmentedControlSegment,
                 styles.segmentedControlSegmentRight,
                 transactionTypeGroup === 'penalty' && styles.segmentedControlSegmentActive
               ]}
               onPress={() => setTransactionTypeGroup('penalty')}
-            >
+                >
               <Text style={[
                 styles.segmentedControlText,
                 transactionTypeGroup === 'penalty' && styles.segmentedControlTextActive
               ]}>
                 Penalty
-              </Text>
-            </TouchableOpacity>
+                  </Text>
+                </TouchableOpacity>
           </View>
-        </View>
+              </View>
 
         {/* Transaction List */}
         <View style={styles.transactionSection}>
@@ -884,17 +884,17 @@ export default function BusinessWalletScreen() {
                   const amountPrefix = isIncome ? '+' : '-';
                   
                   return (
-                    <View key={transaction._id} style={styles.transactionCard}>
+                  <View key={transaction._id} style={styles.transactionCard}>
                       <View style={[styles.transactionIcon, { backgroundColor: isIncome ? '#ECFDF5' : '#FEF2F2' }]}>
-                        <Ionicons 
+                      <Ionicons 
                           name={isIncome ? 'arrow-down' : 'arrow-up'} 
-                          size={18} 
+                        size={18} 
                           color={amountColor} 
-                        />
-                      </View>
-                      <View style={styles.transactionInfo}>
-                        <Text style={styles.transactionTitle}>{transaction.description}</Text>
-                        <Text style={styles.transactionDate}>
+                      />
+                    </View>
+                    <View style={styles.transactionInfo}>
+                      <Text style={styles.transactionTitle}>{transaction.description}</Text>
+                      <Text style={styles.transactionDate}>
                           {new Date(transaction.createdAt).toLocaleDateString('en-US', { 
                             month: 'short', 
                             day: 'numeric', 
@@ -902,28 +902,28 @@ export default function BusinessWalletScreen() {
                             hour: '2-digit',
                             minute: '2-digit'
                           })}
-                        </Text>
-                      </View>
-                      <View style={styles.transactionAmount}>
+                      </Text>
+                    </View>
+                    <View style={styles.transactionAmount}>
                         <Text style={[styles.amountText, { color: amountColor }]}>
                           {amountPrefix}{transaction.amount.toLocaleString('vi-VN')} VNĐ
-                        </Text>
-                        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(transaction.status) + "20" }]}>
-                          <Text style={[styles.statusText, { color: getStatusColor(transaction.status) }]}>
-                            {getStatusText(transaction.status)}
-                          </Text>
-                        </View>
-                        {transaction.status === 'processing' && transaction.transactionType === 'deposit' && (
-                          <TouchableOpacity
-                            style={styles.retryButton}
-                            onPress={() => handleRetryPayment(transaction._id)}
-                            disabled={isProcessing}
-                          >
-                            <Ionicons name="refresh" size={14} color="#0F4D3A" />
-                            <Text style={styles.retryButtonText}>Retry</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
+                  </Text>
+                      <View style={[styles.statusBadge, { backgroundColor: getStatusColor(transaction.status) + "20" }]}>
+                        <Text style={[styles.statusText, { color: getStatusColor(transaction.status) }]}>
+                          {getStatusText(transaction.status)}
+                  </Text>
+              </View>
+                      {transaction.status === 'processing' && transaction.transactionType === 'deposit' && (
+                        <TouchableOpacity
+                          style={styles.retryButton}
+                          onPress={() => handleRetryPayment(transaction._id)}
+                          disabled={isProcessing}
+                        >
+                          <Ionicons name="refresh" size={14} color="#0F4D3A" />
+                          <Text style={styles.retryButtonText}>Retry</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                     </View>
                   );
                 })

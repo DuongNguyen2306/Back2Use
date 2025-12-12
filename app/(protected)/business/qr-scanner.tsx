@@ -14,7 +14,6 @@ import {
     View
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
-import { borrowTransactionsApi } from '../../../src/services/api/borrowTransactionService';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const FRAME_SIZE = screenWidth * 0.7;
@@ -68,7 +67,10 @@ export default function QRScannerScreen() {
   };
 
   const handleBarcodeScanned = async (e: any) => {
-    if (scanLock.current) return;
+    if (scanLock.current) {
+      console.log('🔒 Scanner is locked, ignoring scan');
+      return;
+    }
     scanLock.current = true;
     
     const scannedData = e?.data ?? '';
@@ -83,58 +85,47 @@ export default function QRScannerScreen() {
     Vibration.vibrate(Platform.OS === 'ios' ? 30 : 50);
     
     try {
-      if (scannerMode === 'borrow') {
-        // Handle borrow confirmation
-        const serialNumber = scannedData.replace(/^back2use:\/\/item\//, '').trim();
-        
-        // Search for pending borrow transaction
-        const apiResponse = await borrowTransactionsApi.getBusinessHistory({
-          page: 1,
-          limit: 1000,
-        });
-        const apiTransactions = apiResponse.data?.items || (Array.isArray(apiResponse.data) ? apiResponse.data : []);
-        
-        const foundTransaction = apiTransactions.find((t: any) => 
-          t.productId?.serialNumber === serialNumber &&
-          t.borrowTransactionType === 'borrow' &&
-          (t.status === 'pending' || t.status === 'waiting' || t.status === 'pending_pickup')
-        );
-        
-        if (foundTransaction) {
-          Alert.alert(
-            'Borrow Request Found',
-            `Transaction ID: ${foundTransaction._id}\n\nConfirm this borrow request?`,
-            [
-              { text: 'Cancel', style: 'cancel', onPress: () => { scanLock.current = false; } },
-              {
-                text: 'Confirm',
-                onPress: async () => {
-                  try {
-                    await borrowTransactionsApi.confirmBorrow(foundTransaction._id);
-                    Alert.alert('Success', 'Borrow transaction confirmed!');
-                    router.back();
-                  } catch (error: any) {
-                    Alert.alert('Error', error.message || 'Failed to confirm borrow');
-                  } finally {
-                    scanLock.current = false;
-                  }
-                }
-              }
-            ]
-          );
+      // Extract serial number from QR data
+      let serialNumber = scannedData.trim();
+      if (scannedData.includes('://')) {
+        const match = scannedData.match(/(?:com\.)?back2use:\/\/item\/([^\/]+)/);
+        if (match && match[1]) {
+          serialNumber = match[1];
         } else {
-          Alert.alert('No Borrow Request', 'This product does not have a borrow request');
-          scanLock.current = false;
+          const parts = scannedData.split('/');
+          serialNumber = parts[parts.length - 1];
         }
+      }
+      
+      console.log('🔍 Extracted serial number:', serialNumber);
+      
+      if (scannerMode === 'borrow') {
+        // Handle borrow confirmation - redirect to transaction-processing with serial
+        console.log('🔍 Processing borrow confirmation, redirecting to transaction-processing...');
+        router.push({
+          pathname: '/(protected)/business/transaction-processing',
+          params: { 
+            openBorrowQR: 'true',
+            serialNumber: serialNumber,
+            mode: 'borrow'
+          }
+        });
+        scanLock.current = false;
       } else {
-        // Handle return processing
-        const serialNumber = scannedData.replace(/^back2use:\/\/item\//, '').trim();
-        Alert.alert('Return Processing', `Serial: ${serialNumber}\n\nRedirecting to return processing...`);
-        router.push('/(protected)/business/transaction-processing');
+        // Handle return processing - redirect to transaction-processing with serial
+        console.log('🔍 Processing return, redirecting to transaction-processing...');
+        router.push({
+          pathname: '/(protected)/business/transaction-processing',
+          params: { 
+            openReturnQR: 'true',
+            serialNumber: serialNumber,
+            mode: 'return'
+          }
+        });
         scanLock.current = false;
       }
     } catch (error: any) {
-      console.error('Error processing QR scan:', error);
+      console.error('❌ Error processing QR scan:', error);
       Alert.alert('Error', error.message || 'Failed to process QR code');
       scanLock.current = false;
     }

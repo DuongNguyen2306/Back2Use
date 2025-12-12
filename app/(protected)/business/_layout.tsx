@@ -55,8 +55,9 @@ export default function BusinessLayout() {
   };
 
   const handleQRPress = () => {
-    // Navigate to QR scanner with mode switcher
-    router.push('/(protected)/business/qr-scanner');
+    // Navigate to transaction-processing to use unified QR scanner
+    // Add a param to indicate this is from QR button, so we can reset the closed flag
+    router.push('/(protected)/business/transaction-processing?openQR=true');
   };
 
   // Check if current page is dashboard

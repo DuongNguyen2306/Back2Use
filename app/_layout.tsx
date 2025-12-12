@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "../context/AuthProvider";
 import { CartProvider } from "../context/CartProvider";
+import { NotificationProvider } from "../context/NotificationProvider";
 
 export default function RootLayout() {
   return (
@@ -10,7 +11,9 @@ export default function RootLayout() {
       <StatusBar style="auto" />
       <AuthProvider>
         <CartProvider>
-          <Stack screenOptions={{ headerShown: false }} />
+          <NotificationProvider>
+            <Stack screenOptions={{ headerShown: false }} />
+          </NotificationProvider>
         </CartProvider>
       </AuthProvider>
     </SafeAreaProvider>

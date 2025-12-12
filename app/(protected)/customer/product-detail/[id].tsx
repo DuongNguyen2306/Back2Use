@@ -2,16 +2,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Image,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { useAuth } from '../../../../context/AuthProvider';
 import { borrowTransactionsApi } from '../../../../src/services/api/borrowTransactionService';
@@ -134,7 +134,7 @@ export default function CustomerProductDetailScreen() {
   // Handle borrow button press
   const handleBorrow = async () => {
     if (!product || !state.isAuthenticated) {
-      Alert.alert('Lỗi', 'Vui lòng đăng nhập để đặt mượn sản phẩm.');
+      Alert.alert('Error', 'Please login to borrow product.');
       return;
     }
 
@@ -503,7 +503,7 @@ export default function CustomerProductDetailScreen() {
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Chi tiết sản phẩm</Text>
+        <Text style={styles.headerTitle}>Product Details</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -726,7 +726,7 @@ export default function CustomerProductDetailScreen() {
                       ) : (
                         <>
                           <Ionicons name="cube-outline" size={20} color="#fff" />
-                          <Text style={styles.borrowButtonText}>Mượn sản phẩm</Text>
+                          <Text style={styles.borrowButtonText}>Borrow Product</Text>
                         </>
                       )}
                     </TouchableOpacity>

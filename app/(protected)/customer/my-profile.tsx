@@ -325,6 +325,13 @@ export default function MyProfile() {
       onPress: () => router.push('/(protected)/customer/transaction-history'),
     },
     {
+      id: 'feedbacks',
+      title: 'My Feedbacks',
+      subtitle: 'View and manage your feedbacks',
+      icon: 'star',
+      onPress: () => router.push('/(protected)/customer/my-feedbacks'),
+    },
+    {
       id: 'leaderboard',
       icon: 'trophy-outline',
       label: 'Leaderboard',
@@ -349,10 +356,17 @@ export default function MyProfile() {
       items: [
         {
           id: 'history',
-          title: 'Lịch sử mượn',
-          subtitle: 'Xem lịch sử giao dịch mượn',
+          title: 'Transaction History',
+          subtitle: 'View your transaction history',
           icon: 'time-outline' as keyof typeof Ionicons.glyphMap,
           onPress: () => router.push('/(protected)/customer/transaction-history'),
+        },
+        {
+          id: 'feedbacks',
+          title: 'My Feedbacks',
+          subtitle: 'View and manage your feedbacks',
+          icon: 'star' as keyof typeof Ionicons.glyphMap,
+          onPress: () => router.push('/(protected)/customer/my-feedbacks'),
         },
         {
           id: 'language',
@@ -423,6 +437,13 @@ export default function MyProfile() {
           subtitle: 'Xem lịch sử giao dịch mượn',
           icon: 'time',
           onPress: () => router.push('/(protected)/customer/transaction-history'),
+    },
+    {
+      id: 'feedbacks',
+      title: 'My Feedbacks',
+      subtitle: 'View and manage your feedbacks',
+      icon: 'star',
+      onPress: () => router.push('/(protected)/customer/my-feedbacks'),
         },
         {
           id: 'rewards',

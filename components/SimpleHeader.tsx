@@ -2,19 +2,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React from 'react';
 import {
-  SafeAreaView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    SafeAreaView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
+import NotificationBadge from './NotificationBadge';
 
 interface SimpleHeaderProps {
   title: string;
   onBack?: () => void;
   rightAction?: React.ReactNode;
   backgroundColor?: string;
+  showNotifications?: boolean;
 }
 
 export default function SimpleHeader({
@@ -22,6 +24,7 @@ export default function SimpleHeader({
   onBack,
   rightAction,
   backgroundColor = '#FFFFFF',
+  showNotifications = false,
 }: SimpleHeaderProps) {
   const handleBack = () => {
     if (onBack) {
@@ -49,8 +52,13 @@ export default function SimpleHeader({
             <Text style={styles.title} numberOfLines={1}>{title}</Text>
           </View>
           
-          {/* Right: Action (optional) */}
+          {/* Right: Notifications + Action (optional) */}
           <View style={styles.rightContainer}>
+            {showNotifications && (
+              <View style={styles.notificationWrapper}>
+                <NotificationBadge />
+              </View>
+            )}
             {rightAction || <View style={styles.placeholder} />}
           </View>
         </View>
@@ -98,11 +106,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   rightContainer: {
-    width: 40,
-    height: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginLeft: 8,
+    gap: 8,
+  },
+  notificationWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
   },
   placeholder: {
     width: 40,

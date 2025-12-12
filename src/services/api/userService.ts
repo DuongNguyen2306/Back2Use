@@ -130,6 +130,22 @@ export const getCurrentUserProfileWithAutoRefresh = async (): Promise<User> => {
   try {
     return await getCurrentUserProfile(token);
   } catch (error: any) {
+    // Handle network/timeout errors silently
+    if (error.message?.includes('Application failed to respond') ||
+        error.message?.includes('Network Error') ||
+        error.message?.includes('Request timeout')) {
+      // Silently return minimal user object
+      console.warn('⚠️ Network error fetching user profile (silently handled)');
+      return {
+        _id: '',
+        username: '',
+        email: '',
+        fullName: '',
+        phone: '',
+        role: tokenRole || 'customer',
+      } as User;
+    }
+    
     // If 403 error and we haven't tried staff API yet, try it
     if (error?.response?.status === 403 && tokenRole !== 'staff') {
       try {
@@ -281,15 +297,23 @@ export const getCurrentUserProfile = async (token: string): Promise<User> => {
       } as User;
     }
     
-    // Only handle non-403 errors
-    if (error.code === 'ECONNABORTED') {
-      throw new Error('Request timeout. Please check your connection and try again.');
+    // Handle network/timeout errors silently - don't throw to prevent UI errors
+    if (error.code === 'ECONNABORTED' || error.message === 'Network Error' || 
+        error.message?.includes('Application failed to respond') ||
+        error.message?.includes('Failed to fetch')) {
+      // Silently return minimal user object instead of throwing
+      console.warn('⚠️ Network error fetching user profile (silently handled)');
+      return {
+        _id: '',
+        username: '',
+        email: '',
+        fullName: '',
+        phone: '',
+        role: 'customer',
+      } as User;
     }
     
-    if (error.message === 'Network Error') {
-      throw new Error('Network error. Please check your internet connection and server status.');
-    }
-    
+    // Only throw for unexpected errors (not network/timeout)
     throw new Error(`Failed to fetch user profile: ${error.response?.data?.message || error.message || 'Unknown error'}`);
   }
 };

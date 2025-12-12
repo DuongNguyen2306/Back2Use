@@ -19,9 +19,11 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import NotificationBadge from '../../../../components/NotificationBadge';
 import { useAuth } from '../../../../context/AuthProvider';
 import { borrowTransactionsApi } from '../../../../src/services/api/borrowTransactionService';
 import { businessesApi } from '../../../../src/services/api/businessService';
+import { Feedback, feedbackApi } from '../../../../src/services/api/feedbackService';
 import { productsApi } from '../../../../src/services/api/productService';
 import { getCurrentUserProfileWithAutoRefresh } from '../../../../src/services/api/userService';
 import { voucherApi } from '../../../../src/services/api/voucherService';
@@ -65,6 +67,18 @@ export default function StoreDetailScreen() {
   const [loadingVouchers, setLoadingVouchers] = useState(false);
   const [myVoucherIds, setMyVoucherIds] = useState<Set<string>>(new Set());
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
+  
+  // Feedback states
+  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
+  
+  const [loadingFeedbacks, setLoadingFeedbacks] = useState(false);
+  const [feedbackPage, setFeedbackPage] = useState(1);
+  const [feedbackLimit] = useState(3);
+  const [selectedRatingFilter, setSelectedRatingFilter] = useState<number | null>(null);
+  const [hasMoreFeedbacks, setHasMoreFeedbacks] = useState(true);
+  const [averageRating, setAverageRating] = useState<number>(0);
+  const [totalFeedbacks, setTotalFeedbacks] = useState(0);
+  const [myFeedbacks, setMyFeedbacks] = useState<Map<string, Feedback>>(new Map());
   
   // New states for redesigned UI
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -136,7 +150,7 @@ export default function StoreDetailScreen() {
         const storeDetailResponse = await businessesApi.getById(id);
         
         if (!storeDetailResponse.data?.business) {
-          Alert.alert('Lỗi', 'Không tìm thấy cửa hàng.');
+          Alert.alert('Error', 'Store not found.');
           setLoading(false);
           return;
         }
@@ -200,9 +214,13 @@ export default function StoreDetailScreen() {
         
         // Load vouchers for this store
         await loadStoreVouchers(storeBusinessId);
+        
+        // Load feedbacks for this store
+        await loadFeedbacks(storeBusinessId, true);
+        await loadMyFeedbacks();
       } catch (error: any) {
         console.error('❌ Error loading store:', error);
-        Alert.alert('Lỗi', error.message || 'Không thể tải thông tin cửa hàng.');
+        Alert.alert('Error', error.message || 'Unable to load store information.');
       } finally {
         setLoading(false);
       }
@@ -210,6 +228,13 @@ export default function StoreDetailScreen() {
 
     loadStoreData();
   }, [id]);
+
+  // Load feedbacks when rating filter changes
+  useEffect(() => {
+    if (store?._id) {
+      loadFeedbacks(store._id, true);
+    }
+  }, [selectedRatingFilter]);
   
   // Load my vouchers to check which ones are already redeemed
   const loadMyVouchers = async () => {
@@ -436,6 +461,105 @@ export default function StoreDetailScreen() {
     loadUserData();
   }, [state.role]);
   
+  // ==================== LOAD FEEDBACKS – FIX TRÙNG LẶP 100% ====================
+  const loadFeedbacks = async (businessId: string, reset: boolean = false) => {
+    try {
+      if (reset) {
+        setLoadingFeedbacks(true);
+        setFeedbackPage(1);
+      }
+
+      const page = reset ? 1 : feedbackPage;
+      const res = await feedbackApi.getByBusiness(businessId, {
+        page,
+        limit: feedbackLimit,
+        rating: selectedRatingFilter || undefined,
+      });
+
+      const raw = Array.isArray(res.data) ? res.data : (res.data as any)?.items || [];
+
+      // Loại bỏ trùng trong data mới
+      const uniqueMap = new Map<string, Feedback>();
+      raw.forEach((fb: Feedback) => {
+        if (fb._id) uniqueMap.set(fb._id, fb);
+      });
+      const uniqueNew = Array.from(uniqueMap.values());
+
+      if (reset) {
+        setFeedbacks(uniqueNew);
+        const avg = uniqueNew.length > 0
+          ? uniqueNew.reduce((s, f) => s + f.rating, 0) / uniqueNew.length
+          : 0;
+        setAverageRating(avg);
+        setTotalFeedbacks(uniqueNew.length);
+      } else {
+        // Load more: gộp + loại bỏ trùng
+        setFeedbacks(prev => {
+          const map = new Map<string, Feedback>();
+          prev.forEach(f => f._id && map.set(f._id, f));
+          uniqueNew.forEach(f => f._id && map.set(f._id, f));
+          return Array.from(map.values());
+        });
+      }
+
+      setHasMoreFeedbacks(uniqueNew.length === feedbackLimit);
+      if (!reset) setFeedbackPage(p => p + 1);
+    } catch (e) {
+      console.error('Load feedbacks error:', e);
+    } finally {
+      setLoadingFeedbacks(false);
+    }
+  };
+
+  // ==================== LOAD MY FEEDBACKS ====================
+  const loadMyFeedbacks = async () => {
+    try {
+      const res = await feedbackApi.getMy({ page: 1, limit: 1000 });
+      const data = Array.isArray(res.data) ? res.data : (res.data as any)?.items || [];
+      const map = new Map<string, Feedback>();
+      data.forEach((f: Feedback) => map.set(f.borrowTransactionId, f));
+      setMyFeedbacks(map);
+    } catch (e) {
+      console.error('Load my feedbacks error:', e);
+    }
+  };
+
+  // Handle edit feedback
+  const handleEditFeedback = async (feedback: Feedback) => {
+    // Navigate to transaction detail to edit feedback
+    router.push({
+      pathname: '/(protected)/customer/transaction-detail/[id]',
+      params: { id: feedback.borrowTransactionId },
+    });
+  };
+
+  // Handle delete feedback
+  const handleDeleteFeedback = async (feedbackId: string) => {
+    Alert.alert(
+      'Delete Feedback',
+      'Are you sure you want to delete this feedback?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await feedbackApi.delete(feedbackId);
+              if (store?._id) {
+                await loadFeedbacks(store._id, true);
+                await loadMyFeedbacks();
+              }
+              Alert.alert('Success', 'Feedback deleted successfully');
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to delete feedback');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // Kiểm tra xem user có phải owner của store không
   useEffect(() => {
     if (store && (userBusinessProfile || state.user)) {
@@ -500,16 +624,23 @@ export default function StoreDetailScreen() {
       console.log('🔄 Loading ALL products for business:', businessId);
       console.log('📦 Product groups to process:', productGroups.length);
 
-      let allProducts: Product[] = reset ? [] : [...products];
+      // ✅ FIX: Use a Map to guarantee uniqueness by ID
+      const uniqueProductsMap = new Map<string, Product>();
 
-      // Load TẤT CẢ sản phẩm từ tất cả group (không phân trang server)
+      // If loading more (not reset), keep existing products in the map
+      if (!reset) {
+        products.forEach(p => {
+          if (p._id) uniqueProductsMap.set(String(p._id), p);
+        });
+      }
+
+      // Load products from all groups
       for (const group of productGroups) {
         try {
           console.log(`🔄 Loading products from group: "${group.name}" (${group._id})`);
           
-          // Load nhiều nhất có thể (limit cao)
           const res = await productsApi.getCustomerProducts(group._id, {
-            limit: 100, // Load tối đa 100 sản phẩm mỗi group
+            limit: 100,
             page: 1,
           });
 
@@ -572,8 +703,12 @@ export default function StoreDetailScreen() {
               return matches;
             });
 
+            // ✅ FIX: Add valid products to the Map (overwriting duplicates)
+            validProducts.forEach((p: Product) => {
+              if (p._id) uniqueProductsMap.set(String(p._id), p);
+            });
+
             console.log(`✅ Filtered ${validProducts.length} valid products from ${res.data.products.length} total in group "${group.name}"`);
-            allProducts.push(...validProducts);
           } else {
             console.log(`ℹ️ No products found in group "${group.name}"`);
           }
@@ -583,6 +718,9 @@ export default function StoreDetailScreen() {
         }
       }
 
+      // ✅ Convert Map back to Array
+      const allProducts = Array.from(uniqueProductsMap.values());
+
       // Sắp xếp theo thời gian tạo (mới nhất trước)
       allProducts.sort((a, b) => {
         const aDate = (a as any).createdAt || '';
@@ -590,12 +728,12 @@ export default function StoreDetailScreen() {
         return bDate.localeCompare(aDate);
       });
 
-      console.log('✅ Total products loaded:', allProducts.length);
+      console.log('✅ Total unique products loaded:', allProducts.length);
       setProducts(allProducts);
       setProductCount(allProducts.length);
       if (reset) {
-          setDisplayedProductsCount(6);
-          setHasMoreProducts(true); // Reset về trang đầu tiên
+        setDisplayedProductsCount(6);
+        setHasMoreProducts(true);
       }
     } catch (error: any) {
       console.error('❌ Load products failed:', error);
@@ -742,7 +880,7 @@ export default function StoreDetailScreen() {
     // Kiểm tra số ngày mượn trước
     const days = parseInt(durationInDays, 10);
     if (isNaN(days) || days <= 0) {
-      Alert.alert('Lỗi', 'Vui lòng nhập số ngày mượn hợp lệ (lớn hơn 0)');
+      Alert.alert('Error', 'Please enter a valid number of days (greater than 0)');
       return;
     }
     
@@ -791,19 +929,19 @@ export default function StoreDetailScreen() {
       const shortage = depositValue - walletBalance;
       console.log('⚠️ Insufficient balance - Shortage:', shortage);
       Alert.alert(
-        'Số dư không đủ',
-        `Số dư ví của bạn không đủ để đặt mượn sản phẩm này.\n\n` +
-        `Số dư hiện tại: ${walletBalance.toLocaleString('vi-VN')} VNĐ\n` +
-        `Tiền cọc cần: ${depositValue.toLocaleString('vi-VN')} VNĐ\n` +
-        `Còn thiếu: ${shortage.toLocaleString('vi-VN')} VNĐ\n\n` +
-        `Vui lòng nạp thêm tiền vào ví để tiếp tục.`,
+        'Insufficient Balance',
+        `Your wallet balance is insufficient to borrow this product.\n\n` +
+        `Current balance: ${walletBalance.toLocaleString('en-US')} VND\n` +
+        `Required deposit: ${depositValue.toLocaleString('en-US')} VND\n` +
+        `Shortage: ${shortage.toLocaleString('en-US')} VND\n\n` +
+        `Please deposit more money to your wallet to continue.`,
         [
           {
-            text: 'Hủy',
+            text: 'Cancel',
             style: 'cancel',
           },
           {
-            text: 'Nạp tiền',
+            text: 'Deposit',
             onPress: () => {
               setShowProductModal(false);
               router.push('/(protected)/customer/customer-wallet');
@@ -832,20 +970,20 @@ export default function StoreDetailScreen() {
 
     // Confirm borrow
     Alert.alert(
-      'Xác nhận đặt mượn',
-      `Bạn có chắc chắn muốn đặt mượn sản phẩm này?\n\n` +
-      `Tiền cọc: ${realtimeDeposit.toLocaleString('vi-VN')} VNĐ\n` +
-      `(= ${realtimePricePerDay.toLocaleString('vi-VN')} VNĐ/ngày × ${realtimeDays} ngày)\n\n` +
-      `Số dư hiện tại: ${walletBalance.toLocaleString('vi-VN')} VNĐ\n` +
-      `Số dư sau khi trừ: ${(walletBalance - realtimeDeposit).toLocaleString('vi-VN')} VNĐ\n` +
-      `Thời gian mượn: ${realtimeDays} ngày`,
+      'Confirm Borrow Request',
+      `Are you sure you want to borrow this product?\n\n` +
+      `Deposit: ${realtimeDeposit.toLocaleString('en-US')} VND\n` +
+      `(= ${realtimePricePerDay.toLocaleString('en-US')} VND/day × ${realtimeDays} days)\n\n` +
+      `Current balance: ${walletBalance.toLocaleString('en-US')} VND\n` +
+      `Balance after deduction: ${(walletBalance - realtimeDeposit).toLocaleString('en-US')} VND\n` +
+      `Borrow duration: ${realtimeDays} days`,
       [
         {
-          text: 'Hủy',
+          text: 'Cancel',
           style: 'cancel',
         },
         {
-          text: 'Xác nhận',
+          text: 'Confirm',
           onPress: async () => {
             try {
               setBorrowing(true);
@@ -944,8 +1082,8 @@ export default function StoreDetailScreen() {
               console.log('✅ Borrow transaction created:', response);
 
               Alert.alert(
-                'Thành công',
-                'Yêu cầu mượn đã được gửi! Vui lòng đến cửa hàng để nhận sản phẩm.',
+                'Success',
+                'Borrow request has been submitted! Please visit the store to receive the product.',
                 [
                   {
                     text: 'OK',
@@ -1037,8 +1175,8 @@ export default function StoreDetailScreen() {
                 );
               } else {
                 Alert.alert(
-                  'Lỗi',
-                  'Không thể tạo yêu cầu mượn. Vui lòng thử lại sau.'
+                  'Error',
+                  'Unable to create borrow request. Please try again later.'
                 );
               }
             } finally {
@@ -1263,7 +1401,9 @@ export default function StoreDetailScreen() {
           <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.animatedHeaderTitle}>{store.businessName}</Text>
-        <View style={styles.animatedHeaderPlaceholder} />
+        <View style={styles.animatedHeaderRight}>
+          <NotificationBadge iconColor="#FFFFFF" />
+        </View>
       </Animated.View>
 
       {/* Main ScrollView with redesigned layout */}
@@ -1606,6 +1746,179 @@ export default function StoreDetailScreen() {
             </View>
           )}
         </View>
+
+        {/* Feedbacks Section */}
+        {store && (
+          <View style={styles.feedbacksSection}>
+            <View style={styles.feedbacksHeader}>
+              <View style={styles.feedbacksHeaderLeft}>
+                <Ionicons name="star" size={24} color="#0F4D3A" />
+                <Text style={styles.feedbacksTitle}>Đánh giá từ khách hàng</Text>
+              </View>
+              {totalFeedbacks > 0 && (
+                <View style={styles.feedbacksStats}>
+                  <Text style={styles.feedbacksStatsText}>
+                    {averageRating.toFixed(1)} ⭐ ({totalFeedbacks})
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Rating Filter */}
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.ratingFilterContainer}
+              contentContainerStyle={styles.ratingFilterContent}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.ratingFilterButton,
+                  selectedRatingFilter === null && styles.ratingFilterButtonActive,
+                ]}
+                onPress={() => setSelectedRatingFilter(null)}
+              >
+                  <Text
+                    style={[
+                      styles.ratingFilterText,
+                      selectedRatingFilter === null && styles.ratingFilterTextActive,
+                    ]}
+                  >
+                    Tất cả
+                  </Text>
+              </TouchableOpacity>
+              {[5, 4, 3, 2, 1].map((rating) => (
+                <TouchableOpacity
+                  key={rating}
+                  style={[
+                    styles.ratingFilterButton,
+                    selectedRatingFilter === rating && styles.ratingFilterButtonActive,
+                  ]}
+                  onPress={() => setSelectedRatingFilter(rating)}
+                >
+                  <Ionicons
+                    name="star"
+                    size={16}
+                    color={selectedRatingFilter === rating ? '#FFFFFF' : '#6B7280'}
+                  />
+                  <Text
+                    style={[
+                      styles.ratingFilterText,
+                      selectedRatingFilter === rating && styles.ratingFilterTextActive,
+                    ]}
+                  >
+                    {rating}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* === CHỈ DÙNG 1 LẦN MAP DUY NHẤT Ở ĐÂY === */}
+            {feedbacks.length === 0 ? (
+              loadingFeedbacks ? (
+                <View style={styles.feedbacksLoading}>
+                  <ActivityIndicator size="small" color="#0F4D3A" />
+                  <Text style={styles.feedbacksLoadingText}>Đang tải đánh giá...</Text>
+                </View>
+              ) : (
+                <View style={styles.feedbacksEmpty}>
+                  <Ionicons name="star-outline" size={48} color="#9CA3AF" />
+                  <Text style={styles.feedbacksEmptyText}>Chưa có đánh giá nào</Text>
+                  <Text style={styles.feedbacksEmptySubtext}>Hãy là người đầu tiên đánh giá!</Text>
+                </View>
+              )
+            ) : (
+              <>
+                {/* ✅ FIX: Render directly. Uniqueness is handled in loadFeedbacks.
+                    Added key={String(feedback._id)} to be safe against non-string IDs. */}
+                {feedbacks.map((feedback) => {
+                  // Ensure we have a valid key
+                  const key = feedback._id ? String(feedback._id) : `fb-${Math.random()}`;
+                  
+                  const customer = typeof feedback.customerId === 'object' ? feedback.customerId : null;
+                  const name = customer?.fullName || 'Khách hàng';
+                  const avatar = customer?.avatar;
+                  const isMine = myFeedbacks.has(feedback.borrowTransactionId);
+
+                  return (
+                    <View key={key} style={styles.feedbackCard}>
+                      <View style={styles.feedbackHeader}>
+                        <View style={styles.feedbackCustomerInfo}>
+                          {avatar ? (
+                            <Image source={{ uri: avatar }} style={styles.feedbackAvatar} />
+                          ) : (
+                            <View style={styles.feedbackAvatarPlaceholder}>
+                              <Ionicons name="person" size={20} color="#6B7280" />
+                            </View>
+                          )}
+                          <View style={styles.feedbackCustomerText}>
+                            <Text style={styles.feedbackCustomerName}>{name}</Text>
+                            <Text style={styles.feedbackDate}>
+                              {new Date(feedback.createdAt).toLocaleDateString('vi-VN', {
+                                day: 'numeric',
+                                month: 'long',
+                                year: 'numeric',
+                              })}
+                            </Text>
+                          </View>
+                        </View>
+                        {isMine && (
+                          <View style={styles.feedbackActions}>
+                            <TouchableOpacity
+                              style={styles.feedbackActionButton}
+                              onPress={() => handleEditFeedback(feedback)}
+                            >
+                              <Ionicons name="create-outline" size={18} color="#0F4D3A" />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.feedbackActionButton}
+                              onPress={() => handleDeleteFeedback(feedback._id)}
+                            >
+                              <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.feedbackRating}>
+                        {[1,2,3,4,5].map((star) => (
+                          <Ionicons
+                            key={star}
+                            name={star <= feedback.rating ? 'star' : 'star-outline'}
+                            size={16}
+                            color="#FCD34D"
+                          />
+                        ))}
+                        <Text style={styles.feedbackRatingText}>{feedback.rating}/5</Text>
+                      </View>
+                      {feedback.comment ? (
+                        <Text style={styles.feedbackComment}>{feedback.comment}</Text>
+                      ) : (
+                        <Text style={[styles.feedbackComment, { color: '#9CA3AF', fontStyle: 'italic' }]}>
+                          Không có bình luận
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })}
+
+                {/* Load More */}
+                {hasMoreFeedbacks && (
+                  <TouchableOpacity
+                    style={styles.loadMoreFeedbacksButton}
+                    onPress={() => store && loadFeedbacks(store._id, false)}
+                    disabled={loadingFeedbacks}
+                  >
+                    {loadingFeedbacks ? (
+                      <ActivityIndicator size="small" color="#0F4D3A" />
+                    ) : (
+                      <Text style={styles.loadMoreFeedbacksText}>Xem thêm đánh giá</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
+          </View>
+        )}
       </Animated.ScrollView>
 
       {/* Bottom Floating Bar (Cart) */}
@@ -3043,6 +3356,11 @@ const styles = StyleSheet.create({
   animatedHeaderPlaceholder: {
     width: 40,
   },
+  animatedHeaderRight: {
+    width: 40,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
   scrollContent: {
     paddingTop: Dimensions.get('window').height * 0.3,
     // paddingBottom được tính động trong contentContainerStyle dựa trên safe area + tab bar + cart bar
@@ -3275,6 +3593,172 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  // Feedback Styles
+  feedbacksSection: {
+    backgroundColor: '#FFFFFF',
+    marginTop: 20,
+    padding: 20,
+    borderRadius: 12,
+  },
+  feedbacksHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  feedbacksHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  feedbacksTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  feedbacksStats: {
+    backgroundColor: '#F0FDF4',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  feedbacksStatsText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F4D3A',
+  },
+  ratingFilterContainer: {
+    marginBottom: 16,
+  },
+  ratingFilterContent: {
+    gap: 8,
+    paddingRight: 20,
+  },
+  ratingFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+    gap: 4,
+  },
+  ratingFilterButtonActive: {
+    backgroundColor: '#0F4D3A',
+  },
+  ratingFilterText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  ratingFilterTextActive: {
+    color: '#FFFFFF',
+  },
+  feedbacksLoading: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  feedbacksLoadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  feedbacksEmpty: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  feedbacksEmptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginTop: 16,
+  },
+  feedbacksEmptySubtext: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  feedbackCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  feedbackHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  feedbackCustomerInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  feedbackAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+  },
+  feedbackAvatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  feedbackCustomerText: {
+    flex: 1,
+  },
+  feedbackCustomerName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  feedbackDate: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  feedbackActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  feedbackActionButton: {
+    padding: 4,
+  },
+  feedbackRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 4,
+  },
+  feedbackRatingText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F4D3A',
+    marginLeft: 8,
+  },
+  feedbackComment: {
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 20,
+  },
+  loadMoreFeedbacksButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  loadMoreFeedbacksText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F4D3A',
   },
 });
 

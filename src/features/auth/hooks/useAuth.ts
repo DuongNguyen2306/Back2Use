@@ -234,41 +234,41 @@ export function useAuthCore() {
                 }
               } else {
                 // For customer and business, use user API
-                const { getCurrentUserProfile } = await import('../../../services/api/userService');
-                const userProfile = await getCurrentUserProfile(updatedState.accessToken);
-                const backendRole = userProfile?.role as Role;
-                
-                if (backendRole) {
-                  // Block admin access on mobile - clear auth if admin
-                  if (backendRole === 'admin') {
-                    console.log("❌ Admin role detected on hydration - clearing auth and blocking access");
-                    // Clear auth storage
-                    await clearAuthData();
-                    // Set state to unauthenticated
-                    setState({
-                      isAuthenticated: false,
-                      role: null,
-                      isHydrated: true,
-                      accessToken: null,
-                      refreshToken: null,
-                      tokenExpiry: null,
-                      user: null,
-                    });
-                    return; // Exit early, don't set authenticated state
-                  }
-                  
-                  // Always update role from backend to ensure we have the latest
-                  if (backendRole !== updatedState.role) {
-                    console.log(`🔄 Role updated on hydration! Stored: ${updatedState.role}, Backend: ${backendRole}`);
-                  } else {
-                    console.log(`✅ Role confirmed on hydration: ${backendRole}`);
-                  }
-                  // Always update role in storage and state to ensure consistency
-                  // ✅ Đảm bảo role là string
-                  await AsyncStorage.setItem(STORAGE_KEYS.ROLE, String(backendRole));
-                  updatedState.role = backendRole;
-                  updatedState.user = userProfile as User;
+              const { getCurrentUserProfile } = await import('../../../services/api/userService');
+              const userProfile = await getCurrentUserProfile(updatedState.accessToken);
+              const backendRole = userProfile?.role as Role;
+              
+              if (backendRole) {
+                // Block admin access on mobile - clear auth if admin
+                if (backendRole === 'admin') {
+                  console.log("❌ Admin role detected on hydration - clearing auth and blocking access");
+                  // Clear auth storage
+                  await clearAuthData();
+                  // Set state to unauthenticated
+                  setState({
+                    isAuthenticated: false,
+                    role: null,
+                    isHydrated: true,
+                    accessToken: null,
+                    refreshToken: null,
+                    tokenExpiry: null,
+                    user: null,
+                  });
+                  return; // Exit early, don't set authenticated state
                 }
+                
+                // Always update role from backend to ensure we have the latest
+                if (backendRole !== updatedState.role) {
+                  console.log(`🔄 Role updated on hydration! Stored: ${updatedState.role}, Backend: ${backendRole}`);
+                } else {
+                  console.log(`✅ Role confirmed on hydration: ${backendRole}`);
+                }
+                // Always update role in storage and state to ensure consistency
+                // ✅ Đảm bảo role là string
+                await AsyncStorage.setItem(STORAGE_KEYS.ROLE, String(backendRole));
+                updatedState.role = backendRole;
+                updatedState.user = userProfile as User;
+              }
               }
             } catch (error: any) {
               // Handle 403 error for staff role
@@ -298,7 +298,7 @@ export function useAuthCore() {
                   console.error("❌ Error loading staff profile on hydration:", staffError);
                 }
               } else {
-                console.error("❌ Error refreshing role on hydration:", error);
+              console.error("❌ Error refreshing role on hydration:", error);
               }
               
               // Continue with stored role if refresh fails
@@ -467,8 +467,8 @@ export function useAuthCore() {
               // Continue with role from login response
             }
           } else {
-            console.error("❌ Error fetching user profile:", error);
-            // Continue with role from login response
+          console.error("❌ Error fetching user profile:", error);
+          // Continue with role from login response
           }
         }
       }
@@ -713,17 +713,17 @@ export function useAuthCore() {
           return { role: 'staff' as Role, user: userProfile };
         } else {
           // For customer and business, use user API
-          const { getCurrentUserProfile } = await import('../../../services/api/userService');
-          const userProfile = await getCurrentUserProfile(state.accessToken);
-          const newRole = userProfile?.role as Role;
-          
-          if (newRole && newRole !== state.role) {
-            console.log(`🔄 Role changed from ${state.role} to ${newRole}`);
-            await updateRole(newRole);
-            return { role: newRole, user: userProfile };
-          }
-          
+        const { getCurrentUserProfile } = await import('../../../services/api/userService');
+        const userProfile = await getCurrentUserProfile(state.accessToken);
+        const newRole = userProfile?.role as Role;
+        
+        if (newRole && newRole !== state.role) {
+          console.log(`🔄 Role changed from ${state.role} to ${newRole}`);
+          await updateRole(newRole);
           return { role: newRole, user: userProfile };
+        }
+        
+        return { role: newRole, user: userProfile };
         }
       } catch (error: any) {
         // Handle 403 error for staff role
@@ -751,7 +751,7 @@ export function useAuthCore() {
             console.error('❌ Error fetching staff profile:', staffError);
           }
         } else {
-          console.error('❌ Error fetching user profile:', error);
+        console.error('❌ Error fetching user profile:', error);
         }
       }
 

@@ -1,17 +1,20 @@
 import { borrowTransactionsApi } from "@/services/api/borrowTransactionService";
+import { Feedback, feedbackApi } from "@/services/api/feedbackService";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Modal,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 interface TransactionDetail {
@@ -93,6 +96,12 @@ export default function TransactionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [transaction, setTransaction] = useState<TransactionDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [existingFeedback, setExistingFeedback] = useState<Feedback | null>(null);
+  const [loadingFeedback, setLoadingFeedback] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -107,6 +116,8 @@ export default function TransactionDetailScreen() {
       
       if (response.statusCode === 200 && response.data) {
         setTransaction(response.data);
+        // Check if feedback exists for this transaction
+        await checkExistingFeedback();
       } else {
         Alert.alert('Error', 'Failed to load transaction detail');
         router.back();
@@ -117,6 +128,67 @@ export default function TransactionDetailScreen() {
       router.back();
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkExistingFeedback = async () => {
+    if (!id) return;
+    try {
+      setLoadingFeedback(true);
+      const response = await feedbackApi.getMy({ page: 1, limit: 100 });
+      const feedbacks = Array.isArray(response.data) 
+        ? response.data 
+        : (response.data as any)?.items || [];
+      
+      const feedback = feedbacks.find((f: Feedback) => f.borrowTransactionId === id);
+      if (feedback) {
+        setExistingFeedback(feedback);
+        setRating(feedback.rating);
+        setComment(feedback.comment || '');
+      }
+    } catch (error) {
+      console.error('Error checking existing feedback:', error);
+      // Silently fail - user can still create feedback
+    } finally {
+      setLoadingFeedback(false);
+    }
+  };
+
+  const handleSubmitFeedback = async () => {
+    if (!transaction || !id) return;
+    
+    if (rating < 1 || rating > 5) {
+      Alert.alert('Error', 'Please select a rating from 1 to 5');
+      return;
+    }
+
+    try {
+      setSubmittingFeedback(true);
+      
+      if (existingFeedback) {
+        // Update existing feedback
+        await feedbackApi.update(existingFeedback._id, {
+          rating,
+          comment: comment.trim() || undefined,
+        });
+        Alert.alert('Success', 'Feedback updated successfully!');
+      } else {
+        // Create new feedback
+        await feedbackApi.create({
+          borrowTransactionId: id,
+          rating,
+          comment: comment.trim() || undefined,
+        });
+        Alert.alert('Success', 'Thank you for your feedback!');
+      }
+      
+      setShowFeedbackModal(false);
+      await checkExistingFeedback(); // Reload feedback
+    } catch (error: any) {
+      console.error('Error submitting feedback:', error);
+      Alert.alert('Error', error.message || 'Failed to submit feedback. Please try again.');
+    } finally {
+      setSubmittingFeedback(false);
     }
   };
 
@@ -424,7 +496,152 @@ export default function TransactionDetailScreen() {
             <Image source={{ uri: transaction.productId.qrCode }} style={styles.qrCodeImage} />
           </View>
         )}
+
+        {/* Feedback Section - Show for returned transactions */}
+        {(transaction.status === 'returned' || transaction.status === 'completed') && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="star-outline" size={24} color="#0F4D3A" />
+              <Text style={styles.cardTitle}>Feedback</Text>
+            </View>
+            
+            {existingFeedback ? (
+              <View style={styles.feedbackCard}>
+                <View style={styles.feedbackHeader}>
+                  <View style={styles.ratingDisplay}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Ionicons
+                        key={star}
+                        name={star <= existingFeedback.rating ? "star" : "star-outline"}
+                        size={24}
+                        color="#FCD34D"
+                      />
+                    ))}
+                  </View>
+                  <Text style={styles.ratingText}>{existingFeedback.rating}/5</Text>
+                </View>
+                {existingFeedback.comment && (
+                  <Text style={styles.feedbackComment}>{existingFeedback.comment}</Text>
+                )}
+                <Text style={styles.feedbackDate}>
+                  {new Date(existingFeedback.createdAt).toLocaleDateString('en-US')}
+                </Text>
+                <TouchableOpacity
+                  style={styles.editFeedbackButton}
+                  onPress={() => setShowFeedbackModal(true)}
+                >
+                  <Ionicons name="create-outline" size={18} color="#0F4D3A" />
+                  <Text style={styles.editFeedbackButtonText}>Edit Feedback</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.feedbackButton}
+                onPress={() => setShowFeedbackModal(true)}
+              >
+                <Ionicons name="star-outline" size={20} color="#FFFFFF" />
+                <Text style={styles.feedbackButtonText}>Leave Feedback</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </ScrollView>
+
+      {/* Feedback Modal */}
+      <Modal
+        visible={showFeedbackModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowFeedbackModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {existingFeedback ? 'Edit Feedback' : 'Leave Feedback'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowFeedbackModal(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              {/* Business Info */}
+              <View style={styles.businessInfoCard}>
+                {transaction.businessId?.businessLogoUrl && (
+                  <Image
+                    source={{ uri: transaction.businessId.businessLogoUrl }}
+                    style={styles.businessLogoSmall}
+                  />
+                )}
+                <View style={styles.businessInfoText}>
+                  <Text style={styles.businessNameText}>{businessName}</Text>
+                  <Text style={styles.businessTypeText}>{transaction.businessId?.businessType || 'Business'}</Text>
+                </View>
+              </View>
+
+              {/* Rating */}
+              <View style={styles.ratingSection}>
+                <Text style={styles.ratingLabel}>Rating</Text>
+                <View style={styles.ratingContainer}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <TouchableOpacity
+                      key={star}
+                      onPress={() => setRating(star)}
+                      style={styles.starButton}
+                    >
+                      <Ionicons
+                        name={star <= rating ? "star" : "star-outline"}
+                        size={40}
+                        color="#FCD34D"
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={styles.ratingText}>{rating}/5</Text>
+              </View>
+
+              {/* Comment */}
+              <View style={styles.commentSection}>
+                <Text style={styles.commentLabel}>Comment (Optional)</Text>
+                <TextInput
+                  style={styles.commentInput}
+                  value={comment}
+                  onChangeText={setComment}
+                  placeholder="Share your experience..."
+                  placeholderTextColor="#9CA3AF"
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+              </View>
+            </ScrollView>
+
+            {/* Submit Button */}
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.submitButton, submittingFeedback && styles.submitButtonDisabled]}
+                onPress={handleSubmitFeedback}
+                disabled={submittingFeedback}
+              >
+                {submittingFeedback ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                    <Text style={styles.submitButtonText}>
+                      {existingFeedback ? 'Update Feedback' : 'Submit Feedback'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -578,6 +795,193 @@ const styles = StyleSheet.create({
     height: 300,
     borderRadius: 8,
     resizeMode: 'contain',
+  },
+  // Feedback Styles
+  feedbackCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 12,
+  },
+  feedbackHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  ratingDisplay: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  ratingText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0F4D3A',
+  },
+  feedbackComment: {
+    fontSize: 14,
+    color: '#374151',
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  feedbackDate: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 12,
+  },
+  editFeedbackButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E6F4EA',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 8,
+  },
+  editFeedbackButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F4D3A',
+  },
+  feedbackButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0F4D3A',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginTop: 12,
+    gap: 8,
+  },
+  feedbackButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    width: '90%',
+    maxHeight: '85%',
+    padding: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBody: {
+    maxHeight: '70%',
+  },
+  modalFooter: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  businessInfoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  businessLogoSmall: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 12,
+  },
+  businessInfoText: {
+    flex: 1,
+  },
+  businessNameText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  businessTypeText: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  ratingSection: {
+    marginBottom: 24,
+  },
+  ratingLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 12,
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  starButton: {
+    padding: 4,
+  },
+  commentSection: {
+    marginBottom: 20,
+  },
+  commentLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 12,
+  },
+  commentInput: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 14,
+    color: '#1F2937',
+    minHeight: 100,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  submitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0F4D3A',
+    paddingVertical: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
+  },
+  submitButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });
 

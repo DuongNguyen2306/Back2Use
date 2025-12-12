@@ -103,12 +103,15 @@ export default function CustomerDashboard() {
           // Don't log network errors as errors - they're expected when offline
           const isNetworkError = error?.message?.toLowerCase().includes('network') ||
                                  error?.message?.toLowerCase().includes('timeout') ||
-                                 error?.message?.toLowerCase().includes('connection');
+                                 error?.message?.toLowerCase().includes('connection') ||
+                                 error?.message?.toLowerCase().includes('application failed to respond') ||
+                                 error?.message?.toLowerCase().includes('failed to fetch');
           
           if (!isNoTokenError && !isNetworkError) {
             console.error('Error loading user data:', error);
           } else if (isNetworkError) {
-            console.warn('⚠️ Network error loading user data (using default values):', error.message);
+            // Silently handle - don't log to UI
+            return;
           }
           // Continue with default user data
         }
@@ -226,10 +229,10 @@ export default function CustomerDashboard() {
         scanLock.current = false;
         setShowQRScanner(true);
       } else {
-        Alert.alert("Quyền truy cập camera", "Vui lòng cấp quyền truy cập camera để quét mã QR", [{ text: "OK" }]);
+        Alert.alert("Camera Permission", "Please grant camera permission to scan QR codes", [{ text: "OK" }]);
       }
     } catch {
-      Alert.alert("Lỗi", "Không thể mở camera. Vui lòng thử lại.");
+      Alert.alert("Error", "Unable to open camera. Please try again.");
     }
   };
 
@@ -284,8 +287,8 @@ export default function CustomerDashboard() {
       if (borrowingTransaction) {
         console.log('✅ Found borrowing transaction - product is currently borrowed');
         Alert.alert(
-          'Sản phẩm đang được mượn',
-          'Sản phẩm này đang được mượn. Vui lòng trả sản phẩm tại cửa hàng.',
+          'Product Currently Borrowed',
+          'This product is currently being borrowed. Please return the product at the store.',
           [{ text: 'OK' }]
         );
       } else {
@@ -293,8 +296,8 @@ export default function CustomerDashboard() {
         // Show message that product is being borrowed
         console.log('⚠️ Product not found - likely being borrowed');
         Alert.alert(
-          'Sản phẩm đang được mượn',
-          'Sản phẩm này đang được mượn hoặc không có sẵn.',
+          'Product Currently Borrowed',
+          'This product is currently being borrowed or not available.',
           [{ text: 'OK' }]
         );
       }
@@ -674,14 +677,14 @@ export default function CustomerDashboard() {
 
               if (!businessId) {
                 console.error('❌ Cannot extract businessId from product:', JSON.stringify(product, null, 2));
-                throw new Error('Không tìm thấy thông tin cửa hàng. Vui lòng thử lại hoặc liên hệ hỗ trợ.');
+                throw new Error('Store information not found. Please try again or contact support.');
               }
 
               // Lấy productId
               const productId = product._id || product.id;
               if (!productId) {
                 console.error('❌ Cannot find productId in product:', product);
-                throw new Error('Không tìm thấy ID sản phẩm. Vui lòng thử lại.');
+                throw new Error('Product ID not found. Please try again.');
               }
 
               // Validate depositValue before sending
@@ -692,7 +695,7 @@ export default function CustomerDashboard() {
                 });
                 Alert.alert(
                   'Error',
-                  'Sản phẩm này chưa có thông tin tiền cọc. Vui lòng liên hệ hỗ trợ hoặc thử sản phẩm khác.'
+                  'This product does not have deposit information. Please contact support or try another product.'
                 );
                 setBorrowing(false);
                 return;

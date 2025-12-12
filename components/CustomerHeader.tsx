@@ -1,17 +1,17 @@
 import { User } from '@/types/auth.types';
-import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React from 'react';
 import {
-  Dimensions,
-  Image,
-  SafeAreaView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    Image,
+    SafeAreaView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
+import NotificationBadge from './NotificationBadge';
 
 const { height: screenHeight } = Dimensions.get('window');
 
@@ -69,14 +69,7 @@ export default function CustomerHeader({
             {rightAction}
             
             {/* Notifications Button */}
-            {showNotifications && (
-              <TouchableOpacity 
-                style={styles.notificationButton}
-                onPress={() => router.push('/(protected)/customer/notifications')}
-              >
-                <Ionicons name="notifications-outline" size={24} color="#FFFFFF" />
-              </TouchableOpacity>
-            )}
+            {showNotifications && <NotificationBadge iconColor="#FFFFFF" />}
             
             {/* Avatar Button - Navigate to Menu/Profile */}
             {showProfile && (

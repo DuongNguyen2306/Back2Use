@@ -1,10 +1,10 @@
+import { getRoleFromToken } from '@/services/api/client';
 import { getCurrentUserProfileWithAutoRefresh, leaderboardApi } from '@/services/api/userService';
 import { voucherApi } from '@/services/api/voucherService';
-import { getRoleFromToken } from '@/services/api/client';
 import { User } from '@/types/auth.types';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -657,7 +657,7 @@ export default function Rewards() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <SimpleHeader title="Rewards" />
+        <SimpleHeader title="Rewards" showNotifications={true} />
       </View>
     );
   }

@@ -135,6 +135,13 @@ export const API_ENDPOINTS = {
     GET_BY_CODE_ID: '/business-vouchers/voucher-codes', // GET /business-vouchers/voucher-codes/{voucherCodeId}
     USE_VOUCHER_CODE: '/business-vouchers/voucher-codes/use', // POST /business-vouchers/voucher-codes/use
   },
+  FEEDBACK: {
+    CREATE: '/feedback', // POST /feedback
+    GET_MY: '/feedback/my-feedbacks', // GET /feedback/my-feedbacks?page=&limit=
+    GET_BY_BUSINESS: '/feedback/business', // GET /feedback/business/{businessId}?page=&limit=&rating=
+    UPDATE: '/feedback', // PATCH /feedback/{id}
+    DELETE: '/feedback', // DELETE /feedback/{id}
+  },
 } as const;
 
 // Request timeout (in milliseconds)

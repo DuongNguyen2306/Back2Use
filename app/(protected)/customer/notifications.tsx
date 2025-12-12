@@ -1,90 +1,66 @@
 "use client"
 
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  RefreshControl,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import SimpleHeader from "../../../components/SimpleHeader";
 import { useAuth } from "../../../context/AuthProvider";
-import { notificationApi, Notification } from "../../../src/services/api/notificationService";
+import { useNotifications } from "../../../context/NotificationProvider";
+import { Notification } from "../../../src/services/api/notificationService";
 
 export default function CustomerNotificationsScreen() {
   const { top, bottom } = useSafeAreaInsets();
   const { state: authState } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  
+  // ✅ FIX: Sử dụng context thay vì tự quản lý state
+  const { 
+    notifications: contextNotifications, 
+    unreadCount, 
+    loading: contextLoading,
+    refreshNotifications,
+    markAsRead,
+    markAllAsRead,
+    deleteNotification
+  } = useNotifications();
+  
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadNotifications();
-  }, [filter]);
-
-  const loadNotifications = async (showLoading = true) => {
-    try {
-      if (showLoading) setLoading(true);
-      
-      // Get current user ID from auth state
-      const userId = authState.userId || authState.user?.id;
-      if (!userId) {
-        console.warn('No user ID found');
-        setNotifications([]);
-        return;
-      }
-
-      const params: any = {
-        page: 1,
-        limit: 100,
-      };
-      
-      if (filter === 'unread') {
-        params.isRead = false;
-      }
-
-      // Use getByReceiver for customer
-      const response = await notificationApi.getByReceiver(userId, params);
-      
-      if (response.statusCode === 200) {
-        const notificationData = response.data?.data || response.data || [];
-        setNotifications(Array.isArray(notificationData) ? notificationData : []);
-      } else {
-        setNotifications([]);
-      }
-    } catch (error: any) {
-      console.error('Error loading notifications:', error);
-      setNotifications([]);
-      if (error?.response?.status && error.response.status >= 500) {
-        Alert.alert('Error', 'Failed to load notifications');
-      }
-    } finally {
-      if (showLoading) setLoading(false);
-      setRefreshing(false);
+  // Filter notifications based on filter state
+  const filteredNotifications = React.useMemo(() => {
+    if (filter === 'unread') {
+      return contextNotifications.filter(n => !n.isRead);
     }
-  };
+    return contextNotifications;
+  }, [contextNotifications, filter]);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('📬 Notifications Screen: Context notifications count:', contextNotifications.length);
+    console.log('📬 Notifications Screen: Filtered count:', filteredNotifications.length);
+    console.log('📬 Notifications Screen: Unread count:', unreadCount);
+    console.log('📬 Notifications Screen: Loading:', contextLoading);
+  }, [contextNotifications, filteredNotifications, unreadCount, contextLoading]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadNotifications(false);
+    await refreshNotifications();
+    setRefreshing(false);
   };
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {
-      await notificationApi.markAsRead(notificationId);
-      // Update local state
-      setNotifications(prev =>
-        prev.map(n => n._id === notificationId ? { ...n, isRead: true } : n)
-      );
+      await markAsRead(notificationId);
     } catch (error: any) {
       console.error('Error marking notification as read:', error);
       Alert.alert('Error', 'Failed to mark notification as read');
@@ -102,8 +78,7 @@ export default function CustomerNotificationsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await notificationApi.delete(notificationId);
-              setNotifications(prev => prev.filter(n => n._id !== notificationId));
+              await deleteNotification(notificationId);
             } catch (error: any) {
               console.error('Error deleting notification:', error);
               Alert.alert('Error', 'Failed to delete notification');
@@ -116,9 +91,7 @@ export default function CustomerNotificationsScreen() {
 
   const handleMarkAllAsRead = async () => {
     try {
-      const unreadNotifications = notifications.filter(n => !n.isRead);
-      await Promise.all(unreadNotifications.map(n => notificationApi.markAsRead(n._id)));
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      await markAllAsRead();
       Alert.alert('Success', 'All notifications marked as read');
     } catch (error: any) {
       console.error('Error marking all as read:', error);
@@ -162,8 +135,6 @@ export default function CustomerNotificationsScreen() {
     );
   };
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
-
   return (
     <View style={[styles.container, { paddingBottom: bottom }]}>
       <SimpleHeader 
@@ -201,11 +172,11 @@ export default function CustomerNotificationsScreen() {
       </View>
 
       {/* Notifications List */}
-      {loading ? (
+      {contextLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#0F4D3A" />
         </View>
-      ) : notifications.length === 0 ? (
+      ) : filteredNotifications.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="notifications-off-outline" size={64} color="#D1D5DB" />
           <Text style={styles.emptyText}>
@@ -219,7 +190,7 @@ export default function CustomerNotificationsScreen() {
         </View>
       ) : (
         <FlatList
-          data={notifications}
+          data={filteredNotifications}
           renderItem={renderNotificationItem}
           keyExtractor={(item) => item._id}
           contentContainerStyle={[styles.listContent, { paddingBottom: bottom + 20 }]}
