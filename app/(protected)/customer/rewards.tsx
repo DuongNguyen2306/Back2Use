@@ -238,8 +238,8 @@ export default function Rewards() {
         if (role !== 'customer' && auth.state.role !== 'customer') {
           console.error('❌ Invalid role for customer vouchers:', { tokenRole: role, authRole: auth.state.role });
           Alert.alert(
-            'Lỗi xác thực',
-            'Bạn cần đăng nhập với tài khoản customer để xem voucher. Vui lòng đăng xuất và đăng nhập lại.',
+            'Authentication Error',
+            'You need to log in with a customer account to view vouchers. Please log out and log in again.',
             [{ text: 'OK' }]
           );
           return;
@@ -324,8 +324,8 @@ export default function Rewards() {
               
               if (role !== 'customer') {
                 Alert.alert(
-                  'Lỗi xác thực',
-                  `Token của bạn có role "${role}" nhưng cần role "customer". Vui lòng đăng xuất và đăng nhập lại.`,
+                  'Authentication Error',
+                  `Your token has role "${role}" but requires role "customer". Please log out and log in again.`,
                   [{ text: 'OK' }]
                 );
               }
@@ -407,8 +407,8 @@ export default function Rewards() {
               
               if (role !== 'customer') {
                 Alert.alert(
-                  'Lỗi xác thực',
-                  `Token của bạn có role "${role}" nhưng cần role "customer". Vui lòng đăng xuất và đăng nhập lại.`,
+                  'Authentication Error',
+                  `Your token has role "${role}" but requires role "customer". Please log out and log in again.`,
                   [{ text: 'OK' }]
                 );
               }
@@ -464,16 +464,16 @@ export default function Rewards() {
            response.message.toLowerCase().includes('thành công') ||
            response.message.toLowerCase().includes('redeem'))
           ? response.message
-          : 'Bạn đã nhận voucher thành công!';
-        Alert.alert('Thành công', successMessage);
+          : 'You have successfully redeemed the voucher!';
+        Alert.alert('Success', successMessage);
       } else {
         // Only show error if statusCode is not 200
-        Alert.alert('Lỗi', response.message || 'Không thể nhận voucher. Vui lòng thử lại.');
+        Alert.alert('Error', response.message || 'Failed to redeem voucher. Please try again.');
       }
     } catch (error: any) {
       // Show user-friendly error message
-      const errorMessage = error?.response?.data?.message || error?.message || 'Không thể nhận voucher. Vui lòng thử lại.';
-      Alert.alert('Lỗi', errorMessage);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to redeem voucher. Please try again.';
+      Alert.alert('Error', errorMessage);
     } finally {
       setRedeemingId(null);
     }
@@ -505,11 +505,11 @@ export default function Rewards() {
             </View>
             
             {/* Description */}
-            <Text style={styles.lockedDescription}>Voucher đang chờ</Text>
+            <Text style={styles.lockedDescription}>Voucher Pending</Text>
             
             {/* Status Text */}
             <View style={styles.lockedStatusBadge}>
-              <Text style={styles.lockedStatusText}>Chưa kích hoạt</Text>
+              <Text style={styles.lockedStatusText}>Not Activated</Text>
             </View>
             
             {/* Progress Bar */}
@@ -526,7 +526,7 @@ export default function Rewards() {
               disabled={true}
             >
               <Ionicons name="lock-closed" size={16} color="rgba(255, 255, 255, 0.95)" />
-              <Text style={styles.unlockButtonText}>Mở khóa</Text>
+              <Text style={styles.unlockButtonText}>Unlock</Text>
             </TouchableOpacity>
           </View>
         </BlurView>
@@ -542,9 +542,9 @@ export default function Rewards() {
     const canRedeem = isAvailable && isActive && !voucher.isUsed;
     
     const getStatusText = () => {
-      if (isExpired) return 'Hết hạn';
-      if (voucher.isUsed) return 'Đã sử dụng';
-      return null; // Không hiện "Chưa kích hoạt"
+      if (isExpired) return 'Expired';
+      if (voucher.isUsed) return 'Used';
+      return null; // Don't show "Not Activated"
     };
 
     const getStatusColor = () => {
@@ -611,7 +611,7 @@ export default function Rewards() {
           </View>
           <View style={styles.voucherFooter}>
               <Text style={[styles.validUntil, voucher.isUsed && styles.usedVoucherText]}>
-                HSD: {voucher.validUntil}
+                Valid until: {voucher.validUntil}
             </Text>
             {voucher.isUsed ? (
               <Text style={styles.usedLabel}>{t('rewards').used}</Text>
@@ -627,10 +627,10 @@ export default function Rewards() {
                       handleRedeemVoucher(voucher.voucherId);
                     } else if (!isActive) {
                       Alert.alert(
-                        'Thông báo',
+                        'Notice',
                         isInactive 
-                          ? 'Voucher này chưa được kích hoạt. Vui lòng thử lại sau.' 
-                          : 'Voucher này đã hết hạn.'
+                          ? 'This voucher has not been activated yet. Please try again later.' 
+                          : 'This voucher has expired.'
                       );
                     }
                   }}
@@ -640,12 +640,12 @@ export default function Rewards() {
                     <ActivityIndicator size="small" color="#0F4D3A" />
                   ) : (
                     <Text style={styles.useButtonText}>
-                      {isInactive ? 'Chưa phát hành' : 'Nhận ngay'}
+                      {isInactive ? 'Not Available' : 'Redeem Now'}
                     </Text>
                   )}
               </TouchableOpacity>
               ) : (
-                <Text style={styles.ownedLabel}>Đã nhận</Text>
+                <Text style={styles.ownedLabel}>Redeemed</Text>
             )}
           </View>
         </View>
@@ -752,7 +752,7 @@ export default function Rewards() {
         {loadingVouchers ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#0F4D3A" />
-            <Text style={styles.loadingText}>Đang tải...</Text>
+            <Text style={styles.loadingText}>Loading...</Text>
           </View>
         ) : (
           <>
@@ -763,8 +763,8 @@ export default function Rewards() {
                 ) : (
                   <View style={styles.emptyState}>
                     <Ionicons name="ticket-outline" size={48} color="#9CA3AF" />
-                    <Text style={styles.emptyStateText}>Không có voucher nào</Text>
-                    <Text style={styles.emptyStateSubtext}>Vui lòng thử lại sau</Text>
+                    <Text style={styles.emptyStateText}>No vouchers available</Text>
+                    <Text style={styles.emptyStateSubtext}>Please try again later</Text>
                   </View>
                 )}
           </View>
@@ -777,8 +777,8 @@ export default function Rewards() {
                 ) : (
                   <View style={styles.emptyState}>
                     <Ionicons name="ticket-outline" size={48} color="#9CA3AF" />
-                    <Text style={styles.emptyStateText}>Bạn chưa có voucher nào</Text>
-                    <Text style={styles.emptyStateSubtext}>Nhận voucher từ tab "Vouchers"</Text>
+                    <Text style={styles.emptyStateText}>You don't have any vouchers yet</Text>
+                    <Text style={styles.emptyStateSubtext}>Redeem vouchers from the "Vouchers" tab</Text>
                   </View>
                 )}
           </View>
@@ -795,15 +795,15 @@ export default function Rewards() {
                 <View style={styles.historyContent}>
                   <Text style={styles.historyTitle}>{voucher.title} - {voucher.discount}</Text>
                   <Text style={styles.historyDescription}>{voucher.description}</Text>
-                        <Text style={styles.historyDate}>Mã: {voucher.code}</Text>
+                        <Text style={styles.historyDate}>Code: {voucher.code}</Text>
                 </View>
               </View>
                   ))
                 ) : (
                   <View style={styles.emptyState}>
                     <Ionicons name="time-outline" size={48} color="#9CA3AF" />
-                    <Text style={styles.emptyStateText}>Chưa có lịch sử</Text>
-                    <Text style={styles.emptyStateSubtext}>Các voucher đã sử dụng sẽ hiển thị ở đây</Text>
+                    <Text style={styles.emptyStateText}>No history yet</Text>
+                    <Text style={styles.emptyStateSubtext}>Used vouchers will be displayed here</Text>
           </View>
                 )}
               </View>

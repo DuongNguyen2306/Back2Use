@@ -218,7 +218,7 @@ export default function BusinessDashboard() {
       }
     }
   }, [authState.isHydrated, authState.accessToken, authState.isAuthenticated, authState.role, loading, businessProfile]);
-
+  
   // Load staff overview data (simple stats only)
   useEffect(() => {
     const loadStaffOverview = async () => {
@@ -474,7 +474,7 @@ export default function BusinessDashboard() {
             {authState.role !== 'staff' as any && (
               <View style={styles.overviewSection}>
                 <Text style={styles.sectionTitle}>Overview</Text>
-                <View style={styles.kpiGrid}>
+            <View style={styles.kpiGrid}>
                 {/* CO2 Reduced */}
                 <View style={styles.overviewCard}>
                   <View style={[styles.overviewCardContent, { backgroundColor: "#ECFDF5" }]}>
@@ -589,29 +589,29 @@ export default function BusinessDashboard() {
                       <Text style={styles.kpiLabel}>Vouchers</Text>
                     </View>
                   </View>
-                  <View style={styles.kpiCard}>
-                    <View style={[styles.kpiGradient, { backgroundColor: "#E8F5E9" }]}>
-                      <View style={[styles.kpiIconContainer, { backgroundColor: "#C8E6C9" }]}>
+              <View style={styles.kpiCard}>
+                <View style={[styles.kpiGradient, { backgroundColor: "#E8F5E9" }]}>
+                  <View style={[styles.kpiIconContainer, { backgroundColor: "#C8E6C9" }]}>
                         <Ionicons name="folder-outline" size={28} color="#00704A" />
-                      </View>
+                  </View>
                       <Text style={[styles.kpiValue, { color: "#00704A" }]}>
                         {String(staffOverviewData.productGroups || 0)}
                       </Text>
                       <Text style={styles.kpiLabel}>Product Groups</Text>
-                    </View>
-                  </View>
-                  <View style={styles.kpiCard}>
-                    <View style={[styles.kpiGradient, { backgroundColor: "#FFF8E1" }]}>
-                      <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
+                </View>
+              </View>
+              <View style={styles.kpiCard}>
+                <View style={[styles.kpiGradient, { backgroundColor: "#FFF8E1" }]}>
+                  <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
                         <Ionicons name="cube-outline" size={28} color="#F57C00" />
-                      </View>
+                  </View>
                       <Text style={[styles.kpiValue, { color: "#F57C00" }]}>
                         {String(staffOverviewData.products || 0)}
                       </Text>
                       <Text style={styles.kpiLabel}>Products</Text>
-                    </View>
-                  </View>
-                  
+                </View>
+              </View>
+
                   {/* Product Condition Stats */}
                   {staffOverviewData.productConditionStats && (
                     <>
@@ -626,17 +626,17 @@ export default function BusinessDashboard() {
                           <Text style={styles.kpiLabel}>Good</Text>
                         </View>
                       </View>
-                      <View style={styles.kpiCard}>
-                        <View style={[styles.kpiGradient, { backgroundColor: "#FFEBEE" }]}>
-                          <View style={[styles.kpiIconContainer, { backgroundColor: "#FFCDD2" }]}>
+              <View style={styles.kpiCard}>
+                <View style={[styles.kpiGradient, { backgroundColor: "#FFEBEE" }]}>
+                  <View style={[styles.kpiIconContainer, { backgroundColor: "#FFCDD2" }]}>
                             <Ionicons name="warning" size={28} color="#D32F2F" />
-                          </View>
+                  </View>
                           <Text style={[styles.kpiValue, { color: "#D32F2F" }]}>
                             {String(staffOverviewData.productConditionStats.damaged || 0)}
                           </Text>
                           <Text style={styles.kpiLabel}>Damaged</Text>
-                        </View>
-                      </View>
+                </View>
+              </View>
                       <View style={styles.kpiCard}>
                         <View style={[styles.kpiGradient, { backgroundColor: "#FFF8E1" }]}>
                           <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
@@ -648,20 +648,20 @@ export default function BusinessDashboard() {
                           <Text style={styles.kpiLabel}>Expired</Text>
                         </View>
                       </View>
-                      <View style={styles.kpiCard}>
-                        <View style={[styles.kpiGradient, { backgroundColor: "#F5F5F5" }]}>
-                          <View style={[styles.kpiIconContainer, { backgroundColor: "#E0E0E0" }]}>
-                            <Ionicons name="close-circle" size={28} color="#666666" />
-                          </View>
+              <View style={styles.kpiCard}>
+                <View style={[styles.kpiGradient, { backgroundColor: "#F5F5F5" }]}>
+                  <View style={[styles.kpiIconContainer, { backgroundColor: "#E0E0E0" }]}>
+                    <Ionicons name="close-circle" size={28} color="#666666" />
+                  </View>
                           <Text style={[styles.kpiValue, { color: "#666666" }]}>
                             {String(staffOverviewData.productConditionStats.lost || 0)}
                           </Text>
                           <Text style={styles.kpiLabel}>Lost</Text>
-                        </View>
-                      </View>
+                </View>
+              </View>
                     </>
                   )}
-                </View>
+            </View>
               </View>
             )}
 
@@ -687,7 +687,7 @@ export default function BusinessDashboard() {
                           ) : (
                             <View style={[styles.productThumbnail, styles.productThumbnailPlaceholder]}>
                               <Ionicons name="cube-outline" size={24} color="#9CA3AF" />
-                            </View>
+                  </View>
                           )}
                           <View style={styles.productNameContainer}>
                             <Text style={styles.productName} numberOfLines={1}>
@@ -698,7 +698,7 @@ export default function BusinessDashboard() {
                                 {item.size.sizeName}
                               </Text>
                             )}
-                          </View>
+                </View>
                         </View>
                         <View style={styles.topBorrowedRight}>
                           <ProgressBar
@@ -788,14 +788,14 @@ export default function BusinessDashboard() {
                           <View style={styles.productNameContainer}>
                             <Text style={styles.productName} numberOfLines={1}>
                               {productName}
-                            </Text>
+                      </Text>
                             {item.size?.sizeName && (
                               <Text style={styles.productSize} numberOfLines={1}>
                                 {item.size.sizeName}
                               </Text>
                             )}
-                          </View>
-                        </View>
+                    </View>
+                  </View>
                         <View style={styles.topBorrowedRight}>
                           <ProgressBar
                             value={reuseCount}
@@ -879,16 +879,16 @@ export default function BusinessDashboard() {
                           ? overviewData.productConditionStats.good
                           : stats.availableItems ?? 0
                       )}
-                    </Text>
+                      </Text>
                     <Text style={styles.kpiLabel}>Available</Text>
+                    </View>
                   </View>
-                </View>
 
                 <View style={styles.kpiCard}>
                   <View style={[styles.kpiGradient, { backgroundColor: "#FFF8E1" }]}>
                     <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
                       <Ionicons name="people" size={28} color="#F57C00" />
-                    </View>
+                </View>
                     <Text style={[styles.kpiValue, { color: "#F57C00" }]}>
                       {String(
                         overviewData?.borrowTransactions !== undefined
@@ -897,7 +897,7 @@ export default function BusinessDashboard() {
                       )}
                     </Text>
                     <Text style={styles.kpiLabel}>Borrowed</Text>
-                  </View>
+              </View>
                 </View>
 
                 <View style={styles.kpiCard}>

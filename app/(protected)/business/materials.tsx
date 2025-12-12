@@ -3,17 +3,17 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Modal,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Modal,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
 import type { CreateProductGroupRequest, CreateProductSizeRequest, CreateProductsRequest, ProductSize } from '../../../src/services/api/businessService';
@@ -173,8 +173,25 @@ export default function InventoryManagementScreen() {
       return sizesArray; // ← trả về để dùng ở nơi khác nếu cần
     } catch (error: any) {
       console.error('❌ Error loading sizes:', error);
-      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to load product sizes';
-      Alert.alert('Error', errorMessage);
+      const errorMessage = error?.response?.data?.message || error?.message || '';
+      
+      // Silently handle subscription errors - don't show alert
+      const isSubscriptionError = errorMessage.toLowerCase().includes('subscription') || 
+                                  errorMessage.toLowerCase().includes('no active subscription') ||
+                                  errorMessage.toLowerCase().includes('purchase a plan');
+      
+      if (isSubscriptionError) {
+        // Just set empty array, don't show error to user
+        // The UI will show "No sizes found" which is more user-friendly
+        console.log('⚠️ Subscription error - silently handled');
+        setGroupSizes([]);
+        return [];
+      }
+      
+      // For other errors, show a user-friendly message
+      if (errorMessage) {
+        Alert.alert('Thông báo', 'Không thể tải danh sách kích thước sản phẩm. Vui lòng thử lại sau.');
+      }
       setGroupSizes([]);
       return []; // Trả về mảng rỗng nếu có lỗi
     } finally {

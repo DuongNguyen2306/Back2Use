@@ -20,6 +20,7 @@ import { useToast } from '../../../hooks/use-toast';
 import { authApi, SubscriptionPackage } from '../../../lib/api';
 import { businessesApi, subscriptionsApi } from '../../../src/services/api/businessService';
 import { staffApi, StaffProfile } from '../../../src/services/api/staffService';
+import { Role, User } from '../../../src/types/auth.types';
 import { BusinessProfile } from '../../../src/types/business.types';
 
 const { width } = Dimensions.get('window');
@@ -113,12 +114,25 @@ export default function BusinessMenu() {
         const tokenExpiry = Date.now() + (60 * 60 * 1000);
         
         // Use switchRoleWithTokens to update both tokens and role in auth state
+        // Ensure user has required email field for User type
+        const userData = response.data.user;
+        const user: User | null = userData && userData.email 
+          ? {
+              _id: userData._id,
+              email: userData.email,
+              name: userData.name,
+              role: userData.role as Role,
+              isActive: userData.isActive,
+              isBlocked: userData.isBlocked,
+            }
+          : null;
+        
         await auth.actions.switchRoleWithTokens(
           newRole || 'customer',
           response.data.accessToken,
           response.data.refreshToken,
           tokenExpiry,
-          response.data.user || null
+          user
         );
         
         console.log(`✅ Role switched, waiting for token propagation...`);
@@ -249,11 +263,6 @@ export default function BusinessMenu() {
       
       console.log('✅ Buy subscription response:', response);
       
-      toast({
-        title: "Success",
-        description: response.message || "Subscription purchased successfully",
-      });
-      
       // Reload business profile to get updated activeSubscription
       const profileResponse = await businessesApi.getProfileWithAutoRefresh();
       if (profileResponse.data?.activeSubscription) {
@@ -264,6 +273,30 @@ export default function BusinessMenu() {
       }
       
       setShowSubscriptionModal(false);
+      
+      // Show success alert with proper buttons
+      const subscriptionName = packageItem.name || 'subscription';
+      Alert.alert(
+        "Subscription Purchased",
+        `You have successfully purchased the ${subscriptionName}.`,
+        [
+          {
+            text: "Đóng",
+            style: "cancel",
+            onPress: () => {
+              // Alert will close automatically
+            }
+          },
+          {
+            text: "Xem",
+            onPress: () => {
+              // Open subscription modal to view details
+              setShowSubscriptionModal(true);
+            }
+          }
+        ],
+        { cancelable: true }
+      );
     } catch (error: any) {
       console.error('❌ Error buying subscription:', error);
       toast({
@@ -450,10 +483,13 @@ export default function BusinessMenu() {
   const shortcuts = auth.state.role === 'staff' as any ? [] : allShortcuts;
 
   const userName = auth.state.role === 'staff'
-    ? (staffProfile?.fullName || auth.state.user?.username || 'Staff')
+    ? (staffProfile?.fullName || auth.state.user?.name || auth.state.user?.fullName || auth.state.user?.email || 'Staff')
     : (businessProfile?.businessName || 
-       businessProfile?.userId?.username || 
-       auth.state.user?.username || 
+       businessProfile?.userId?.username ||
+       businessProfile?.userId?.email ||
+       auth.state.user?.name || 
+       auth.state.user?.fullName ||
+       auth.state.user?.email || 
        'User Name');
   const userAvatar = auth.state.role === 'staff'
     ? (staffProfile?.avatar || null)
