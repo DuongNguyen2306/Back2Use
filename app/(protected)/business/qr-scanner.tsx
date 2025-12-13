@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { CameraView } from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -22,7 +22,7 @@ type ScannerMode = 'borrow' | 'return';
 
 export default function QRScannerScreen() {
   const auth = useAuth();
-  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const [permission, requestPermission] = useCameraPermissions();
   const [scannerMode, setScannerMode] = useState<ScannerMode>('borrow');
   const [flashEnabled, setFlashEnabled] = useState(false);
   const [laserLinePosition, setLaserLinePosition] = useState(0);
@@ -30,13 +30,9 @@ export default function QRScannerScreen() {
   const scanLock = useRef(false);
   const laserAnimationRef = useRef<any>(null);
 
-  useEffect(() => {
-    requestCameraPermission();
-  }, []);
-
   // Laser scanning line animation
   useEffect(() => {
-    if (showScanner && hasCameraPermission) {
+    if (showScanner && permission?.granted) {
       let direction = 1;
       let position = 10;
       
@@ -58,13 +54,7 @@ export default function QRScannerScreen() {
     } else {
       setLaserLinePosition(0);
     }
-  }, [showScanner, hasCameraPermission]);
-
-  const requestCameraPermission = async () => {
-    const { Camera } = await import('expo-camera');
-    const { status } = await Camera.requestCameraPermissionsAsync();
-    setHasCameraPermission(status === 'granted');
-  };
+  }, [showScanner, permission?.granted]);
 
   const handleBarcodeScanned = async (e: any) => {
     if (scanLock.current) {
@@ -141,7 +131,8 @@ export default function QRScannerScreen() {
     router.back();
   };
 
-  if (hasCameraPermission === null) {
+  if (!permission) {
+    // Camera permissions are still loading
     return (
       <View style={styles.loadingContainer}>
         <Text style={styles.loadingText}>Requesting camera permission...</Text>
@@ -149,11 +140,12 @@ export default function QRScannerScreen() {
     );
   }
 
-  if (hasCameraPermission === false) {
+  if (!permission.granted) {
+    // Camera permissions are not granted yet
     return (
       <View style={styles.loadingContainer}>
         <Text style={styles.errorText}>Camera permission denied</Text>
-        <TouchableOpacity style={styles.button} onPress={requestCameraPermission}>
+        <TouchableOpacity style={styles.button} onPress={requestPermission}>
           <Text style={styles.buttonText}>Grant Permission</Text>
         </TouchableOpacity>
       </View>
@@ -170,7 +162,8 @@ export default function QRScannerScreen() {
         <View style={styles.scannerContainer}>
           {/* Full Screen Camera */}
           <CameraView 
-            style={StyleSheet.absoluteFillObject} 
+            style={StyleSheet.absoluteFillObject}
+            facing="back"
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }} 
             onBarcodeScanned={handleBarcodeScanned}
             enableTorch={flashEnabled}

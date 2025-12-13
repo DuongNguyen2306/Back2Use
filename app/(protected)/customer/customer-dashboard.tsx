@@ -5,7 +5,7 @@ import { mockTransactions } from "@/utils/mockData";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
-import { Camera, CameraView } from "expo-camera";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -35,8 +35,8 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 export default function CustomerDashboard() {
   const { state } = useAuth();
   const { t } = useI18n();
+  const [permission, requestPermission] = useCameraPermissions();
   const [showQRScanner, setShowQRScanner] = useState(false);
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [userData, setUserData] = useState<any>(null);
   const [showAIQualityCheck, setShowAIQualityCheck] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
@@ -223,13 +223,17 @@ export default function CustomerDashboard() {
 
   const startScanning = async () => {
     try {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === "granted");
-      if (status === "granted") {
+      if (!permission?.granted) {
+        const result = await requestPermission();
+        if (result.granted) {
+          scanLock.current = false;
+          setShowQRScanner(true);
+        } else {
+          Alert.alert("Camera Permission", "Please grant camera permission to scan QR codes", [{ text: "OK" }]);
+        }
+      } else {
         scanLock.current = false;
         setShowQRScanner(true);
-      } else {
-        Alert.alert("Camera Permission", "Please grant camera permission to scan QR codes", [{ text: "OK" }]);
       }
     } catch {
       Alert.alert("Error", "Unable to open camera. Please try again.");
@@ -247,7 +251,7 @@ export default function CustomerDashboard() {
 
   // Laser scanning line animation
   useEffect(() => {
-    if (showQRScanner && hasPermission) {
+    if (showQRScanner && permission?.granted) {
       const frameSize = screenWidth * 0.7;
       let direction = 1;
       let position = 10; // Start from top
@@ -1110,7 +1114,7 @@ export default function CustomerDashboard() {
 
       {/* bottom navigation removed; using layout navigation */}
 
-      {showQRScanner && hasPermission && (
+      {showQRScanner && permission?.granted && (
         <Modal
           visible={showQRScanner}
           animationType="fade"

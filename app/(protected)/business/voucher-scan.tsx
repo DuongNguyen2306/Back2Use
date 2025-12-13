@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Camera, CameraView } from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -26,7 +26,7 @@ const { width, height } = Dimensions.get('window');
 
 export default function VoucherScanScreen() {
   const auth = useAuth();
-  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const [permission, requestPermission] = useCameraPermissions();
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [voucher, setVoucher] = useState<BusinessVoucherCode | null>(null);
   const [loading, setLoading] = useState(false);
@@ -64,7 +64,7 @@ export default function VoucherScanScreen() {
 
   // Laser scanning line animation
   useEffect(() => {
-    if (showQRScanner && hasCameraPermission) {
+    if (showQRScanner && permission?.granted) {
       const frameSize = width * 0.7;
       let direction = 1;
       let position = 10;
@@ -87,26 +87,7 @@ export default function VoucherScanScreen() {
     } else {
       setLaserLinePosition(0);
     }
-  }, [showQRScanner, hasCameraPermission]);
-
-  const requestCameraPermission = async () => {
-    try {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasCameraPermission(status === 'granted');
-      if (status === 'granted') {
-        setShowQRScanner(true);
-      } else {
-        Alert.alert(
-          'Camera Permission',
-          'Cần quyền truy cập camera để quét mã QR voucher',
-          [{ text: 'OK' }]
-        );
-      }
-    } catch (error) {
-      console.error('Error requesting camera permission:', error);
-      setHasCameraPermission(false);
-    }
-  };
+  }, [showQRScanner, permission?.granted]);
 
   const handleBarcodeScanned = async (e: any) => {
     if (scanLock.current) return;
@@ -341,18 +322,18 @@ export default function VoucherScanScreen() {
               <View style={styles.placeholder} />
             </View>
 
-            {hasCameraPermission === null ? (
+            {!permission ? (
               <View style={styles.scannerContent}>
                 <ActivityIndicator size="large" color="#FFFFFF" />
                 <Text style={styles.scannerText}>Đang kiểm tra quyền camera...</Text>
               </View>
-            ) : hasCameraPermission === false ? (
+            ) : !permission.granted ? (
               <View style={styles.scannerContent}>
                 <Ionicons name="camera-outline" size={64} color="#FFFFFF" />
                 <Text style={styles.scannerText}>Cần quyền truy cập camera</Text>
                 <TouchableOpacity
                   style={styles.permissionButton}
-                  onPress={requestCameraPermission}
+                  onPress={requestPermission}
                 >
                   <Text style={styles.permissionButtonText}>Cấp quyền</Text>
                 </TouchableOpacity>
@@ -691,11 +672,20 @@ export default function VoucherScanScreen() {
             </Text>
             <TouchableOpacity
               style={styles.scanButton}
-              onPress={() => {
-                if (hasCameraPermission) {
-                  setShowQRScanner(true);
+              onPress={async () => {
+                if (!permission?.granted) {
+                  const result = await requestPermission();
+                  if (result.granted) {
+                    setShowQRScanner(true);
+                  } else {
+                    Alert.alert(
+                      'Camera Permission',
+                      'Cần quyền truy cập camera để quét mã QR voucher',
+                      [{ text: 'OK' }]
+                    );
+                  }
                 } else {
-                  requestCameraPermission();
+                  setShowQRScanner(true);
                 }
               }}
             >

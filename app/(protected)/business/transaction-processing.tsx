@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Camera, CameraView } from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
@@ -79,6 +79,7 @@ interface BusinessTransaction {
 export default function TransactionProcessingScreen() {
   const auth = useAuth();
   const params = useLocalSearchParams();
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -393,13 +394,18 @@ export default function TransactionProcessingScreen() {
       // Small delay to ensure screen is fully loaded
       const timer = setTimeout(async () => {
         try {
-          const { status } = await Camera.requestCameraPermissionsAsync();
-          if (status === 'granted') {
+          if (!cameraPermission?.granted) {
+            const result = await requestCameraPermission();
+            if (result.granted) {
+              setHasCameraPermission(true);
+              setShowQRScanner(true);
+            } else {
+              setHasCameraPermission(false);
+              Alert.alert('Camera Permission', 'Please grant camera permission to scan QR codes', [{ text: 'OK' }]);
+            }
+          } else {
             setHasCameraPermission(true);
             setShowQRScanner(true);
-          } else {
-            setHasCameraPermission(false);
-            Alert.alert('Camera Permission', 'Please grant camera permission to scan QR codes', [{ text: 'OK' }]);
           }
         } catch (error) {
           console.error('Error requesting camera permission:', error);
@@ -408,7 +414,7 @@ export default function TransactionProcessingScreen() {
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [params?.openQRScanner]);
+  }, [params?.openQRScanner, cameraPermission, requestCameraPermission]);
 
   // Auto open unified QR scanner when navigated from navigation QR button (for staff)
   useFocusEffect(
@@ -450,8 +456,23 @@ export default function TransactionProcessingScreen() {
           }
           
           try {
-            const { status } = await Camera.requestCameraPermissionsAsync();
-            if (status === 'granted') {
+            if (!cameraPermission?.granted) {
+              const result = await requestCameraPermission();
+              if (result.granted) {
+                // Triple-check flag before actually opening
+                if (userClosedScannerRef.current) {
+                  console.log('⏸️ Scanner opening cancelled - user closed it (after permission)');
+                  return;
+                }
+                setHasUnifiedCameraPermission(true);
+                setShowUnifiedQRScanner(true);
+                // Default to borrow mode
+                setUnifiedScannerMode('borrow');
+                console.log('✅ Scanner opened');
+              } else {
+                setHasUnifiedCameraPermission(false);
+              }
+            } else {
               // Triple-check flag before actually opening
               if (userClosedScannerRef.current) {
                 console.log('⏸️ Scanner opening cancelled - user closed it (after permission)');
@@ -462,8 +483,6 @@ export default function TransactionProcessingScreen() {
               // Default to borrow mode
               setUnifiedScannerMode('borrow');
               console.log('✅ Scanner opened');
-            } else {
-              setHasUnifiedCameraPermission(false);
             }
           } catch (error) {
             console.error('Error requesting camera permission:', error);
@@ -610,13 +629,18 @@ export default function TransactionProcessingScreen() {
   // Open QR Scanner for return processing
   const openQRScanner = async () => {
     try {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      if (status === 'granted') {
+      if (!cameraPermission?.granted) {
+        const result = await requestCameraPermission();
+        if (result.granted) {
+          setHasCameraPermission(true);
+          setShowQRScanner(true);
+        } else {
+          setHasCameraPermission(false);
+          Alert.alert('Camera Permission', 'Please grant camera permission to scan QR codes', [{ text: 'OK' }]);
+        }
+      } else {
         setHasCameraPermission(true);
         setShowQRScanner(true);
-      } else {
-        setHasCameraPermission(false);
-        Alert.alert('Camera Permission', 'Please grant camera permission to scan QR codes', [{ text: 'OK' }]);
       }
     } catch (error) {
       console.error('Error requesting camera permission:', error);
@@ -627,14 +651,20 @@ export default function TransactionProcessingScreen() {
   // Open Unified QR Scanner with Mode Switcher
   const openUnifiedQRScanner = async () => {
     try {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasUnifiedCameraPermission(status === 'granted');
-      if (status === 'granted') {
+      if (!cameraPermission?.granted) {
+        const result = await requestCameraPermission();
+        setHasUnifiedCameraPermission(result.granted);
+        if (result.granted) {
+          setShowUnifiedQRScanner(true);
+          setUnifiedScannerMode('borrow'); // Default to borrow mode
+        } else {
+          setHasUnifiedCameraPermission(false);
+          Alert.alert('Camera Permission', 'Please grant camera permission to scan QR codes', [{ text: 'OK' }]);
+        }
+      } else {
+        setHasUnifiedCameraPermission(true);
         setShowUnifiedQRScanner(true);
         setUnifiedScannerMode('borrow'); // Default to borrow mode
-      } else {
-        setHasUnifiedCameraPermission(false);
-        Alert.alert('Camera Permission', 'Please grant camera permission to scan QR codes', [{ text: 'OK' }]);
       }
     } catch (error) {
       console.error('Error requesting camera permission:', error);
@@ -920,13 +950,18 @@ export default function TransactionProcessingScreen() {
   // Open QR Scanner for Borrow Confirmation (keep for backward compatibility)
   const openBorrowQRScanner = async () => {
     try {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasBorrowCameraPermission(status === 'granted');
-      if (status === 'granted') {
-        setShowBorrowQRScanner(true);
+      if (!cameraPermission?.granted) {
+        const result = await requestCameraPermission();
+        setHasBorrowCameraPermission(result.granted);
+        if (result.granted) {
+          setShowBorrowQRScanner(true);
+        } else {
+          setHasBorrowCameraPermission(false);
+          Alert.alert('Camera Permission', 'Please grant camera permission to scan QR codes', [{ text: 'OK' }]);
+        }
       } else {
-        setHasBorrowCameraPermission(false);
-        Alert.alert('Camera Permission', 'Please grant camera permission to scan QR codes', [{ text: 'OK' }]);
+        setHasBorrowCameraPermission(true);
+        setShowBorrowQRScanner(true);
       }
     } catch (error) {
       console.error('Error requesting camera permission:', error);
