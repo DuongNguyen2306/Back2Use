@@ -33,9 +33,11 @@ export default function MorePage() {
           onPress: async () => {
             try {
               await actions.logout();
+              // Navigate to welcome after logout
               router.replace("/welcome");
             } catch (error) {
               console.error('Error during logout:', error);
+              // Still try to navigate even if logout fails
               router.replace("/welcome");
             }
           }

@@ -407,9 +407,11 @@ export default function BusinessDashboard() {
   const handleLogout = async () => {
     try {
       await authActions.logout();
+      // Navigate to welcome after logout
       router.replace('/welcome');
     } catch (error) {
       console.error('Error during logout:', error);
+      // Still try to navigate even if logout fails
       router.replace('/welcome');
     }
   }

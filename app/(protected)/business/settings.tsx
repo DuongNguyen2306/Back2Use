@@ -2,13 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
 import { authApi, SubscriptionPackage, subscriptionsApi } from '../../../lib/api';
@@ -79,10 +79,11 @@ export default function BusinessSettings() {
   const handleLogout = async () => {
     try {
       await authActions.logout();
+      // Navigate to welcome after logout
       router.replace('/welcome');
     } catch (error) {
       console.error('Error during logout:', error);
-      // Still navigate even if logout fails
+      // Still try to navigate even if logout fails
       router.replace('/welcome');
     }
   };

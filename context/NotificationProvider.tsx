@@ -36,6 +36,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   
   const [loading, setLoading] = useState(true);
   const socketInitialized = useRef(false);
+  const shownAlertIds = useRef<Set<string>>(new Set()); // Track notification IDs that have already shown alerts
   const notificationHandlers = useRef<{
     notification?: (payload: Notification) => void;
     notificationNew?: (payload: Notification) => void;
@@ -363,9 +364,18 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             console.log('🔥 Incremented unread count');
           }
           
-          // Show in-app alert/popup for new notifications
-          if (!notificationPayload.isRead) {
+          // Show in-app alert/popup for new notifications (only once per notification)
+          if (!notificationPayload.isRead && !shownAlertIds.current.has(notificationPayload._id)) {
             console.log('🔥 Showing alert popup...');
+            shownAlertIds.current.add(notificationPayload._id);
+            
+            // Limit Set size to prevent memory leaks (keep max 100)
+            if (shownAlertIds.current.size > 100) {
+              // Remove oldest entries (first 50) when limit exceeded
+              const idsToRemove = Array.from(shownAlertIds.current).slice(0, 50);
+              idsToRemove.forEach(id => shownAlertIds.current.delete(id));
+            }
+            
             Alert.alert(
               notificationPayload.title || 'Thông báo mới',
               notificationPayload.message || '',
@@ -399,8 +409,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           incrementUnread();
         }
         
-        // Show in-app alert/popup for new notifications
-        if (!payload.isRead) {
+        // Show in-app alert/popup for new notifications (only once per notification)
+        if (!payload.isRead && !shownAlertIds.current.has(payload._id)) {
+          shownAlertIds.current.add(payload._id);
+          
+          // Limit Set size to prevent memory leaks (keep last 100)
+          if (shownAlertIds.current.size > 100) {
+            const firstId = shownAlertIds.current.values().next().value;
+            shownAlertIds.current.delete(firstId);
+          }
+          
           Alert.alert(
             payload.title || 'Thông báo mới',
             payload.message || '',
@@ -426,8 +444,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           incrementUnread();
         }
         
-        // Show in-app alert/popup for new notifications
-        if (!payload.isRead) {
+        // Show in-app alert/popup for new notifications (only once per notification)
+        if (!payload.isRead && !shownAlertIds.current.has(payload._id)) {
+          shownAlertIds.current.add(payload._id);
+          
+          // Limit Set size to prevent memory leaks (keep last 100)
+          if (shownAlertIds.current.size > 100) {
+            const firstId = shownAlertIds.current.values().next().value;
+            shownAlertIds.current.delete(firstId);
+          }
+          
           Alert.alert(
             payload.title || 'Thông báo mới',
             payload.message || '',
@@ -514,6 +540,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     try {
       // Update local state immediately
       markAsReadStore(id);
+      
+      // Remove from shown alerts set (cleanup)
+      shownAlertIds.current.delete(id);
       
       // Update via API
       await notificationApi.markAsRead(id);

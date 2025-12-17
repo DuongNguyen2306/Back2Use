@@ -413,9 +413,11 @@ export default function BusinessMenu() {
           onPress: async () => {
             try {
               await auth.actions.logout();
+              // Navigate to welcome after logout
               router.replace('/welcome');
             } catch (error) {
               console.error('Error during logout:', error);
+              // Still try to navigate even if logout fails
               router.replace('/welcome');
             }
           },
