@@ -870,7 +870,7 @@ export default function TransactionProcessingScreen() {
           Alert.alert('No Borrow Request', 'This product does not have a borrow request');
         }
       } else {
-        // Handle return processing (same logic as onBarcodeScanned)
+        // Handle return processing - Find transaction and show detail modal
         let serialNumber = scannedData.trim();
         if (scannedData.includes('://')) {
           const match = scannedData.match(/(?:com\.)?back2use:\/\/item\/([^\/]+)/);
@@ -882,35 +882,91 @@ export default function TransactionProcessingScreen() {
           }
         }
         
-        console.log('✅ Setting returnSerialNumber from unified scanner:', serialNumber);
+        console.log('🔍 Searching transaction for return by serial:', serialNumber);
         
-        // Ensure scanner is closed before opening return modal
+        // Ensure scanner is closed
         setShowUnifiedQRScanner(false);
         stopUnifiedScanning();
         
-        // Small delay to ensure scanner UI is fully closed
-        setTimeout(() => {
-          setReturnSerialNumber(serialNumber);
-          setCheckData({
-            frontImage: null,
-            frontIssue: '',
-            backImage: null,
-            backIssue: '',
-            leftImage: null,
-            leftIssue: '',
-            rightImage: null,
-            rightIssue: '',
-            topImage: null,
-            topIssue: '',
-            bottomImage: null,
-            bottomIssue: '',
-          });
-          setReturnNote('');
-          setReturnImages([]);
-          setCalculatedPoints(0);
-          setCalculatedCondition('good');
-          setShowReturnModal(true);
-        }, 200);
+        // Find transaction by serial number
+        let foundTransaction: BusinessTransaction | null = null;
+        
+        // Check if it's a transaction ID (24 char hex)
+        const isTransactionId = /^[0-9a-fA-F]{24}$/.test(serialNumber);
+        
+        if (isTransactionId) {
+          try {
+            const response = await borrowTransactionsApi.getBusinessDetail(serialNumber);
+            if (response.statusCode === 200 && response.data) {
+              foundTransaction = response.data as BusinessTransaction;
+            }
+          } catch (error) {
+            console.log('Transaction not found by ID');
+          }
+        }
+        
+        // If not found by ID, search by product serial in borrowing transactions
+        if (!foundTransaction) {
+          try {
+            const apiResponse = await borrowTransactionsApi.getBusinessHistory({
+              page: 1,
+              limit: 1000,
+            });
+            
+            const apiTransactions = apiResponse.data?.items || (Array.isArray(apiResponse.data) ? apiResponse.data : []);
+            
+            // Find transaction by serial number - prioritize borrowing status
+            foundTransaction = apiTransactions.find((t: BusinessTransaction) => {
+              const matchesSerial = t.productId?.serialNumber === serialNumber;
+              const isBorrowing = t.status === 'borrowing';
+              return matchesSerial && isBorrowing;
+            }) as BusinessTransaction | undefined || null;
+            
+            // If no borrowing found, try pending_pickup
+            if (!foundTransaction) {
+              foundTransaction = apiTransactions.find((t: BusinessTransaction) => {
+                const matchesSerial = t.productId?.serialNumber === serialNumber;
+                const isPendingPickup = t.status === 'pending_pickup';
+                return matchesSerial && isPendingPickup;
+              }) as BusinessTransaction | undefined || null;
+            }
+            
+            // If still not found, get any transaction with this serial
+            if (!foundTransaction) {
+              foundTransaction = apiTransactions.find((t: BusinessTransaction) => 
+                t.productId?.serialNumber === serialNumber
+              ) as BusinessTransaction | undefined || null;
+            }
+          } catch (error) {
+            console.log('Error searching transaction by serial:', error);
+          }
+        }
+        
+        if (foundTransaction) {
+          console.log('✅ Found transaction for return:', foundTransaction._id);
+          
+          // Load full transaction detail
+          try {
+            setLoadingTransactionDetail(true);
+            const detailResponse = await borrowTransactionsApi.getBusinessDetail(foundTransaction._id);
+            if (detailResponse.statusCode === 200 && detailResponse.data) {
+              setTransactionDetail(detailResponse.data);
+            }
+          } catch (error) {
+            console.error('Error loading transaction detail:', error);
+            setTransactionDetail(null);
+          } finally {
+            setLoadingTransactionDetail(false);
+          }
+          
+          // Show transaction detail modal (like clicking on history)
+          setTimeout(() => {
+            setSelectedTransaction(foundTransaction);
+            setShowDetailsModal(true);
+          }, 200);
+        } else {
+          Alert.alert('Không tìm thấy', 'Không tìm thấy đơn hàng cho sản phẩm này');
+        }
       }
     } catch (error: any) {
       console.error('Error processing QR scan:', error);
