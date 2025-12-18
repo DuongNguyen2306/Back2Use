@@ -261,7 +261,7 @@ export interface Product {
 export interface ProductsResponse {
   statusCode: number;
   message: string;
-  data: Product[];
+  data: Product[] | { items: Product[]; total?: number; page?: number; limit?: number };
 }
 
 export interface ScanProductResponse {

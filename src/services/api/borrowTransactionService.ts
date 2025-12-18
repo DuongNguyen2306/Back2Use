@@ -157,7 +157,7 @@ export const borrowTransactionsApi = {
 
       return response.data;
     } catch (error: any) {
-      console.error('Error getting customer borrow history:', error);
+      // Silently handle all errors - don't log to console
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to get borrow history';
       throw new Error(errorMessage);
     }
@@ -558,15 +558,22 @@ export const borrowTransactionsApi = {
 
       return response.data;
     } catch (error: any) {
-      console.error('Error checking return:', error);
+      // Silently handle timeout and network errors (don't log to console)
+      const isTimeoutError = error?.message?.toLowerCase().includes('timeout') || 
+                            error?.code === 'ECONNABORTED';
+      const isNetworkError = error?.message?.toLowerCase().includes('network') ||
+                            error?.code === 'NETWORK_ERROR' ||
+                            error?.response === undefined;
+      
+      if (!isTimeoutError && !isNetworkError) {
+        console.error('Error checking return:', error);
+      }
       
       // Silently handle 404 "Material not found" errors
       if (error?.response?.status === 404) {
         const errorMessage = error?.response?.data?.message || error?.message || '';
         if (errorMessage.toLowerCase().includes('material not found') || 
             errorMessage.toLowerCase().includes('not found')) {
-          // Silently handle - don't show to user
-          console.warn('⚠️ Material not found (404) - silently handled');
           throw new Error('MATERIAL_NOT_FOUND');
         }
       }

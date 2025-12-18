@@ -243,10 +243,10 @@ export default function BusinessDashboard() {
         const topBorrowedResponse = await businessesApi.getTopBorrowed({ top: 5 });
         console.log('📊 Staff Top borrowed response:', JSON.stringify(topBorrowedResponse, null, 2));
         if (topBorrowedResponse?.statusCode === 200 && topBorrowedResponse?.data) {
-          const products = topBorrowedResponse.data.products || topBorrowedResponse.data;
+          const products = topBorrowedResponse.data.productGroups || topBorrowedResponse.data.products || topBorrowedResponse.data;
           setStaffTopBorrowedItems(Array.isArray(products) ? products : []);
         } else if (topBorrowedResponse?.data) {
-          const products = topBorrowedResponse.data.products || topBorrowedResponse.data;
+          const products = topBorrowedResponse.data.productGroups || topBorrowedResponse.data.products || topBorrowedResponse.data;
           setStaffTopBorrowedItems(Array.isArray(products) ? products : []);
         }
       } catch (error) {
@@ -317,12 +317,12 @@ export default function BusinessDashboard() {
           const topBorrowedResponse = await businessesApi.getTopBorrowed({ top: 5 });
           console.log('📊 Top borrowed response:', JSON.stringify(topBorrowedResponse, null, 2));
           if (topBorrowedResponse?.statusCode === 200 && topBorrowedResponse?.data) {
-            // API returns: { statusCode: 200, data: { top: 5, products: [...] } }
-            const products = topBorrowedResponse.data.products || topBorrowedResponse.data;
+            // API returns: { statusCode: 200, data: { top: 5, productGroups: [...] } }
+            const products = topBorrowedResponse.data.productGroups || topBorrowedResponse.data.products || topBorrowedResponse.data;
             setTopBorrowedItems(Array.isArray(products) ? products : []);
           } else if (topBorrowedResponse?.data) {
             // Handle case where data structure is different
-            const products = topBorrowedResponse.data.products || topBorrowedResponse.data;
+            const products = topBorrowedResponse.data.productGroups || topBorrowedResponse.data.products || topBorrowedResponse.data;
             setTopBorrowedItems(Array.isArray(products) ? products : []);
           }
         } catch (error) {
@@ -552,6 +552,129 @@ export default function BusinessDashboard() {
             </View>
             )}
 
+            {/* Operational Stats - Business Owner */}
+            {authState.role !== 'staff' as any && overviewData && (
+              <View style={styles.operationalStatsSection}>
+                <Text style={styles.sectionTitle}>Operational Stats</Text>
+                <View style={styles.kpiGrid}>
+                  {/* Borrow Transactions */}
+                  <View style={styles.kpiCard}>
+                    <View style={[styles.kpiGradient, { backgroundColor: "#E3F2FD" }]}>
+                      <View style={[styles.kpiIconContainer, { backgroundColor: "#BBDEFB" }]}>
+                        <Ionicons name="receipt-outline" size={28} color="#1976D2" />
+                      </View>
+                      <Text style={[styles.kpiValue, { color: "#1976D2" }]}>
+                        {String(overviewData.borrowTransactions || 0)}
+                      </Text>
+                      <Text style={styles.kpiLabel}>Borrow Orders</Text>
+                    </View>
+                  </View>
+
+                  {/* Business Vouchers */}
+                  <View style={styles.kpiCard}>
+                    <View style={[styles.kpiGradient, { backgroundColor: "#F3E5F5" }]}>
+                      <View style={[styles.kpiIconContainer, { backgroundColor: "#E1BEE7" }]}>
+                        <Ionicons name="ticket-outline" size={28} color="#7B1FA2" />
+                      </View>
+                      <Text style={[styles.kpiValue, { color: "#7B1FA2" }]}>
+                        {String(overviewData.businessVouchers || 0)}
+                      </Text>
+                      <Text style={styles.kpiLabel}>Vouchers</Text>
+                    </View>
+                  </View>
+
+                  {/* Product Groups */}
+                  <View style={styles.kpiCard}>
+                    <View style={[styles.kpiGradient, { backgroundColor: "#E8F5E9" }]}>
+                      <View style={[styles.kpiIconContainer, { backgroundColor: "#C8E6C9" }]}>
+                        <Ionicons name="folder-outline" size={28} color="#00704A" />
+                      </View>
+                      <Text style={[styles.kpiValue, { color: "#00704A" }]}>
+                        {String(overviewData.productGroups || 0)}
+                      </Text>
+                      <Text style={styles.kpiLabel}>Product Groups</Text>
+                    </View>
+                  </View>
+
+                  {/* Products */}
+                  <View style={styles.kpiCard}>
+                    <View style={[styles.kpiGradient, { backgroundColor: "#FFF8E1" }]}>
+                      <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
+                        <Ionicons name="cube-outline" size={28} color="#F57C00" />
+                      </View>
+                      <Text style={[styles.kpiValue, { color: "#F57C00" }]}>
+                        {String(overviewData.products || 0)}
+                      </Text>
+                      <Text style={styles.kpiLabel}>Products</Text>
+                    </View>
+                  </View>
+
+                  {/* Staffs */}
+                  <View style={styles.kpiCard}>
+                    <View style={[styles.kpiGradient, { backgroundColor: "#E0F2F1" }]}>
+                      <View style={[styles.kpiIconContainer, { backgroundColor: "#B2DFDB" }]}>
+                        <Ionicons name="people-outline" size={28} color="#00796B" />
+                      </View>
+                      <Text style={[styles.kpiValue, { color: "#00796B" }]}>
+                        {String(overviewData.staffs || 0)}
+                      </Text>
+                      <Text style={styles.kpiLabel}>Staffs</Text>
+                    </View>
+                  </View>
+
+                  {/* Product Condition Stats */}
+                  {overviewData.productConditionStats && (
+                    <>
+                      <View style={styles.kpiCard}>
+                        <View style={[styles.kpiGradient, { backgroundColor: "#E8F5E9" }]}>
+                          <View style={[styles.kpiIconContainer, { backgroundColor: "#C8E6C9" }]}>
+                            <Ionicons name="checkmark-circle" size={28} color="#00704A" />
+                          </View>
+                          <Text style={[styles.kpiValue, { color: "#00704A" }]}>
+                            {String(overviewData.productConditionStats.good || 0)}
+                          </Text>
+                          <Text style={styles.kpiLabel}>Good</Text>
+                        </View>
+                      </View>
+                      <View style={styles.kpiCard}>
+                        <View style={[styles.kpiGradient, { backgroundColor: "#FFEBEE" }]}>
+                          <View style={[styles.kpiIconContainer, { backgroundColor: "#FFCDD2" }]}>
+                            <Ionicons name="warning" size={28} color="#D32F2F" />
+                          </View>
+                          <Text style={[styles.kpiValue, { color: "#D32F2F" }]}>
+                            {String(overviewData.productConditionStats.damaged || 0)}
+                          </Text>
+                          <Text style={styles.kpiLabel}>Damaged</Text>
+                        </View>
+                      </View>
+                      <View style={styles.kpiCard}>
+                        <View style={[styles.kpiGradient, { backgroundColor: "#FFF8E1" }]}>
+                          <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
+                            <Ionicons name="time" size={28} color="#F57C00" />
+                          </View>
+                          <Text style={[styles.kpiValue, { color: "#F57C00" }]}>
+                            {String(overviewData.productConditionStats.expired || 0)}
+                          </Text>
+                          <Text style={styles.kpiLabel}>Expired</Text>
+                        </View>
+                      </View>
+                      <View style={styles.kpiCard}>
+                        <View style={[styles.kpiGradient, { backgroundColor: "#F5F5F5" }]}>
+                          <View style={[styles.kpiIconContainer, { backgroundColor: "#E0E0E0" }]}>
+                            <Ionicons name="close-circle" size={28} color="#666666" />
+                          </View>
+                          <Text style={[styles.kpiValue, { color: "#666666" }]}>
+                            {String(overviewData.productConditionStats.lost || 0)}
+                          </Text>
+                          <Text style={styles.kpiLabel}>Lost</Text>
+                        </View>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </View>
+            )}
+
             {/* Staff Overview - Simple Stats */}
             {authState.role === 'staff' as any && staffOverviewData && (
               <View style={styles.operationalStatsSection}>
@@ -591,28 +714,28 @@ export default function BusinessDashboard() {
                       <Text style={styles.kpiLabel}>Vouchers</Text>
                     </View>
                   </View>
-              <View style={styles.kpiCard}>
-                <View style={[styles.kpiGradient, { backgroundColor: "#E8F5E9" }]}>
-                  <View style={[styles.kpiIconContainer, { backgroundColor: "#C8E6C9" }]}>
+                  <View style={styles.kpiCard}>
+                    <View style={[styles.kpiGradient, { backgroundColor: "#E8F5E9" }]}>
+                      <View style={[styles.kpiIconContainer, { backgroundColor: "#C8E6C9" }]}>
                         <Ionicons name="folder-outline" size={28} color="#00704A" />
-                  </View>
+                      </View>
                       <Text style={[styles.kpiValue, { color: "#00704A" }]}>
                         {String(staffOverviewData.productGroups || 0)}
                       </Text>
                       <Text style={styles.kpiLabel}>Product Groups</Text>
-                </View>
-              </View>
-              <View style={styles.kpiCard}>
-                <View style={[styles.kpiGradient, { backgroundColor: "#FFF8E1" }]}>
-                  <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
-                        <Ionicons name="cube-outline" size={28} color="#F57C00" />
+                    </View>
                   </View>
+                  <View style={styles.kpiCard}>
+                    <View style={[styles.kpiGradient, { backgroundColor: "#FFF8E1" }]}>
+                      <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
+                        <Ionicons name="cube-outline" size={28} color="#F57C00" />
+                      </View>
                       <Text style={[styles.kpiValue, { color: "#F57C00" }]}>
                         {String(staffOverviewData.products || 0)}
                       </Text>
                       <Text style={styles.kpiLabel}>Products</Text>
-                </View>
-              </View>
+                    </View>
+                  </View>
 
                   {/* Product Condition Stats */}
                   {staffOverviewData.productConditionStats && (
@@ -628,17 +751,17 @@ export default function BusinessDashboard() {
                           <Text style={styles.kpiLabel}>Good</Text>
                         </View>
                       </View>
-              <View style={styles.kpiCard}>
-                <View style={[styles.kpiGradient, { backgroundColor: "#FFEBEE" }]}>
-                  <View style={[styles.kpiIconContainer, { backgroundColor: "#FFCDD2" }]}>
+                      <View style={styles.kpiCard}>
+                        <View style={[styles.kpiGradient, { backgroundColor: "#FFEBEE" }]}>
+                          <View style={[styles.kpiIconContainer, { backgroundColor: "#FFCDD2" }]}>
                             <Ionicons name="warning" size={28} color="#D32F2F" />
-                  </View>
+                          </View>
                           <Text style={[styles.kpiValue, { color: "#D32F2F" }]}>
                             {String(staffOverviewData.productConditionStats.damaged || 0)}
                           </Text>
                           <Text style={styles.kpiLabel}>Damaged</Text>
-                </View>
-              </View>
+                        </View>
+                      </View>
                       <View style={styles.kpiCard}>
                         <View style={[styles.kpiGradient, { backgroundColor: "#FFF8E1" }]}>
                           <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
@@ -650,20 +773,20 @@ export default function BusinessDashboard() {
                           <Text style={styles.kpiLabel}>Expired</Text>
                         </View>
                       </View>
-              <View style={styles.kpiCard}>
-                <View style={[styles.kpiGradient, { backgroundColor: "#F5F5F5" }]}>
-                  <View style={[styles.kpiIconContainer, { backgroundColor: "#E0E0E0" }]}>
-                    <Ionicons name="close-circle" size={28} color="#666666" />
-                  </View>
+                      <View style={styles.kpiCard}>
+                        <View style={[styles.kpiGradient, { backgroundColor: "#F5F5F5" }]}>
+                          <View style={[styles.kpiIconContainer, { backgroundColor: "#E0E0E0" }]}>
+                            <Ionicons name="close-circle" size={28} color="#666666" />
+                          </View>
                           <Text style={[styles.kpiValue, { color: "#666666" }]}>
                             {String(staffOverviewData.productConditionStats.lost || 0)}
                           </Text>
                           <Text style={styles.kpiLabel}>Lost</Text>
-                </View>
-              </View>
+                        </View>
+                      </View>
                     </>
                   )}
-            </View>
+                </View>
               </View>
             )}
 
@@ -673,11 +796,11 @@ export default function BusinessDashboard() {
                 <Text style={styles.sectionTitle}>Top Borrowed Items</Text>
                 <View style={styles.topBorrowedCard}>
                   {staffTopBorrowedItems.map((item: any, index: number) => {
-                    // API returns: { _id, reuseCount, group: { name, imageUrl }, size: { sizeName }, ... }
-                    const productName = item.group?.name || item.name || 'Unknown Product';
-                    const productImage = item.group?.imageUrl || item.imageUrl;
-                    const reuseCount = item.reuseCount || 0;
-                    const maxCount = Math.max(...staffTopBorrowedItems.map((i: any) => i.reuseCount || 0), 1);
+                    // API returns: { _id, name, imageUrl, totalReuseCount, totalProducts, ... }
+                    const productName = item.name || item.group?.name || 'Unknown Product';
+                    const productImage = item.imageUrl || item.group?.imageUrl;
+                    const reuseCount = item.totalReuseCount || item.reuseCount || 0;
+                    const maxCount = Math.max(...staffTopBorrowedItems.map((i: any) => i.totalReuseCount || i.reuseCount || 0), 1);
                     const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
                     
                     return (
@@ -764,53 +887,60 @@ export default function BusinessDashboard() {
             )}
 
             {/* Section 3: Top Borrowed Items - Business Only */}
-            {authState.role !== 'staff' as any && topBorrowedItems.length > 0 && (
+            {authState.role !== 'staff' as any && (
               <View style={styles.topBorrowedSection}>
                 <Text style={styles.sectionTitle}>Top Borrowed Items</Text>
                 <View style={styles.topBorrowedCard}>
-                  {topBorrowedItems.map((item: any, index: number) => {
-                    // API returns: { _id, reuseCount, group: { name, imageUrl }, size: { sizeName }, ... }
-                    const productName = item.group?.name || item.name || 'Unknown Product';
-                    const productImage = item.group?.imageUrl || item.imageUrl;
-                    const reuseCount = item.reuseCount || 0;
-                    const maxCount = Math.max(...topBorrowedItems.map((i: any) => i.reuseCount || 0), 1);
-                    const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
-                    
-                    return (
-                      <View key={item._id || index} style={styles.topBorrowedItem}>
-                        <View style={styles.topBorrowedLeft}>
-                          <Text style={styles.rankEmoji}>{rankEmoji}</Text>
-                          {productImage ? (
-                            <Image source={{ uri: productImage }} style={styles.productThumbnail} />
-                          ) : (
-                            <View style={[styles.productThumbnail, styles.productThumbnailPlaceholder]}>
-                              <Ionicons name="cube-outline" size={24} color="#9CA3AF" />
-                            </View>
-                          )}
-                          <View style={styles.productNameContainer}>
-                            <Text style={styles.productName} numberOfLines={1}>
-                              {productName}
-                      </Text>
-                            {item.size?.sizeName && (
-                              <Text style={styles.productSize} numberOfLines={1}>
-                                {item.size.sizeName}
-                              </Text>
+                  {topBorrowedItems.length > 0 ? (
+                    topBorrowedItems.map((item: any, index: number) => {
+                      // API returns: { _id, name, imageUrl, totalReuseCount, totalProducts, ... }
+                      const productName = item.name || item.group?.name || 'Unknown Product';
+                      const productImage = item.imageUrl || item.group?.imageUrl;
+                      const reuseCount = item.totalReuseCount || item.reuseCount || 0;
+                      const maxCount = Math.max(...topBorrowedItems.map((i: any) => i.totalReuseCount || i.reuseCount || 0), 1);
+                      const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+                      
+                      return (
+                        <View key={item._id || index} style={styles.topBorrowedItem}>
+                          <View style={styles.topBorrowedLeft}>
+                            <Text style={styles.rankEmoji}>{rankEmoji}</Text>
+                            {productImage ? (
+                              <Image source={{ uri: productImage }} style={styles.productThumbnail} />
+                            ) : (
+                              <View style={[styles.productThumbnail, styles.productThumbnailPlaceholder]}>
+                                <Ionicons name="cube-outline" size={24} color="#9CA3AF" />
+                              </View>
                             )}
-                    </View>
-                  </View>
-                        <View style={styles.topBorrowedRight}>
-                          <ProgressBar
-                            value={reuseCount}
-                            maxValue={maxCount}
-                            height={8}
-                            color="#00704A"
-                            showLabel={true}
-                            label={`${reuseCount} times`}
-                          />
+                            <View style={styles.productNameContainer}>
+                              <Text style={styles.productName} numberOfLines={1}>
+                                {productName}
+                              </Text>
+                              {item.size?.sizeName && (
+                                <Text style={styles.productSize} numberOfLines={1}>
+                                  {item.size.sizeName}
+                                </Text>
+                              )}
+                            </View>
+                          </View>
+                          <View style={styles.topBorrowedRight}>
+                            <ProgressBar
+                              value={reuseCount}
+                              maxValue={maxCount}
+                              height={8}
+                              color="#00704A"
+                              showLabel={true}
+                              label={`${reuseCount} times`}
+                            />
+                          </View>
                         </View>
-                      </View>
-                    );
-                  })}
+                      );
+                    })
+                  ) : (
+                    <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                      <Ionicons name="cube-outline" size={40} color="#9CA3AF" />
+                      <Text style={{ color: '#6B7280', marginTop: 8 }}>No borrowed items yet</Text>
+                    </View>
+                  )}
                 </View>
               </View>
             )}
@@ -865,72 +995,6 @@ export default function BusinessDashboard() {
                 </View>
               </View>
             )}
-
-            {/* Operational Stats (Keep existing) */}
-            <View style={styles.operationalStatsSection}>
-              <Text style={styles.sectionTitle}>Operational Stats</Text>
-              <View style={styles.kpiGrid}>
-                <View style={styles.kpiCard}>
-                  <View style={[styles.kpiGradient, { backgroundColor: "#E8F5E9" }]}>
-                    <View style={[styles.kpiIconContainer, { backgroundColor: "#C8E6C9" }]}>
-                      <Ionicons name="checkmark-circle" size={28} color="#00704A" />
-                    </View>
-                    <Text style={[styles.kpiValue, { color: "#00704A" }]}>
-                      {String(
-                        overviewData?.productConditionStats?.good !== undefined
-                          ? overviewData.productConditionStats.good
-                          : stats.availableItems ?? 0
-                      )}
-                      </Text>
-                    <Text style={styles.kpiLabel}>Available</Text>
-                    </View>
-                  </View>
-
-                <View style={styles.kpiCard}>
-                  <View style={[styles.kpiGradient, { backgroundColor: "#FFF8E1" }]}>
-                    <View style={[styles.kpiIconContainer, { backgroundColor: "#FFE082" }]}>
-                      <Ionicons name="people" size={28} color="#F57C00" />
-                </View>
-                    <Text style={[styles.kpiValue, { color: "#F57C00" }]}>
-                      {String(
-                        overviewData?.borrowTransactions !== undefined
-                          ? overviewData.borrowTransactions
-                          : stats.borrowedItems ?? 0
-                      )}
-                    </Text>
-                    <Text style={styles.kpiLabel}>Borrowed</Text>
-              </View>
-                </View>
-
-                <View style={styles.kpiCard}>
-                  <View style={[styles.kpiGradient, { backgroundColor: "#FFEBEE" }]}>
-                    <View style={[styles.kpiIconContainer, { backgroundColor: "#FFCDD2" }]}>
-                      <Ionicons name="time" size={28} color="#D32F2F" />
-                    </View>
-                    <Text style={[styles.kpiValue, { color: "#D32F2F" }]}>
-                      {String(stats.overdueItems ?? 0)}
-                    </Text>
-                    <Text style={styles.kpiLabel}>Overdue</Text>
-                  </View>
-                </View>
-
-                <View style={styles.kpiCard}>
-                  <View style={[styles.kpiGradient, { backgroundColor: "#F5F5F5" }]}>
-                    <View style={[styles.kpiIconContainer, { backgroundColor: "#E0E0E0" }]}>
-                      <Ionicons name="close-circle" size={28} color="#666666" />
-                    </View>
-                    <Text style={[styles.kpiValue, { color: "#666666" }]}>
-                      {String(
-                        overviewData?.productConditionStats?.damaged !== undefined
-                          ? overviewData.productConditionStats.damaged
-                          : stats.damagedItems ?? 0
-                      )}
-                    </Text>
-                    <Text style={styles.kpiLabel}>Damaged</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
 
             {/* Quick Actions for Business Owner */}
             {authState.role !== 'staff' as any && (

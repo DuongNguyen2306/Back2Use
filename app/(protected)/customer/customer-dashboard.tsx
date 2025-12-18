@@ -2234,7 +2234,6 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    backdropFilter: 'blur(10px)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -2317,7 +2316,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
   },
-  sectionTitle: {
+  productSectionTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#111827',

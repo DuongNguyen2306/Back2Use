@@ -305,7 +305,8 @@ export default function TransactionProcessingScreen() {
       loadTransactions();
     }
     }
-  }, [activeTab, searchTerm, auth.state.isHydrated, auth.state.accessToken, auth.state.isAuthenticated]);
+    // Note: Search is handled by local filtering only, no API call needed
+  }, [activeTab, auth.state.isHydrated, auth.state.accessToken, auth.state.isAuthenticated]);
 
   const loadTransactions = async () => {
     // Prevent multiple simultaneous calls
@@ -339,18 +340,17 @@ export default function TransactionProcessingScreen() {
       
       if (activeTab !== 'all') {
         if (activeTab === 'borrow') {
-          params.borrowTransactionType = 'borrow';
+          params.status = 'borrowing';
         } else if (activeTab === 'return-success') {
-          params.status = 'completed';
+          params.status = 'returned';
         } else if (activeTab === 'overdue') {
-          // Overdue transactions might need special handling
+          // Overdue transactions - filter on client side since API doesn't have overdue status
           params.status = 'borrowing';
         }
       }
       
-      if (searchTerm.trim()) {
-        params.productName = searchTerm.trim();
-      }
+      // Search is handled by local filtering in getFilteredTransactions()
+      // No need to call API for search
       
       const response = await borrowTransactionsApi.getBusinessHistory(params);
       
@@ -2371,22 +2371,20 @@ export default function TransactionProcessingScreen() {
                     setShowReturnModal(false);
                     setShowConfirmModal(true);
                   } catch (error: any) {
-                    console.error('Error checking return:', error);
-                    
                     // Silently handle specific errors
                     if (error?.message === 'MATERIAL_NOT_FOUND' || 
                         error?.message?.toLowerCase().includes('material not found')) {
                       // Silently handle - don't show alert
-                      console.warn('⚠️ Material not found - silently handled');
                       return;
                     }
                     
-                    // Silently handle network errors
-                    if (error?.message?.toLowerCase().includes('network error') ||
+                    // Handle timeout and network errors - show weak network message
+                    if (error?.message?.toLowerCase().includes('timeout') ||
+                        error?.message?.toLowerCase().includes('network error') ||
+                        error?.code === 'ECONNABORTED' ||
                         error?.code === 'NETWORK_ERROR' ||
                         error?.response === undefined) {
-                      // Network error - silently handle
-                      console.warn('⚠️ Network error - silently handled');
+                      Alert.alert('Mạng yếu', 'Kết nối mạng không ổn định, vui lòng thử lại.');
                       return;
                     }
                     
