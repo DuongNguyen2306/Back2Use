@@ -1,21 +1,21 @@
 import { googleAuthService } from "@/services/auth/googleAuthService";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  ImageBackground,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    ImageBackground,
+    KeyboardAvoidingView,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useAuth } from "../../context/AuthProvider";
 
@@ -46,19 +46,8 @@ export default function LoginScreen() {
     redirectUri: 'https://auth.expo.io/@duong2306/com.back2use',
   });
 
-  // --- LẮNG NGHE PHẢN HỒI TỪ GOOGLE ---
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const { id_token } = response.params;
-      handleBackendLogin(id_token);
-    } else if (response?.type === 'error') {
-      console.error('Google Login Error:', response.error);
-      Alert.alert('Lỗi', 'Đăng nhập Google thất bại');
-    }
-  }, [response]);
-
   // --- HÀM GỬI TOKEN VỀ SERVER BACKEND ---
-  const handleBackendLogin = async (idToken: string) => {
+  const handleBackendLogin = useCallback(async (idToken: string) => {
     setIsLoading(true);
     try {
       console.log("🔐 Token Google nhận được:", idToken.substring(0, 20) + '...');
@@ -72,10 +61,23 @@ export default function LoginScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  // --- LẮNG NGHE PHẢN HỒI TỪ GOOGLE ---
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const { id_token } = response.params;
+      if (id_token) {
+        handleBackendLogin(id_token);
+      }
+    } else if (response?.type === 'error') {
+      console.error('Google Login Error:', response.error);
+      Alert.alert('Lỗi', 'Đăng nhập Google thất bại');
+    }
+  }, [response, handleBackendLogin]);
 
   const handleSignIn = async () => {
-    if (!username || !password) {
+    if (!username.trim() || !password.trim()) {
       Alert.alert("Error", "Please fill in all fields");
       return;
     }
@@ -161,6 +163,9 @@ export default function LoginScreen() {
       source={{ uri: "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/splash-bg.jpg-0cgAaCzoZKCdOb8naNxHzXRdZGseCS.jpeg" }}
       style={styles.bg}
       resizeMode="cover"
+      onError={(error) => {
+        console.error('ImageBackground load error:', error);
+      }}
     >
       <View style={styles.overlay} />
       <SafeAreaView style={styles.container}>

@@ -56,19 +56,47 @@ interface TransactionDetail {
   borrowTransactionType: string;
   borrowDate: string;
   dueDate: string;
+  returnDate?: string;
   depositAmount: number;
   status: string;
   extensionCount?: number;
   isLateProcessed: boolean;
   previousConditionImages?: {
     _id: string;
+    topImage?: string;
+    bottomImage?: string;
+    frontImage?: string;
+    backImage?: string;
+    leftImage?: string;
+    rightImage?: string;
   };
   currentConditionImages?: {
     _id: string;
+    topImage?: string;
+    bottomImage?: string;
+    frontImage?: string;
+    backImage?: string;
+    leftImage?: string;
+    rightImage?: string;
   };
-  previousDamageFaces?: any[];
-  currentDamageFaces?: any[];
+  previousDamageFaces?: Array<{
+    _id: string;
+    face: string;
+    issue: string;
+  }>;
+  currentDamageFaces?: Array<{
+    _id: string;
+    face: string;
+    issue: string;
+  }>;
   totalConditionPoints?: number;
+  dueNotificationSent?: boolean;
+  dueDateNotificationSent?: boolean;
+  dueNotificationSentAt?: string;
+  co2Changed?: number;
+  ecoPointChanged?: number;
+  rankingPointChanged?: number;
+  rewardPointChanged?: number;
   createdAt: string;
   updatedAt: string;
   qrCode?: string;
@@ -419,6 +447,23 @@ export default function TransactionDetailScreen() {
             </View>
           )}
           
+          
+          {transaction.returnDate && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Return Date:</Text>
+              <Text style={styles.infoValue}>
+                {new Date(transaction.returnDate).toLocaleString('vi-VN')}
+              </Text>
+            </View>
+          )}
+          
+          {transaction.extensionCount !== undefined && transaction.extensionCount > 0 && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Extension Count:</Text>
+              <Text style={styles.infoValue}>{transaction.extensionCount}</Text>
+            </View>
+          )}
+          
           {transaction.totalConditionPoints !== undefined && (
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Total Condition Points:</Text>
@@ -426,6 +471,234 @@ export default function TransactionDetailScreen() {
             </View>
           )}
         </View>
+
+        {/* Rewards & Points Card */}
+        {(transaction.co2Changed !== undefined || 
+          transaction.ecoPointChanged !== undefined || 
+          transaction.rankingPointChanged !== undefined || 
+          transaction.rewardPointChanged !== undefined) && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="trophy-outline" size={24} color="#0F4D3A" />
+              <Text style={styles.cardTitle}>Rewards & Points</Text>
+            </View>
+            
+            {transaction.co2Changed !== undefined && (
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>CO₂ Saved:</Text>
+                <Text style={[styles.infoValue, styles.positiveValue]}>
+                  {transaction.co2Changed.toFixed(3)} kg
+                </Text>
+              </View>
+            )}
+            
+            {transaction.ecoPointChanged !== undefined && (
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Eco Points:</Text>
+                <Text style={[styles.infoValue, styles.positiveValue]}>
+                  +{transaction.ecoPointChanged.toFixed(1)}
+                </Text>
+              </View>
+            )}
+            
+            {transaction.rankingPointChanged !== undefined && (
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Ranking Points:</Text>
+                <Text style={[styles.infoValue, styles.positiveValue]}>
+                  +{transaction.rankingPointChanged}
+                </Text>
+              </View>
+            )}
+            
+            {transaction.rewardPointChanged !== undefined && (
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Reward Points:</Text>
+                <Text style={[styles.infoValue, styles.positiveValue]}>
+                  +{transaction.rewardPointChanged}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Condition Images Card */}
+        {(transaction.previousConditionImages || transaction.currentConditionImages) && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="images-outline" size={24} color="#0F4D3A" />
+              <Text style={styles.cardTitle}>Condition Images</Text>
+            </View>
+            
+            {transaction.previousConditionImages && (
+              <View style={styles.imageSection}>
+                <Text style={styles.imageSectionTitle}>Before Borrowing</Text>
+                <View style={styles.imageGrid}>
+                  {transaction.previousConditionImages.frontImage && (
+                    <View style={styles.imageItem}>
+                      <Text style={styles.imageLabel}>Front</Text>
+                      <Image 
+                        source={{ uri: transaction.previousConditionImages.frontImage }} 
+                        style={styles.conditionImage} 
+                      />
+                    </View>
+                  )}
+                  {transaction.previousConditionImages.backImage && (
+                    <View style={styles.imageItem}>
+                      <Text style={styles.imageLabel}>Back</Text>
+                      <Image 
+                        source={{ uri: transaction.previousConditionImages.backImage }} 
+                        style={styles.conditionImage} 
+                      />
+                    </View>
+                  )}
+                  {transaction.previousConditionImages.leftImage && (
+                    <View style={styles.imageItem}>
+                      <Text style={styles.imageLabel}>Left</Text>
+                      <Image 
+                        source={{ uri: transaction.previousConditionImages.leftImage }} 
+                        style={styles.conditionImage} 
+                      />
+                    </View>
+                  )}
+                  {transaction.previousConditionImages.rightImage && (
+                    <View style={styles.imageItem}>
+                      <Text style={styles.imageLabel}>Right</Text>
+                      <Image 
+                        source={{ uri: transaction.previousConditionImages.rightImage }} 
+                        style={styles.conditionImage} 
+                      />
+                    </View>
+                  )}
+                  {transaction.previousConditionImages.topImage && (
+                    <View style={styles.imageItem}>
+                      <Text style={styles.imageLabel}>Top</Text>
+                      <Image 
+                        source={{ uri: transaction.previousConditionImages.topImage }} 
+                        style={styles.conditionImage} 
+                      />
+                    </View>
+                  )}
+                  {transaction.previousConditionImages.bottomImage && (
+                    <View style={styles.imageItem}>
+                      <Text style={styles.imageLabel}>Bottom</Text>
+                      <Image 
+                        source={{ uri: transaction.previousConditionImages.bottomImage }} 
+                        style={styles.conditionImage} 
+                      />
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+            
+            {transaction.currentConditionImages && (
+              <View style={styles.imageSection}>
+                <Text style={styles.imageSectionTitle}>After Returning</Text>
+                <View style={styles.imageGrid}>
+                  {transaction.currentConditionImages.frontImage && (
+                    <View style={styles.imageItem}>
+                      <Text style={styles.imageLabel}>Front</Text>
+                      <Image 
+                        source={{ uri: transaction.currentConditionImages.frontImage }} 
+                        style={styles.conditionImage} 
+                      />
+                    </View>
+                  )}
+                  {transaction.currentConditionImages.backImage && (
+                    <View style={styles.imageItem}>
+                      <Text style={styles.imageLabel}>Back</Text>
+                      <Image 
+                        source={{ uri: transaction.currentConditionImages.backImage }} 
+                        style={styles.conditionImage} 
+                      />
+                    </View>
+                  )}
+                  {transaction.currentConditionImages.leftImage && (
+                    <View style={styles.imageItem}>
+                      <Text style={styles.imageLabel}>Left</Text>
+                      <Image 
+                        source={{ uri: transaction.currentConditionImages.leftImage }} 
+                        style={styles.conditionImage} 
+                      />
+                    </View>
+                  )}
+                  {transaction.currentConditionImages.rightImage && (
+                    <View style={styles.imageItem}>
+                      <Text style={styles.imageLabel}>Right</Text>
+                      <Image 
+                        source={{ uri: transaction.currentConditionImages.rightImage }} 
+                        style={styles.conditionImage} 
+                      />
+                    </View>
+                  )}
+                  {transaction.currentConditionImages.topImage && (
+                    <View style={styles.imageItem}>
+                      <Text style={styles.imageLabel}>Top</Text>
+                      <Image 
+                        source={{ uri: transaction.currentConditionImages.topImage }} 
+                        style={styles.conditionImage} 
+                      />
+                    </View>
+                  )}
+                  {transaction.currentConditionImages.bottomImage && (
+                    <View style={styles.imageItem}>
+                      <Text style={styles.imageLabel}>Bottom</Text>
+                      <Image 
+                        source={{ uri: transaction.currentConditionImages.bottomImage }} 
+                        style={styles.conditionImage} 
+                      />
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Damage Faces Card */}
+        {(transaction.previousDamageFaces && transaction.previousDamageFaces.length > 0) ||
+         (transaction.currentDamageFaces && transaction.currentDamageFaces.length > 0) ? (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="warning-outline" size={24} color="#0F4D3A" />
+              <Text style={styles.cardTitle}>Damage Assessment</Text>
+            </View>
+            
+            {transaction.previousDamageFaces && transaction.previousDamageFaces.length > 0 && (
+              <View style={styles.damageSection}>
+                <Text style={styles.damageSectionTitle}>Before Borrowing</Text>
+                {transaction.previousDamageFaces.map((face, index) => (
+                  <View key={face._id || index} style={styles.damageItem}>
+                    <Text style={styles.damageFace}>{face.face.toUpperCase()}</Text>
+                    <Text style={[
+                      styles.damageIssue,
+                      face.issue === 'none' ? styles.noDamage : styles.hasDamage
+                    ]}>
+                      {face.issue === 'none' ? 'No Damage' : face.issue}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            
+            {transaction.currentDamageFaces && transaction.currentDamageFaces.length > 0 && (
+              <View style={styles.damageSection}>
+                <Text style={styles.damageSectionTitle}>After Returning</Text>
+                {transaction.currentDamageFaces.map((face, index) => (
+                  <View key={face._id || index} style={styles.damageItem}>
+                    <Text style={styles.damageFace}>{face.face.toUpperCase()}</Text>
+                    <Text style={[
+                      styles.damageIssue,
+                      face.issue === 'none' ? styles.noDamage : styles.hasDamage
+                    ]}>
+                      {face.issue === 'none' ? 'No Damage' : face.issue}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        ) : null}
 
         {/* Wallet Transactions Card */}
         {transaction.walletTransactions && transaction.walletTransactions.length > 0 && (
@@ -493,7 +766,10 @@ export default function TransactionDetailScreen() {
               <Ionicons name="qr-code-outline" size={24} color="#0F4D3A" />
               <Text style={styles.cardTitle}>Product QR Code</Text>
             </View>
-            <Image source={{ uri: transaction.productId.qrCode }} style={styles.qrCodeImage} />
+            <Image 
+              source={{ uri: transaction.productId.qrCode }} 
+              style={styles.qrCodeImage} 
+            />
           </View>
         )}
 
@@ -982,6 +1258,75 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  positiveValue: {
+    color: '#16a34a',
+    fontWeight: '600',
+  },
+  imageSection: {
+    marginBottom: 20,
+  },
+  imageSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 12,
+  },
+  imageGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  imageItem: {
+    width: '48%',
+    marginBottom: 16,
+  },
+  imageLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6b7280',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  conditionImage: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
+    resizeMode: 'cover',
+  },
+  damageSection: {
+    marginBottom: 20,
+  },
+  damageSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 12,
+  },
+  damageItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  damageFace: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  damageIssue: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  noDamage: {
+    color: '#16a34a',
+  },
+  hasDamage: {
+    color: '#ef4444',
   },
 });
 

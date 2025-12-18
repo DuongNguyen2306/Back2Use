@@ -13,7 +13,7 @@ interface LineDataset {
 }
 
 interface SimpleLineChartProps {
-  data: LineChartData[];
+  data?: LineChartData[]; // Optional when using datasets
   datasets?: LineDataset[]; // For multiple lines (e.g., Income and Expenses)
   maxValue?: number;
   height?: number;

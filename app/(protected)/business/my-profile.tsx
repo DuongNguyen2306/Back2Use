@@ -445,7 +445,16 @@ export default function BusinessProfileScreen() {
         { 
           text: "Logout", 
           style: "destructive",
-          onPress: () => auth.actions.logout()
+          onPress: async () => {
+            try {
+              await auth.actions.logout();
+              // Navigate to welcome after logout
+              router.replace('/welcome');
+            } catch (error) {
+              console.error('Error during logout:', error);
+              router.replace('/welcome');
+            }
+          }
         }
       ]
     );

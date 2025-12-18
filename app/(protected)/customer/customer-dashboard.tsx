@@ -9,20 +9,20 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    Image,
-    Modal,
-    Platform,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    Vibration,
-    View
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  Modal,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Vibration,
+  View
 } from "react-native";
 import CustomerHeader from "../../../components/CustomerHeader";
 import { StandaloneAIChecker } from "../../../components/StandaloneAIChecker";
@@ -2238,7 +2238,6 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    backdropFilter: 'blur(10px)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -2321,7 +2320,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
   },
-  sectionTitle: {
+  productSectionTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#111827',

@@ -161,6 +161,18 @@ export interface BusinessProfileUser {
   email: string;
 }
 
+export interface ProductGroup {
+  _id: string;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  businessId?: string;
+  materialId?: string;
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface BusinessProfile {
   _id: string;
   businessFormId: string;
@@ -182,6 +194,11 @@ export interface BusinessProfile {
     type: 'Point';
     coordinates: [number, number]; // [longitude, latitude]
   };
+  // Additional fields from API
+  productGroups?: ProductGroup[];
+  co2Reduced?: number;
+  averageRating?: number;
+  totalReviews?: number;
   createdAt: string;
   updatedAt: string;
   __v?: number;

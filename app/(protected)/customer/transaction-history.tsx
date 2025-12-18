@@ -335,7 +335,7 @@ export default function CustomerTransactionHistory() {
         const statusMap: { [key: string]: string } = {
           borrowing: "borrowing",
           pending_pickup: "pending_pickup",
-          completed: "completed",
+          completed: "returned", // API expects "returned" not "completed"
         };
         params.status = statusMap[statusFilter] || statusFilter;
       }
@@ -348,7 +348,8 @@ export default function CustomerTransactionHistory() {
         setTransactions([]);
       }
     } catch (error: any) {
-      Alert.alert("Error", "Failed to load borrow history");
+      // Silently handle error - don't show alert to user
+      console.log('Failed to load borrow history:', error?.message || error);
       setTransactions([]);
     } finally {
       setLoading(false);
@@ -399,7 +400,7 @@ export default function CustomerTransactionHistory() {
     switch (status) {
       case "completed":
       case "returned":
-        return "Completed";
+        return "Returned";
       case "pending_pickup":
         return "Pending Pickup";
       case "active":
@@ -565,7 +566,7 @@ export default function CustomerTransactionHistory() {
               onPress={() => setStatusFilter(f)}
             >
               <Text style={[styles.filterChipText, statusFilter === f && styles.filterChipTextActive]}>
-                {f === "all" ? "All" : f === "borrowing" ? "Borrowing" : f === "pending_pickup" ? "Pending Pickup" : "Completed"}
+                {f === "all" ? "All" : f === "borrowing" ? "Borrowing" : f === "pending_pickup" ? "Pending Pickup" : "Returned"}
               </Text>
             </TouchableOpacity>
           ))}
@@ -670,7 +671,7 @@ export default function CustomerTransactionHistory() {
                           ? styles.statusBadgePending
                           : isBorrowing
                             ? styles.statusBadgeActive
-                            : transaction.status === "completed"
+                            : isCompleted
                               ? styles.statusBadgeCompleted
                               : isCancelled
                                 ? styles.statusBadgeCancelled
@@ -684,7 +685,7 @@ export default function CustomerTransactionHistory() {
                             ? styles.statusBadgeTextPending
                             : isBorrowing
                               ? styles.statusBadgeTextActive
-                              : transaction.status === "completed"
+                              : isCompleted
                                 ? styles.statusBadgeTextCompleted
                                 : isCancelled
                                   ? styles.statusBadgeTextCancelled
