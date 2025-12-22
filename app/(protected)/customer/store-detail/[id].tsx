@@ -3,20 +3,20 @@ import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    Dimensions,
-    Image,
-    ImageBackground,
-    Modal,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Dimensions,
+  Image,
+  ImageBackground,
+  Modal,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NotificationBadge from '../../../../components/NotificationBadge';
@@ -816,7 +816,7 @@ export default function StoreDetailScreen() {
         
         console.log('📱 Formatted product created:', formattedProduct);
         setSelectedProduct(formattedProduct);
-        setDurationInDays('30'); // Reset về mặc định khi mở modal mới
+        setDurationInDays('10'); // Reset về mặc định khi mở modal mới
         setShowProductModal(true);
         
         // Reload user data

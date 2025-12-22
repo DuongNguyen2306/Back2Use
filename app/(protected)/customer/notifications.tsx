@@ -1,6 +1,7 @@
 "use client"
 
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
     ActivityIndicator,
@@ -99,11 +100,44 @@ export default function CustomerNotificationsScreen() {
     }
   };
 
+  const handleNotificationPress = async (item: Notification) => {
+    // Mark as read if not already read
+    if (!item.isRead) {
+      await handleMarkAsRead(item._id);
+    }
+
+    // Check for referenceId or transactionId in data
+    const transactionId = (item as any).referenceId || 
+                         item.data?.referenceId || 
+                         item.data?.transactionId;
+
+    console.log('📬 Notification pressed:', {
+      notificationId: item._id,
+      title: item.title,
+      hasReferenceId: !!(item as any).referenceId,
+      hasDataReferenceId: !!item.data?.referenceId,
+      hasDataTransactionId: !!item.data?.transactionId,
+      transactionId: transactionId
+    });
+
+    if (transactionId) {
+      // Navigate to transaction detail
+      console.log('📬 Navigating to transaction detail:', transactionId);
+      router.push({
+        pathname: '/(protected)/customer/transaction-detail/[id]',
+        params: { id: transactionId }
+      });
+    } else {
+      console.log('📬 No transaction ID found in notification');
+    }
+  };
+
   const renderNotificationItem = ({ item }: { item: Notification }) => {
     return (
       <TouchableOpacity
         style={[styles.notificationCard, !item.isRead && styles.unreadCard]}
-        onPress={() => !item.isRead && handleMarkAsRead(item._id)}
+        onPress={() => handleNotificationPress(item)}
+        activeOpacity={0.7}
       >
         <View style={styles.notificationContent}>
           <View style={styles.notificationHeader}>
@@ -111,22 +145,36 @@ export default function CustomerNotificationsScreen() {
             {!item.isRead && <View style={styles.unreadDot} />}
           </View>
           <Text style={styles.notificationMessage}>{item.message}</Text>
-          <Text style={styles.notificationDate}>
-            {new Date(item.createdAt).toLocaleString('vi-VN')}
-          </Text>
+          <View style={styles.notificationFooter}>
+            <Text style={styles.notificationDate}>
+              {new Date(item.createdAt).toLocaleString('vi-VN')}
+            </Text>
+            {((item as any).referenceId || item.data?.referenceId || item.data?.transactionId) && (
+              <View style={styles.navigateIndicator}>
+                <Ionicons name="arrow-forward" size={14} color="#0F4D3A" />
+                <Text style={styles.navigateText}>View details</Text>
+              </View>
+            )}
+          </View>
         </View>
         <View style={styles.notificationActions}>
           {!item.isRead && (
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() => handleMarkAsRead(item._id)}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleMarkAsRead(item._id);
+              }}
             >
               <Ionicons name="checkmark-circle-outline" size={20} color="#0F4D3A" />
             </TouchableOpacity>
           )}
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => handleDelete(item._id)}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleDelete(item._id);
+            }}
           >
             <Ionicons name="trash-outline" size={20} color="#EF4444" />
           </TouchableOpacity>
@@ -361,6 +409,23 @@ const styles = StyleSheet.create({
   notificationDate: {
     fontSize: 12,
     color: "#9CA3AF",
+  },
+  notificationFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 4,
+  },
+  navigateIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginLeft: 8,
+  },
+  navigateText: {
+    fontSize: 11,
+    color: "#0F4D3A",
+    fontWeight: "600",
   },
   notificationActions: {
     flexDirection: "row",

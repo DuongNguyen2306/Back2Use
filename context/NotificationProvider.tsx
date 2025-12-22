@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
+import ReturnSuccessModal from '../components/ReturnSuccessModal';
 import { Notification, notificationApi } from '../src/services/api/notificationService';
 import { getCurrentUserProfileWithAutoRefresh } from '../src/services/api/userService';
 import { socketService } from '../src/services/websocket/socketService';
@@ -37,6 +38,20 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const [loading, setLoading] = useState(true);
   const socketInitialized = useRef(false);
   const shownAlertIds = useRef<Set<string>>(new Set()); // Track notification IDs that have already shown alerts
+  const shownModalIds = useRef<Set<string>>(new Set()); // Track notification IDs that have already shown modal
+  const [showReturnSuccessModal, setShowReturnSuccessModal] = useState(false);
+  const [returnSuccessCo2, setReturnSuccessCo2] = useState<string>('0 kg');
+  const previousRoleRef = useRef<string | null>(null);
+  const hasInitializedRef = useRef(false); // Track if we've done initial load
+  
+  // Initialize previousRoleRef on mount to prevent false role change detection
+  useEffect(() => {
+    if (previousRoleRef.current === null && auth.state.role) {
+      previousRoleRef.current = auth.state.role;
+      console.log('📬 Initializing previousRoleRef on mount:', auth.state.role);
+    }
+  }, []); // Only run on mount
+  
   const notificationHandlers = useRef<{
     notification?: (payload: Notification) => void;
     notificationNew?: (payload: Notification) => void;
@@ -44,6 +59,61 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     disconnect?: () => void;
     error?: (error: any) => void;
   }>({});
+
+  // Helper function to check if notification is "Return Completed" and extract CO2
+  const checkAndShowReturnSuccessModal = (payload: Notification, forceShow = false) => {
+    // Check if this is a "Return Completed" notification
+    const titleLower = payload.title?.toLowerCase() || '';
+    const messageLower = payload.message?.toLowerCase() || '';
+    const typeLower = payload.type?.toLowerCase() || '';
+    
+    const isReturnCompleted = 
+      titleLower.includes('return completed') ||
+      titleLower.includes('return complete') ||
+      titleLower.includes('trả hàng thành công') ||
+      typeLower.includes('return_complete') ||
+      typeLower.includes('return_completed') ||
+      (messageLower.includes('return completed') && messageLower.includes('co2'));
+    
+    if (isReturnCompleted) {
+      // Check if we've already shown modal for this notification
+      const notificationId = payload._id || (payload as any).id;
+      if (!forceShow && shownModalIds.current.has(notificationId)) {
+        console.log('🎉 Modal already shown for notification:', notificationId);
+        return false;
+      }
+      
+      // Extract CO2 amount from message
+      // Try multiple patterns to catch different message formats
+      const co2Match = payload.message?.match(/(\d+\.?\d*)\s*kg\s*(?:of\s*)?CO2/i) ||
+                      payload.message?.match(/(\d+\.?\d*)\s*kg/i) ||
+                      payload.message?.match(/reduce\s+(\d+\.?\d*)\s*kg/i) ||
+                      payload.message?.match(/(\d+\.?\d*)\s*kg\s*CO₂/i) ||
+                      payload.message?.match(/giảm\s+(\d+\.?\d*)\s*kg/i);
+      const co2Amount = co2Match ? `${co2Match[1]} kg` : '0 kg';
+      
+      console.log('🎉 Return Completed notification detected!');
+      console.log('🎉 Title:', payload.title);
+      console.log('🎉 Message:', payload.message);
+      console.log('🎉 CO2 Amount:', co2Amount);
+      
+      // Mark as shown
+      if (notificationId) {
+        shownModalIds.current.add(notificationId);
+        // Limit Set size to prevent memory leaks
+        if (shownModalIds.current.size > 100) {
+          const firstId = shownModalIds.current.values().next().value;
+          shownModalIds.current.delete(firstId);
+        }
+      }
+      
+      // Show success modal
+      setReturnSuccessCo2(co2Amount);
+      setShowReturnSuccessModal(true);
+      return true;
+    }
+    return false;
+  };
 
   // Get user ID and mode with fallback to API call
   const getUserIdAndMode = async (): Promise<{ userId: string | null; mode: 'customer' | 'business' | 'staff' }> => {
@@ -65,20 +135,24 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       try {
         const userProfile = await getCurrentUserProfileWithAutoRefresh();
         userId = userProfile._id || null;
-        console.log('📬 ✅ Got user ID from API:', userId);
+        console.log('📬 ✅ Got user ID from API fallback:', userId);
+        
+        // If we got userId from API, update auth state user if possible
+        if (userId && !auth.state.user) {
+          console.log('📬 ℹ️ User object not in state, but got userId from API');
+        }
       } catch (error: any) {
-        // Silent fail - don't log error or show to user
-        // This is expected if token is not available yet or API call fails
-        // Just return null userId and let the app continue
+        // Log error for debugging
         const errorMessage = error?.message || '';
         const isTokenError = errorMessage.includes('token') || errorMessage.includes('Token');
         
         if (isTokenError) {
-          // Token not available - this is normal during initial load
-          // Don't log anything, just return null
+          console.log('📬 ⚠️ Token error when fetching user profile:', errorMessage);
         } else {
-          // Other errors - log quietly (not as error, just info)
-          console.log('📬 ℹ️ Could not fetch user profile from API (will retry later)');
+          console.log('📬 ⚠️ Could not fetch user profile from API:', errorMessage);
+          console.log('📬 Error status:', error?.response?.status);
+          console.log('📬 Error data:', error?.response?.data);
+          console.log('📬 Full error:', JSON.stringify(error, null, 2));
         }
         // Return null userId - don't throw error
         userId = null;
@@ -91,6 +165,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     console.log('📬 NotificationProvider: Final User ID:', userId, 'Mode:', mode);
     console.log('📬 NotificationProvider: isAuthenticated:', auth.state.isAuthenticated);
     console.log('📬 NotificationProvider: isHydrated:', auth.state.isHydrated);
+    console.log('📬 NotificationProvider: hasAccessToken:', !!auth.state.accessToken);
     
     return { userId, mode };
   };
@@ -135,14 +210,31 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const loadNotifications = async () => {
     try {
       console.log('📬 ========== LOAD NOTIFICATIONS START ==========');
-      const { userId } = await getUserIdAndMode();
-      if (!userId) {
-        // Silent fail - don't show error to user, just skip loading
-        // This is normal if user is not loaded yet or token is not available
-        console.log('📬 ℹ️ No userId available yet, skipping load notifications (will retry when user is loaded)');
+      
+      // Wait for role to be loaded first
+      if (!auth.state.role) {
+        console.log('📬 ⏳ Role not loaded yet, waiting...');
         setLoading(false);
         return;
       }
+      
+      // Try to get userId - this will use fallback API if user object not in state
+      const { userId, mode } = await getUserIdAndMode();
+      
+      if (!userId) {
+        // If still no userId after fallback, log and wait
+        console.log('📬 ⚠️ No userId available after fallback, cannot load notifications');
+        console.log('📬 Auth state:', {
+          hasUser: !!auth.state.user,
+          userId: auth.state.user?._id,
+          hasToken: !!auth.state.accessToken,
+          role: auth.state.role
+        });
+        setLoading(false);
+        return;
+      }
+      
+      console.log('📬 ✅ Role loaded:', auth.state.role, 'Mode:', mode, 'UserId:', userId);
 
       console.log('📬 Calling API: getByReceiver with userId:', userId);
       const response = await notificationApi.getByReceiver(userId, {
@@ -242,6 +334,29 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         const newUnreadCount = newNotificationsArray.filter(n => !n.isRead).length;
         setUnreadCount(newUnreadCount);
         
+        // Check for most recent unread "Return Completed" notification to show modal
+        const returnCompletedNotifications = newNotificationsArray
+          .filter(n => !n.isRead)
+          .filter(n => {
+            const titleLower = n.title?.toLowerCase() || '';
+            const typeLower = n.type?.toLowerCase() || '';
+            return titleLower.includes('return completed') ||
+                   titleLower.includes('return complete') ||
+                   typeLower.includes('return_complete');
+          })
+          .sort((a, b) => {
+            const dateA = new Date(a.createdAt).getTime();
+            const dateB = new Date(b.createdAt).getTime();
+            return dateB - dateA; // Most recent first
+          });
+        
+        if (returnCompletedNotifications.length > 0) {
+          const mostRecent = returnCompletedNotifications[0];
+          console.log('🎉 Found unread Return Completed notification, showing modal:', mostRecent);
+          // Show modal for the most recent one (only if not already shown)
+          checkAndShowReturnSuccessModal(mostRecent, false);
+        }
+        
         console.log('✅ ========== SET NOTIFICATIONS DONE ==========');
         console.log('✅ Notifications count:', newNotificationsArray.length);
         console.log('✅ Unread count:', newUnreadCount);
@@ -257,19 +372,40 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       console.error('📬 Error message:', error?.message);
       console.error('📬 Error response:', error?.response?.data);
       console.error('📬 Error status:', error?.response?.status);
+      console.error('📬 Error stack:', error?.stack);
       console.error('📬 Full error:', JSON.stringify(error, null, 2));
-      setNotifications([]);
-      setUnreadCount(0);
+      
+      // Don't clear notifications on error - keep existing ones
+      // Only set empty if this is the first load
+      if (notifications.length === 0) {
+        setNotifications([]);
+        setUnreadCount(0);
+      }
     } finally {
       setLoading(false);
       console.log('📬 ========== LOAD NOTIFICATIONS END ==========');
+      console.log('📬 Final notifications count:', notifications.length);
     }
   };
 
   // Initialize socket connection
-  const initializeSocket = async () => {
-    if (socketInitialized.current || !auth.state.isAuthenticated) {
-      console.log('📬 Socket already initialized or not authenticated');
+  const initializeSocket = async (forceReconnect = false) => {
+    if (!auth.state.isAuthenticated) {
+      console.log('📬 Not authenticated, cannot initialize socket');
+      return;
+    }
+
+    // If forcing reconnect, disconnect first
+    if (forceReconnect && socketInitialized.current) {
+      console.log('📬 Force reconnecting socket - disconnecting first...');
+      socketService.disconnect();
+      socketInitialized.current = false;
+      // Clear handlers
+      notificationHandlers.current = {};
+    }
+
+    if (socketInitialized.current && !forceReconnect) {
+      console.log('📬 Socket already initialized');
       return;
     }
 
@@ -419,21 +555,27 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             shownAlertIds.current.delete(firstId);
           }
           
-          Alert.alert(
-            payload.title || 'Thông báo mới',
-            payload.message || '',
-            [
-              { text: 'Đóng', style: 'cancel' },
-              { 
-                text: 'Xem', 
-                onPress: () => {
-                  // Could navigate to notification detail if needed
-                  console.log('User wants to view notification:', payload._id);
+          // Check if this is a "Return Completed" notification and show modal
+          const modalShown = checkAndShowReturnSuccessModal(payload);
+          
+          if (!modalShown) {
+            // Show regular alert for other notifications
+            Alert.alert(
+              payload.title || 'Thông báo mới',
+              payload.message || '',
+              [
+                { text: 'Đóng', style: 'cancel' },
+                { 
+                  text: 'Xem', 
+                  onPress: () => {
+                    // Could navigate to notification detail if needed
+                    console.log('User wants to view notification:', payload._id);
+                  }
                 }
-              }
-            ],
-            { cancelable: true }
-          );
+              ],
+              { cancelable: true }
+            );
+          }
         }
       };
 
@@ -454,20 +596,26 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             shownAlertIds.current.delete(firstId);
           }
           
-          Alert.alert(
-            payload.title || 'Thông báo mới',
-            payload.message || '',
-            [
-              { text: 'Đóng', style: 'cancel' },
-              { 
-                text: 'Xem', 
-                onPress: () => {
-                  console.log('User wants to view notification:', payload._id);
+          // Check if this is a "Return Completed" notification and show modal
+          const modalShown = checkAndShowReturnSuccessModal(payload);
+          
+          if (!modalShown) {
+            // Show regular alert for other notifications
+            Alert.alert(
+              payload.title || 'Thông báo mới',
+              payload.message || '',
+              [
+                { text: 'Đóng', style: 'cancel' },
+                { 
+                  text: 'Xem', 
+                  onPress: () => {
+                    console.log('User wants to view notification:', payload._id);
+                  }
                 }
-              }
-            ],
-            { cancelable: true }
-          );
+              ],
+              { cancelable: true }
+            );
+          }
         }
       };
 
@@ -632,37 +780,113 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     console.log('📬 =========================================');
   }, [notifications, unreadCount, loading]);
 
+  // Retry loading notifications when user object is loaded
+  useEffect(() => {
+    // Only retry if:
+    // 1. We're authenticated and hydrated
+    // 2. We have a role
+    // 3. User object just got loaded (has _id now)
+    // 4. We haven't loaded notifications yet (count is 0)
+    // 5. We're not currently loading
+    const shouldRetry = auth.state.isAuthenticated && 
+                       auth.state.isHydrated && 
+                       auth.state.role &&
+                       auth.state.user?._id &&
+                       notifications.length === 0 &&
+                       !loading;
+
+    if (shouldRetry) {
+      console.log('📬 🔄 User object loaded, retrying to load notifications...');
+      console.log('📬 User ID:', auth.state.user?._id);
+      console.log('📬 Role:', auth.state.role);
+      loadNotifications();
+    }
+  }, [auth.state.user?._id, auth.state.isAuthenticated, auth.state.isHydrated, auth.state.role, notifications.length, loading]);
+
   // Separate effect to watch for user object loading OR use fallback API call
   // This will trigger when user is loaded asynchronously after hydration
   useEffect(() => {
     const userId = auth.state.user?._id;
     const hasToken = !!auth.state.accessToken;
-    const isReady = auth.state.isAuthenticated && auth.state.isHydrated && (!!userId || hasToken);
+    const hasRole = !!auth.state.role; // CRITICAL: Wait for role to be loaded
+    const isReady = auth.state.isAuthenticated && auth.state.isHydrated && hasRole && (!!userId || hasToken);
     
     console.log('📬 ========== USER WATCHER EFFECT ==========');
     console.log('📬 User object changed:', {
       hasUser: !!auth.state.user,
       userId: userId,
       hasToken: hasToken,
+      hasRole: hasRole,
+      role: auth.state.role,
       isAuthenticated: auth.state.isAuthenticated,
       isHydrated: auth.state.isHydrated,
       isReady: isReady,
       socketInitialized: socketInitialized.current,
+      hasInitialized: hasInitializedRef.current,
+      currentRole: auth.state.role,
+      previousRole: previousRoleRef.current,
     });
     
-    // Only initialize if ready and not already initialized
-    // isReady = authenticated + hydrated + (has userId OR has token for fallback)
-    if (isReady && !socketInitialized.current) {
-      console.log('✅ Ready to initialize! (User ID in state OR has token for fallback)');
-      console.log('✅ Initializing notifications and socket...');
-      loadNotifications();
-      initializeSocket(); // initializeSocket is now async but we don't need to await it
-    } else if (isReady && socketInitialized.current) {
-      console.log('ℹ️ Ready but socket already initialized, skipping...');
-    } else if (!isReady) {
-      console.log('⏳ Waiting for authentication/hydration...');
+    // Check if role changed (only if we've initialized before)
+    const roleChanged = hasInitializedRef.current && 
+                        previousRoleRef.current !== null && 
+                        previousRoleRef.current !== auth.state.role;
+    
+    if (roleChanged) {
+      console.log('🔄 Role changed in user watcher - clearing and reinitializing...');
+      setNotifications([]);
+      setUnreadCount(0);
+      socketInitialized.current = false;
+      shownAlertIds.current.clear();
+      shownModalIds.current.clear();
     }
-  }, [auth.state.user?._id, auth.state.isAuthenticated, auth.state.isHydrated, auth.state.accessToken]);
+    
+    // Update previous role
+    previousRoleRef.current = auth.state.role || null;
+    
+    // Only initialize if ready and not already initialized
+    // isReady = authenticated + hydrated + hasRole + (has userId OR has token for fallback)
+    const initializeAsync = async () => {
+      if (isReady && (!socketInitialized.current || !hasInitializedRef.current)) {
+        console.log('✅ Ready to initialize! (User ID in state OR has token for fallback)');
+        console.log('✅ Role:', auth.state.role);
+        console.log('✅ Initializing notifications and socket...');
+        hasInitializedRef.current = true;
+        
+        // Load notifications first, then initialize socket
+        // This ensures we have notifications even if socket fails
+        await loadNotifications();
+        initializeSocket(roleChanged); // Force reconnect if role changed
+      } else if (isReady && socketInitialized.current && roleChanged) {
+        console.log('🔄 Role changed - reinitializing socket...');
+        await loadNotifications();
+        initializeSocket(true); // Force reconnect
+      } else if (isReady && socketInitialized.current && !hasInitializedRef.current) {
+        // Edge case: socket initialized but we haven't marked as initialized
+        console.log('⚠️ Socket initialized but hasInitializedRef is false - marking and loading notifications...');
+        hasInitializedRef.current = true;
+        await loadNotifications();
+      } else if (isReady && socketInitialized.current && hasInitializedRef.current) {
+        // If we have userId now but didn't before, try loading notifications again
+        if (userId && notifications.length === 0 && !loading) {
+          console.log('📬 User ID now available, loading notifications...');
+          await loadNotifications();
+        } else {
+          console.log('ℹ️ Ready but socket already initialized, skipping...');
+        }
+      } else if (!isReady) {
+        if (!auth.state.isAuthenticated || !auth.state.isHydrated) {
+          console.log('⏳ Waiting for authentication/hydration...');
+        } else if (!hasRole) {
+          console.log('⏳ Waiting for role to be loaded...');
+        } else {
+          console.log('⏳ Waiting for userId or token...');
+        }
+      }
+    };
+
+    initializeAsync();
+  }, [auth.state.user?._id, auth.state.isAuthenticated, auth.state.isHydrated, auth.state.accessToken, auth.state.role, notifications.length, loading]);
 
   // Initialize on mount and when auth state changes
   useEffect(() => {
@@ -673,38 +897,77 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       userId: auth.state.user?._id,
       user: auth.state.user,
       role: auth.state.role,
+      previousRole: previousRoleRef.current,
       hasAccessToken: !!auth.state.accessToken,
+      hasInitialized: hasInitializedRef.current,
     });
     
-    // CRITICAL: Wait for both authentication AND user object to be loaded
-    // User object is loaded asynchronously after hydration via API call
-    // OR we can use fallback API call if user object is not available
-    if (auth.state.isAuthenticated && auth.state.isHydrated) {
+    // Check if role changed (only if we've initialized before)
+    const roleChanged = hasInitializedRef.current && 
+                        previousRoleRef.current !== null && 
+                        previousRoleRef.current !== auth.state.role;
+    
+    if (roleChanged) {
+      console.log('🔄 Role changed from', previousRoleRef.current, 'to', auth.state.role);
+      console.log('🔄 Clearing notifications and reinitializing socket...');
+      // Clear notifications when role changes
+      setNotifications([]);
+      setUnreadCount(0);
+      // Reset socket to force reconnect with new role
+      socketInitialized.current = false;
+      hasInitializedRef.current = false;
+      shownAlertIds.current.clear();
+      shownModalIds.current.clear();
+    }
+    
+    // Update previous role
+    previousRoleRef.current = auth.state.role || null;
+    
+    // CRITICAL: Wait for authentication, hydration, AND role to be loaded
+    // Role must be loaded before we can determine the correct mode (customer/business/staff)
+    const hasRole = !!auth.state.role;
+    
+    if (auth.state.isAuthenticated && auth.state.isHydrated && hasRole) {
       const userId = auth.state.user?._id;
       const hasToken = !!auth.state.accessToken;
       
-      if (userId) {
-        console.log('✅ User authenticated, hydrated, and user ID available in state');
+      if (userId && (!socketInitialized.current || !hasInitializedRef.current)) {
+        console.log('✅ User authenticated, hydrated, role loaded, and user ID available in state');
+        console.log('✅ Role:', auth.state.role);
         console.log('✅ Initializing notifications and socket...');
+        hasInitializedRef.current = true;
         loadNotifications();
-        initializeSocket(); // initializeSocket is now async but we don't need to await it
-      } else if (hasToken) {
-        console.warn('⚠️ User authenticated and hydrated, but user ID not in state yet');
+        // Force reconnect if role changed
+        initializeSocket(roleChanged);
+      } else if (hasToken && (!socketInitialized.current || !hasInitializedRef.current)) {
+        console.warn('⚠️ User authenticated, hydrated, role loaded, but user ID not in state yet');
+        console.warn('📬 Role:', auth.state.role);
         console.warn('📬 User object:', auth.state.user);
         console.warn('📬 Has access token, will use fallback API call to get user ID');
         console.warn('📬 User watcher effect will handle initialization with fallback');
         // Don't clear notifications yet, wait for user watcher effect to handle it
         // The user watcher effect will call loadNotifications which uses fallback API
+      } else if (userId || hasToken) {
+        console.log('ℹ️ Already initialized, skipping...');
       } else {
-        console.warn('⚠️ User authenticated and hydrated, but no user ID and no token');
+        console.warn('⚠️ User authenticated, hydrated, role loaded, but no user ID and no token');
         console.warn('📬 Cannot load notifications without user ID or token');
       }
     } else {
-      console.warn('⚠️ Not authenticated or not hydrated yet');
-      console.warn('📬 isAuthenticated:', auth.state.isAuthenticated);
-      console.warn('📬 isHydrated:', auth.state.isHydrated);
-      setNotifications([]);
-      setUnreadCount(0);
+      if (!auth.state.isAuthenticated || !auth.state.isHydrated) {
+        console.warn('⚠️ Not authenticated or not hydrated yet');
+        console.warn('📬 isAuthenticated:', auth.state.isAuthenticated);
+        console.warn('📬 isHydrated:', auth.state.isHydrated);
+      } else if (!hasRole) {
+        console.warn('⚠️ Role not loaded yet, waiting...');
+        console.warn('📬 Current role:', auth.state.role);
+      }
+      // Only clear if we were previously initialized
+      if (hasInitializedRef.current) {
+        setNotifications([]);
+        setUnreadCount(0);
+        hasInitializedRef.current = false;
+      }
     }
 
     return () => {
@@ -756,6 +1019,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   return (
     <NotificationContext.Provider value={value}>
       {children}
+      <ReturnSuccessModal
+        visible={showReturnSuccessModal}
+        co2Amount={returnSuccessCo2}
+        onClose={() => setShowReturnSuccessModal(false)}
+      />
     </NotificationContext.Provider>
   );
 }
