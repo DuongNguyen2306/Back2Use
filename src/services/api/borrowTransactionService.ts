@@ -113,6 +113,8 @@ export const borrowTransactionsApi = {
     borrowTransactionType?: string;
     page?: number;
     limit?: number;
+    fromDate?: string;
+    toDate?: string;
   }): Promise<any> => {
     try {
       // Get token
@@ -144,6 +146,8 @@ export const borrowTransactionsApi = {
       if (params?.borrowTransactionType) queryParams.append('borrowTransactionType', params.borrowTransactionType);
       if (params?.page) queryParams.append('page', String(params.page));
       if (params?.limit) queryParams.append('limit', String(params.limit));
+      if (params?.fromDate) queryParams.append('fromDate', params.fromDate);
+      if (params?.toDate) queryParams.append('toDate', params.toDate);
 
       const endpoint = `${API_ENDPOINTS.BORROW_TRANSACTIONS.CUSTOMER_HISTORY}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
 

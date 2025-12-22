@@ -40,6 +40,12 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "center",
   },
+  co2Button: {
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   filterSection: {
     backgroundColor: "#FFFFFF",
     paddingVertical: 16,
@@ -553,7 +559,12 @@ export default function CustomerTransactionHistory() {
           <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Borrowing History</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity
+          style={styles.co2Button}
+          onPress={() => router.push('/(protected)/customer/customer-co2-report')}
+        >
+          <Ionicons name="leaf" size={20} color="#FFFFFF" />
+        </TouchableOpacity>
       </View>
 
       {/* Filter Chips */}

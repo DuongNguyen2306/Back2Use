@@ -9,20 +9,20 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Image,
-  Modal,
-  Platform,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Vibration,
-  View
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Image,
+    Modal,
+    Platform,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    Vibration,
+    View
 } from "react-native";
 import CustomerHeader from "../../../components/CustomerHeader";
 import { StandaloneAIChecker } from "../../../components/StandaloneAIChecker";
@@ -1097,14 +1097,18 @@ export default function CustomerDashboard() {
                     </Text>
                     <Text style={styles.impactLabel}>Returns</Text>
             </View>
-              <View style={styles.impactStat}>
+              <TouchableOpacity 
+                style={styles.impactStat}
+                onPress={() => router.push('/(protected)/customer/customer-co2-report')}
+                activeOpacity={0.7}
+              >
                     <Text style={styles.impactValue}>
                       {userData?.co2Reduced 
                         ? `${Math.abs(userData.co2Reduced).toFixed(2)}kg` 
                         : '0kg'}
                     </Text>
                     <Text style={styles.impactLabel}>CO₂ Reduced</Text>
-                  </View>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
