@@ -268,6 +268,8 @@ export const borrowTransactionsApi = {
     borrowTransactionType?: string;
     page?: number;
     limit?: number;
+    fromDate?: string;
+    toDate?: string;
   }): Promise<any> => {
     try {
       // Get token

@@ -35,6 +35,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   const { actions } = useAuth();
 
   // --- CẤU HÌNH GOOGLE LOGIN (EXPO GO) ---
@@ -163,14 +164,28 @@ export default function LoginScreen() {
       source={{ uri: "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/splash-bg.jpg-0cgAaCzoZKCdOb8naNxHzXRdZGseCS.jpeg" }}
       style={styles.bg}
       resizeMode="cover"
+      onLoad={() => setImageLoaded(true)}
       onError={(error) => {
         console.error('ImageBackground load error:', error);
+        setImageLoaded(true); // Show form even if image fails to load
       }}
     >
       <View style={styles.overlay} />
       <SafeAreaView style={styles.container}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.keyboardView}>
-          <ScrollView contentContainerStyle={styles.scrollContent}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === "ios" ? "padding" : "padding"} 
+          style={styles.keyboardView}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+          enabled={true}
+        >
+          <ScrollView 
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            alwaysBounceVertical={false}
+            contentInsetAdjustmentBehavior="automatic"
+          >
             <View style={styles.topHeader}>
               <TouchableOpacity 
                 style={styles.backButton} 
@@ -297,7 +312,11 @@ const styles = StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFillObject as any, backgroundColor: "rgba(0,0,0,0.15)" },
   container: { flex: 1, backgroundColor: "transparent" },
   keyboardView: { flex: 1 },
-  scrollContent: { flexGrow: 1, padding: 20 },
+  scrollContent: { 
+    flexGrow: 1, 
+    padding: 20, 
+    paddingBottom: 40,
+  },
   topHeader: { 
     paddingTop: 8, 
     paddingBottom: 12, 
@@ -314,7 +333,23 @@ const styles = StyleSheet.create({
   placeholder: { width: 40 },
   logo: { width: 120, height: 120, borderRadius: 20, marginRight: 0 },
   brandText: { fontSize: 30, fontWeight: "bold", color: "#FFFFFF", textShadowColor: "rgba(0,0,0,0.3)", textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3, includeFontPadding: false, marginLeft: -32, marginTop: 14},
-  formCard: { backgroundColor: "rgba(255,255,255,0.7)", borderRadius: 20, padding: 24, borderWidth: 1, borderColor: "#E5E7EB", shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 6, marginTop: 8 },
+  formCard: { 
+    backgroundColor: "rgba(255,255,255,0.7)", 
+    borderRadius: 20, 
+    padding: 24, 
+    borderWidth: 1, 
+    borderColor: "#E5E7EB", 
+    shadowColor: "#000", 
+    shadowOpacity: 0.08, 
+    shadowRadius: 12, 
+    shadowOffset: { width: 0, height: 6 }, 
+    elevation: 6, 
+    marginTop: 8,
+    width: '100%',
+    maxWidth: '100%',
+    alignSelf: 'stretch',
+    zIndex: 10,
+  },
   title: { fontSize: 24, fontWeight: "bold", color: "#111827", textAlign: "center", marginBottom: 32 },
   fieldContainer: { marginBottom: 20 },
   label: { fontSize: 16, fontWeight: "600", color: "#374151", marginBottom: 8 },

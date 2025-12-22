@@ -526,7 +526,7 @@ export default function BusinessMenu() {
 
       <ScrollView 
         style={styles.content} 
-        contentContainerStyle={{ paddingBottom: bottom + 100 }}
+        contentContainerStyle={{ paddingBottom: bottom + 150 }}
         showsVerticalScrollIndicator={false}
       >
         {/* User Profile Card */}
@@ -660,9 +660,15 @@ export default function BusinessMenu() {
         </View>
 
         {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
+        <View style={styles.logoutButtonWrapper}>
+          <TouchableOpacity 
+            style={styles.logoutButton} 
+            onPress={handleLogout}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.logoutText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
 
       </ScrollView>
 
@@ -1044,17 +1050,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
   },
+  logoutButtonWrapper: {
+    marginTop: 16,
+    marginBottom: 32,
+    paddingHorizontal: 16,
+  },
   logoutButton: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#FEF2F2',
     borderRadius: 12,
     paddingVertical: 16,
     paddingHorizontal: 24,
     alignItems: 'center',
-    marginBottom: 16,
+    minHeight: 56,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FECACA',
   },
   logoutText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#DC2626',
   },
   bottomSpacing: {

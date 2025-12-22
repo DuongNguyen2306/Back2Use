@@ -56,11 +56,24 @@ const refreshAccessToken = async (refreshToken: string) => {
         user
       };
     } else {
-      console.error("❌ Token refresh failed:", (response as any)?.message || 'Unknown message');
+      // Silently handle token refresh failure (user not logged in or token expired)
+      // Don't log error to avoid showing error UI when user is not authenticated
       return null;
     }
-  } catch (error) {
-    console.error("❌ Error refreshing token:", error);
+  } catch (error: any) {
+    // Silently handle token refresh errors (jwt expired, etc.)
+    // Don't log error to avoid showing error UI when user is not authenticated
+    // Only log if it's not a token-related error
+    const isTokenError = error?.message?.toLowerCase().includes('jwt') || 
+                        error?.message?.toLowerCase().includes('token') ||
+                        error?.message?.toLowerCase().includes('expired') ||
+                        error?.response?.status === 401 ||
+                        error?.response?.status === 403;
+    
+    if (!isTokenError) {
+      // Only log non-token errors for debugging
+      console.log("⚠️ Error refreshing token (non-token error):", error?.message || error);
+    }
     return null;
   }
 };
@@ -582,7 +595,8 @@ export function useAuthCore() {
         return latestToken;
       }
     } catch (error) {
-      console.warn('⚠️ Error getting token from AsyncStorage, using state token:', error);
+      // Silently handle AsyncStorage errors - don't log to avoid error UI
+      // Only return null to indicate no token available
     }
 
     // Fallback to state token if AsyncStorage read fails
@@ -592,11 +606,16 @@ export function useAuthCore() {
 
     // Check if token needs refresh
     if (state.tokenExpiry && isTokenExpired(state.tokenExpiry)) {
-      console.log("🔄 Token expired, refreshing...");
-      const updatedState = await checkAndRefreshToken(state);
-      if (updatedState !== state) {
-        setState(updatedState);
-        return updatedState.accessToken;
+      try {
+        const updatedState = await checkAndRefreshToken(state);
+        if (updatedState !== state) {
+          setState(updatedState);
+          return updatedState.accessToken;
+        }
+      } catch (error) {
+        // Silently handle token refresh errors - don't log to avoid error UI
+        // Return null to indicate token refresh failed
+        return null;
       }
     }
 

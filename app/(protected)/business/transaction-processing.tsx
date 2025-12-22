@@ -1653,13 +1653,22 @@ export default function TransactionProcessingScreen() {
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle}>Borrowing History</Text>
           </View>
+          <View style={styles.headerRight}>
             <TouchableOpacity 
-            style={styles.headerRight}
-            onPress={openUnifiedQRScanner}
-            activeOpacity={0.7}
+              style={styles.headerIconButton}
+              onPress={() => router.push('/(protected)/business/business-co2-report')}
+              activeOpacity={0.7}
             >
-            <Ionicons name="qr-code" size={24} color="#FFFFFF" />
+              <Ionicons name="leaf" size={22} color="#FFFFFF" />
             </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.headerIconButton}
+              onPress={openUnifiedQRScanner}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="qr-code" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
         </View>
       </SafeAreaView>
 
@@ -3725,8 +3734,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerIconButton: {
     width: 40,
-    alignItems: 'flex-end',
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 20,

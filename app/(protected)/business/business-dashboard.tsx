@@ -170,10 +170,13 @@ export default function BusinessDashboard() {
                 limit: 1000,
               });
               
-              if (productsResponse.data?.items) {
-                allProducts.push(...productsResponse.data.items);
-              } else if (Array.isArray(productsResponse.data)) {
-                allProducts.push(...productsResponse.data);
+              // Handle both response formats: array or object with items property
+              if (productsResponse.data) {
+                if (Array.isArray(productsResponse.data)) {
+                  allProducts.push(...productsResponse.data);
+                } else if (productsResponse.data && typeof productsResponse.data === 'object' && 'items' in productsResponse.data) {
+                  allProducts.push(...(productsResponse.data as any).items);
+                }
               }
             } catch (error) {
               console.error(`Error loading products for group ${group._id}:`, error);
@@ -477,7 +480,11 @@ export default function BusinessDashboard() {
                 <Text style={styles.sectionTitle}>Overview</Text>
             <View style={styles.kpiGrid}>
                 {/* CO2 Reduced */}
-                <View style={styles.overviewCard}>
+                <TouchableOpacity 
+                  style={styles.overviewCard}
+                  onPress={() => router.push('/(protected)/business/business-co2-report')}
+                  activeOpacity={0.7}
+                >
                   <View style={[styles.overviewCardContent, { backgroundColor: "#ECFDF5" }]}>
                     <View style={[styles.overviewIconContainer, { backgroundColor: "#D1FAE5" }]}>
                       <Ionicons name="earth" size={32} color="#10B981" />
@@ -493,7 +500,7 @@ export default function BusinessDashboard() {
                     </Text>
                     <Text style={styles.overviewLabel}>CO₂ Reduced</Text>
                   </View>
-                </View>
+                </TouchableOpacity>
 
                 {/* Eco Points */}
                 <View style={styles.overviewCard}>
