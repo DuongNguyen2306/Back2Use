@@ -274,7 +274,7 @@ export default function CustomerDashboard() {
     } else {
       setLaserLinePosition(0);
     }
-  }, [showQRScanner, hasPermission]);
+  }, [showQRScanner, permission?.granted]);
 
   // Helper function to handle product not found case
   const handleProductNotFound = async (serialNumber: string) => {

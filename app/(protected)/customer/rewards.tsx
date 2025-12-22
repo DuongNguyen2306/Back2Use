@@ -39,6 +39,7 @@ interface UIVoucher {
   voucherId?: string; // For redeem
   status?: 'active' | 'inactive' | 'expired'; // Voucher status
   isActive?: boolean; // Legacy field for isActive
+  businessName?: string; // Business name from businessInfo
 }
 
 // Gradient colors for vouchers
@@ -94,6 +95,7 @@ export default function Rewards() {
         gradient,
         validUntil: endDate ? new Date(endDate).toLocaleDateString('vi-VN') : 'N/A',
         isUsed: isUsed,
+        businessName: voucherInfo.businessInfo?.businessName || voucher.businessInfo?.businessName || undefined,
       };
     }
     
@@ -137,6 +139,7 @@ export default function Rewards() {
         isUsed: isUsed,
         status: status,
         isActive: status === 'active',
+        businessName: voucher.businessInfo?.businessName || undefined,
       };
     }
 
@@ -606,6 +609,11 @@ export default function Rewards() {
             <Text style={[styles.voucherDescription, voucher.isUsed && styles.usedVoucherText]}>
             {voucher.description}
           </Text>
+          {voucher.businessName && (
+            <Text style={[styles.voucherBusinessName, voucher.isUsed && styles.usedVoucherText]}>
+              {voucher.businessName}
+            </Text>
+          )}
           <View style={styles.voucherCodeContainer}>
             <Text style={styles.voucherCode}>{voucher.code}</Text>
           </View>
@@ -1001,7 +1009,13 @@ const styles = StyleSheet.create({
   voucherDescription: {
     fontSize: 14,
     color: 'rgba(255, 255, 255, 0.8)',
-    marginBottom: 16,
+    marginBottom: 8,
+  },
+  voucherBusinessName: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '600',
+    marginBottom: 12,
   },
   voucherFooter: {
     flexDirection: 'row',

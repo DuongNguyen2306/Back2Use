@@ -201,8 +201,7 @@ export default function BusinessDashboard() {
           console.log('⚠️ Unauthorized error loading data (silently handled)');
           return;
         }
-        console.error('❌ Error loading real data:', error);
-        // Silently fail - will show default values
+        // Silently handle network errors - will show default values
       }
     };
 

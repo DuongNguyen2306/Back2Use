@@ -40,7 +40,14 @@ export default function VoucherScanScreen() {
   const laserAnimationRef = useRef<any>(null);
 
   useEffect(() => {
-    requestCameraPermission();
+    const initCamera = async () => {
+      const result = await requestPermission();
+      // Auto open QR scanner after permission granted
+      if (result?.granted) {
+        setShowQRScanner(true);
+      }
+    };
+    initCamera();
     // Load staff businessId if user is staff
     if (auth.state.role === 'staff') {
       loadStaffBusinessId();
@@ -291,7 +298,7 @@ export default function VoucherScanScreen() {
       <StatusBar barStyle="light-content" backgroundColor="#00704A" />
       <SafeAreaView style={styles.headerSafeArea}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/(protected)/business/business-dashboard')}>
             <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Quét Voucher</Text>
@@ -313,7 +320,7 @@ export default function VoucherScanScreen() {
                 style={styles.scannerBackButton}
                 onPress={() => {
                   setShowQRScanner(false);
-                  router.back();
+                  router.replace('/(protected)/business/business-dashboard');
                 }}
               >
                 <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
@@ -350,12 +357,18 @@ export default function VoucherScanScreen() {
                   enableTorch={flashEnabled}
                 />
                 
-                {/* Overlay Mask - Dark Semi-transparent (60-70% opacity) with cutout */}
-                <View style={styles.overlayMask}>
-                  <View style={styles.overlayTop} />
-                  <View style={styles.overlayBottom} />
-                  <View style={styles.overlayLeft} />
-                  <View style={styles.overlayRight} />
+                {/* Overlay Mask with transparent cutout for scanning area */}
+                <View style={styles.overlayContainer}>
+                  {/* Top dark area */}
+                  <View style={styles.overlayRowTop} />
+                  {/* Middle row with left-transparent-right */}
+                  <View style={styles.overlayRowMiddle}>
+                    <View style={styles.overlaySide} />
+                    <View style={styles.transparentCenter} />
+                    <View style={styles.overlaySide} />
+                  </View>
+                  {/* Bottom dark area */}
+                  <View style={styles.overlayRowBottom} />
                 </View>
 
                 {/* Branding - Top */}
@@ -373,7 +386,7 @@ export default function VoucherScanScreen() {
                       clearInterval(laserAnimationRef.current);
                       laserAnimationRef.current = null;
                     }
-                    router.back();
+                    router.replace('/(protected)/business/business-dashboard');
                   }}
                   activeOpacity={0.7}
                 >
@@ -385,23 +398,23 @@ export default function VoucherScanScreen() {
                   <View style={styles.scanningFrame}>
                     {/* Top Left Corner */}
                     <View style={[styles.cornerBracket, styles.topLeftCorner]}>
-                      <View style={styles.cornerBracketHorizontal} />
-                      <View style={styles.cornerBracketVertical} />
+                      <View style={[styles.cornerBracketHorizontal, { top: 0, left: 0 }]} />
+                      <View style={[styles.cornerBracketVertical, { top: 0, left: 0 }]} />
                     </View>
                     {/* Top Right Corner */}
                     <View style={[styles.cornerBracket, styles.topRightCorner]}>
-                      <View style={styles.cornerBracketHorizontal} />
-                      <View style={styles.cornerBracketVertical} />
+                      <View style={[styles.cornerBracketHorizontal, { top: 0, right: 0 }]} />
+                      <View style={[styles.cornerBracketVertical, { top: 0, right: 0 }]} />
                     </View>
                     {/* Bottom Left Corner */}
                     <View style={[styles.cornerBracket, styles.bottomLeftCorner]}>
-                      <View style={styles.cornerBracketHorizontal} />
-                      <View style={styles.cornerBracketVertical} />
+                      <View style={[styles.cornerBracketHorizontal, { bottom: 0, left: 0 }]} />
+                      <View style={[styles.cornerBracketVertical, { bottom: 0, left: 0 }]} />
                     </View>
                     {/* Bottom Right Corner */}
                     <View style={[styles.cornerBracket, styles.bottomRightCorner]}>
-                      <View style={styles.cornerBracketHorizontal} />
-                      <View style={styles.cornerBracketVertical} />
+                      <View style={[styles.cornerBracketHorizontal, { bottom: 0, right: 0 }]} />
+                      <View style={[styles.cornerBracketVertical, { bottom: 0, right: 0 }]} />
                     </View>
                     
                     {/* Laser Scanning Line */}
@@ -771,41 +784,34 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     textAlign: 'center',
   },
-  // QR Scanner - Professional Redesign
-  overlayMask: {
+  // QR Scanner - Professional Redesign with proper overlay
+  overlayContainer: {
     ...StyleSheet.absoluteFillObject,
+    flexDirection: 'column',
   },
-  overlayTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+  overlayRowTop: {
+    flex: 0,
     height: height * 0.25,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
-  overlayBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: height - (height * 0.25 + width * 0.7),
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-  },
-  overlayLeft: {
-    position: 'absolute',
-    top: height * 0.25,
-    left: 0,
-    width: width * 0.15,
+  overlayRowMiddle: {
+    flex: 0,
     height: width * 0.7,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    flexDirection: 'row',
   },
-  overlayRight: {
-    position: 'absolute',
-    top: height * 0.25,
-    right: 0,
+  overlaySide: {
+    flex: 0,
     width: width * 0.15,
-    height: width * 0.7,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  transparentCenter: {
+    flex: 0,
+    width: width * 0.7,
+    backgroundColor: 'transparent',
+  },
+  overlayRowBottom: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
   brandingContainer: {
     position: 'absolute',
@@ -849,38 +855,38 @@ const styles = StyleSheet.create({
   },
   cornerBracket: {
     position: 'absolute',
-    width: 40,
-    height: 40,
+    width: 50,
+    height: 50,
   },
   cornerBracketHorizontal: {
     position: 'absolute',
-    width: 30,
+    width: 40,
     height: 4,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#10B981',
     borderRadius: 2,
   },
   cornerBracketVertical: {
     position: 'absolute',
     width: 4,
-    height: 30,
-    backgroundColor: '#FFFFFF',
+    height: 40,
+    backgroundColor: '#10B981',
     borderRadius: 2,
   },
   topLeftCorner: {
-    top: 0,
-    left: 0,
+    top: -2,
+    left: -2,
   },
   topRightCorner: {
-    top: 0,
-    right: 0,
+    top: -2,
+    right: -2,
   },
   bottomLeftCorner: {
-    bottom: 0,
-    left: 0,
+    bottom: -2,
+    left: -2,
   },
   bottomRightCorner: {
-    bottom: 0,
-    right: 0,
+    bottom: -2,
+    right: -2,
   },
   laserLine: {
     position: 'absolute',
@@ -897,15 +903,15 @@ const styles = StyleSheet.create({
   },
   instructionsContainer: {
     position: 'absolute',
-    bottom: 180,
+    top: height * 0.25 + width * 0.7 + 20,
     left: 0,
     right: 0,
     alignItems: 'center',
     zIndex: 10,
   },
   instructionsText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 15,
     fontWeight: '500',
     textAlign: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.4)',

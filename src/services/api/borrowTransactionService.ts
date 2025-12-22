@@ -308,7 +308,13 @@ export const borrowTransactionsApi = {
 
       return response.data;
     } catch (error: any) {
-      console.error('Error getting business borrow history:', error);
+      // Silently handle network errors
+      const isNetworkError = error?.message?.toLowerCase().includes('network') ||
+                            error?.code === 'NETWORK_ERROR' ||
+                            error?.response === undefined;
+      if (!isNetworkError) {
+        console.error('Error getting business borrow history:', error);
+      }
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to get business borrow history';
       throw new Error(errorMessage);
     }
