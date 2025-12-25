@@ -1,8 +1,7 @@
 import { User } from '@/types/auth.types';
 import { router } from 'expo-router';
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
-    Dimensions,
     Image,
     SafeAreaView,
     StatusBar,
@@ -10,10 +9,9 @@ import {
     Text,
     TouchableOpacity,
     View,
+    useWindowDimensions,
 } from 'react-native';
 import NotificationBadge from './NotificationBadge';
-
-const { height: screenHeight } = Dimensions.get('window');
 
 interface CustomerHeaderProps {
   title: string;
@@ -36,6 +34,8 @@ export default function CustomerHeader({
   onProfilePress,
   showNotifications = true,
 }: CustomerHeaderProps) {
+  const { height: screenHeight } = useWindowDimensions();
+  
   const handleProfilePress = () => {
     if (onProfilePress) {
       onProfilePress();
@@ -44,10 +44,27 @@ export default function CustomerHeader({
     }
   };
 
+  // Memoize user initial to prevent unnecessary re-renders
+  const userInitial = useMemo(() => {
+    if (!user) return 'U';
+    const name = (user as any)?.fullName || user?.name || '';
+    return name.charAt(0).toUpperCase() || 'U';
+  }, [user?.name, (user as any)?.fullName]);
+
+  // Memoize header style to prevent recalculation
+  const headerStyle = useMemo(() => [
+    styles.header,
+    {
+      backgroundColor,
+      minHeight: screenHeight * 0.25,
+      maxHeight: screenHeight * 0.30,
+    }
+  ], [backgroundColor, screenHeight]);
+
   return (
     <>
       <StatusBar barStyle="light-content" backgroundColor={backgroundColor} />
-      <SafeAreaView style={[styles.header, { backgroundColor }]}>
+      <SafeAreaView style={headerStyle}>
         {/* Background Decoration */}
         <View style={styles.backgroundDecoration}>
           <View style={styles.decorativeCircle1} />
@@ -58,9 +75,9 @@ export default function CustomerHeader({
         <View style={styles.greetingRow}>
           {/* Left: Logo/Greeting */}
           <View style={styles.greetingLeft}>
-            <Text style={styles.greetingSub}>{title}</Text>
+            <Text style={styles.greetingSub} numberOfLines={1}>{title || ''}</Text>
             {subtitle && (
-              <Text style={styles.greetingNice}>{subtitle}</Text>
+              <Text style={styles.greetingNice} numberOfLines={1}>{subtitle}</Text>
             )}
           </View>
           
@@ -69,19 +86,29 @@ export default function CustomerHeader({
             {rightAction}
             
             {/* Notifications Button */}
-            {showNotifications && <NotificationBadge iconColor="#FFFFFF" />}
+            {showNotifications && (
+              <NotificationBadge iconColor="#FFFFFF" />
+            )}
             
             {/* Avatar Button - Navigate to Menu/Profile */}
             {showProfile && (
               <TouchableOpacity 
                 style={styles.avatarLg}
                 onPress={handleProfilePress}
+                activeOpacity={0.7}
               >
                 {user?.avatar ? (
-                  <Image source={{ uri: user.avatar }} style={styles.avatarLgImage} />
+                  <Image 
+                    source={{ uri: user.avatar }} 
+                    style={styles.avatarLgImage}
+                    onError={() => {
+                      // Fallback to initial if image fails to load
+                      console.log('Avatar image failed to load');
+                    }}
+                  />
                 ) : (
                   <Text style={styles.avatarLgText}>
-                    {(user?.name || user?.fullName || 'U').charAt(0).toUpperCase()}
+                    {userInitial}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -101,8 +128,6 @@ const styles = StyleSheet.create({
     paddingBottom: 40, // Increased to accommodate floating card
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
-    minHeight: screenHeight * 0.25, // 25% of screen height
-    maxHeight: screenHeight * 0.30, // 30% of screen height
     overflow: 'hidden',
     position: 'relative',
   },

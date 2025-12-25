@@ -540,20 +540,41 @@ export default function CustomerDashboard() {
       return;
     }
     
-    // LẤY GIÁ CỌC 1 NGÀY
-    // LẤY GIÁ MƯỢN 1 NGÀY - Ưu tiên basePrice (API mới)
-    const pricePerDay = 
+    // LẤY GIÁ MƯỢN 1 NGÀY - Ưu tiên basePrice, rentalPrice (giá 1 ngày)
+    // depositValue là tổng tiền cọc cố định, KHÔNG phải giá 1 ngày
+    let pricePerDay = 
       (product.productSizeId as any)?.basePrice ??
       (product.productSizeId as any)?.rentalPrice ??
       (product.productSizeId as any)?.rentalPricePerDay ??
       (product.productGroupId as any)?.rentalPrice ??
       (product.productGroupId as any)?.rentalPricePerDay ??
-      (product.productSizeId as any)?.depositValue ??
-      (product.productGroupId as any)?.depositValue ??
-      3200; // fallback an toàn
+      null;
     
-    // TIỀN CỌC = GIÁ 1 NGÀY × SỐ NGÀY
-    const depositValue = pricePerDay * days;
+    let depositValue = 0;
+    
+    if (pricePerDay && pricePerDay > 0) {
+      // Có giá 1 ngày → tính: GIÁ 1 NGÀY × SỐ NGÀY
+      depositValue = pricePerDay * days;
+      console.log('💰 Using price per day:', pricePerDay, '×', days, '=', depositValue);
+    } else {
+      // Không có giá 1 ngày → dùng depositValue cố định (KHÔNG nhân với số ngày)
+      depositValue = 
+        (product.productSizeId as any)?.depositValue ??
+        (product.productGroupId as any)?.depositValue ??
+        0;
+      
+      if (depositValue > 0) {
+        // Nếu có depositValue, tính giá 1 ngày = depositValue / số ngày mặc định (30)
+        // Hoặc có thể dùng depositValue trực tiếp nếu backend yêu cầu
+        pricePerDay = depositValue; // Dùng để hiển thị, nhưng depositValue không đổi
+        console.log('💰 Using fixed depositValue:', depositValue, '(not multiplied by days)');
+      } else {
+        // Fallback cuối cùng
+        pricePerDay = 3200;
+        depositValue = pricePerDay * days;
+        console.log('💰 Using fallback price:', pricePerDay, '×', days, '=', depositValue);
+      }
+    }
     
     console.log('💰 Deposit Calculation:', {
       pricePerDay,
@@ -613,28 +634,52 @@ export default function CustomerDashboard() {
     console.log('✅ Balance sufficient, proceeding to confirm...');
 
     // TÍNH LẠI TIỀN CỌC REALTIME CHO ALERT (vì người dùng có thể gõ lại số ngày)
-    // Ưu tiên basePrice (API mới)
-    const realtimePricePerDay = 
+    // Ưu tiên basePrice, rentalPrice (giá 1 ngày)
+    let realtimePricePerDay = 
       (product.productSizeId as any)?.basePrice ??
       (product.productSizeId as any)?.rentalPrice ??
       (product.productSizeId as any)?.rentalPricePerDay ??
       (product.productGroupId as any)?.rentalPrice ??
       (product.productGroupId as any)?.rentalPricePerDay ??
-      (product.productSizeId as any)?.depositValue ??
-      (product.productGroupId as any)?.depositValue ??
-      3200;
+      null;
 
     const realtimeDays = parseInt(durationInDays, 10) || 30;
-    const realtimeDeposit = realtimePricePerDay * realtimeDays;
+    let realtimeDeposit = 0;
+    let isFixedDeposit = false; // Đánh dấu có phải depositValue cố định không
+    
+    if (realtimePricePerDay && realtimePricePerDay > 0) {
+      // Có giá 1 ngày → tính: GIÁ 1 NGÀY × SỐ NGÀY
+      realtimeDeposit = realtimePricePerDay * realtimeDays;
+      isFixedDeposit = false;
+    } else {
+      // Không có giá 1 ngày → dùng depositValue cố định (KHÔNG nhân với số ngày)
+      const fixedDeposit = 
+        (product.productSizeId as any)?.depositValue ??
+        (product.productGroupId as any)?.depositValue ??
+        0;
+      
+      if (fixedDeposit > 0) {
+        realtimeDeposit = fixedDeposit;
+        realtimePricePerDay = fixedDeposit; // Dùng để hiển thị
+        isFixedDeposit = true;
+      } else {
+        // Fallback
+        realtimePricePerDay = 3200;
+        realtimeDeposit = realtimePricePerDay * realtimeDays;
+        isFixedDeposit = false;
+      }
+    }
 
-    // Confirm borrow
+    // Tạo message hiển thị - CHỈ HIỂN THỊ BORROW DURATION
+    // Logic tính toán vẫn giữ nguyên, chỉ ẩn khỏi UI
+    // const depositMessage = isFixedDeposit
+    //   ? `Deposit: ${realtimeDeposit.toLocaleString('vi-VN')} VND (fixed deposit)`
+    //   : `Deposit: ${realtimeDeposit.toLocaleString('vi-VN')} VND\n(= ${realtimePricePerDay.toLocaleString('vi-VN')} VND/day × ${realtimeDays} days)`;
+
+    // Confirm borrow - CHỈ HIỂN THỊ BORROW DURATION
     Alert.alert(
       'Confirm Borrowing',
       `Are you sure you want to borrow this product?\n\n` +
-      `Deposit: ${realtimeDeposit.toLocaleString('vi-VN')} VND\n` +
-      `(= ${realtimePricePerDay.toLocaleString('vi-VN')} VND/day × ${realtimeDays} days)\n\n` +
-      `Current balance: ${walletBalance.toLocaleString('vi-VN')} VND\n` +
-      `Balance after deduction: ${(walletBalance - realtimeDeposit).toLocaleString('vi-VN')} VND\n` +
       `Borrow duration: ${realtimeDays} days`,
       [
         {
@@ -1166,23 +1211,23 @@ export default function CustomerDashboard() {
               <View style={styles.scanningFrame}>
                 {/* Top Left Corner */}
                 <View style={[styles.cornerBracket, styles.topLeftCorner]}>
-                  <View style={styles.cornerBracketHorizontal} />
-                  <View style={styles.cornerBracketVertical} />
+                  <View style={[styles.cornerBracketHorizontal, { top: 0, left: 0 }]} />
+                  <View style={[styles.cornerBracketVertical, { top: 0, left: 0 }]} />
                 </View>
                 {/* Top Right Corner */}
                 <View style={[styles.cornerBracket, styles.topRightCorner]}>
-                  <View style={styles.cornerBracketHorizontal} />
-                  <View style={styles.cornerBracketVertical} />
+                  <View style={[styles.cornerBracketHorizontal, { top: 0, right: 0 }]} />
+                  <View style={[styles.cornerBracketVertical, { top: 0, right: 0 }]} />
                 </View>
                 {/* Bottom Left Corner */}
                 <View style={[styles.cornerBracket, styles.bottomLeftCorner]}>
-                  <View style={styles.cornerBracketHorizontal} />
-                  <View style={styles.cornerBracketVertical} />
+                  <View style={[styles.cornerBracketHorizontal, { bottom: 0, left: 0 }]} />
+                  <View style={[styles.cornerBracketVertical, { bottom: 0, left: 0 }]} />
                 </View>
                 {/* Bottom Right Corner */}
                 <View style={[styles.cornerBracket, styles.bottomRightCorner]}>
-                  <View style={styles.cornerBracketHorizontal} />
-                  <View style={styles.cornerBracketVertical} />
+                  <View style={[styles.cornerBracketHorizontal, { bottom: 0, right: 0 }]} />
+                  <View style={[styles.cornerBracketVertical, { bottom: 0, right: 0 }]} />
                 </View>
                 
                 {/* Laser Scanning Line */}

@@ -3,20 +3,20 @@ import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Dimensions,
-  Image,
-  ImageBackground,
-  Modal,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Dimensions,
+    Image,
+    ImageBackground,
+    Modal,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NotificationBadge from '../../../../components/NotificationBadge';
@@ -978,14 +978,11 @@ export default function StoreDetailScreen() {
     const realtimeDays = parseInt(durationInDays, 10) || 30;
     const realtimeDeposit = realtimePricePerDay * realtimeDays;
 
-    // Confirm borrow
+    // Confirm borrow - CHỈ HIỂN THỊ BORROW DURATION
+    // Logic tính toán vẫn giữ nguyên, chỉ ẩn khỏi UI
     Alert.alert(
       'Confirm Borrow Request',
       `Are you sure you want to borrow this product?\n\n` +
-      `Deposit: ${realtimeDeposit.toLocaleString('en-US')} VND\n` +
-      `(= ${realtimePricePerDay.toLocaleString('en-US')} VND/day × ${realtimeDays} days)\n\n` +
-      `Current balance: ${walletBalance.toLocaleString('en-US')} VND\n` +
-      `Balance after deduction: ${(walletBalance - realtimeDeposit).toLocaleString('en-US')} VND\n` +
       `Borrow duration: ${realtimeDays} days`,
       [
         {

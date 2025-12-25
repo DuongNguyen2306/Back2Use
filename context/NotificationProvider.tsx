@@ -83,13 +83,15 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         return false;
       }
       
-      // Extract CO2 amount from message
-      // Try multiple patterns to catch different message formats
-      const co2Match = payload.message?.match(/(\d+\.?\d*)\s*kg\s*(?:of\s*)?CO2/i) ||
-                      payload.message?.match(/(\d+\.?\d*)\s*kg/i) ||
-                      payload.message?.match(/reduce\s+(\d+\.?\d*)\s*kg/i) ||
-                      payload.message?.match(/(\d+\.?\d*)\s*kg\s*CO₂/i) ||
-                      payload.message?.match(/giảm\s+(\d+\.?\d*)\s*kg/i);
+      // Extract CO2 amount from message (có thể âm nếu hàng bị hư)
+      // Try multiple patterns to catch different message formats, bao gồm số âm
+      const co2Match = payload.message?.match(/(-?\d+\.?\d*)\s*kg\s*(?:of\s*)?CO2/i) ||
+                      payload.message?.match(/(-?\d+\.?\d*)\s*kg/i) ||
+                      payload.message?.match(/reduce\s+(-?\d+\.?\d*)\s*kg/i) ||
+                      payload.message?.match(/(-?\d+\.?\d*)\s*kg\s*CO₂/i) ||
+                      payload.message?.match(/giảm\s+(-?\d+\.?\d*)\s*kg/i) ||
+                      payload.message?.match(/negative\s+(-?\d+\.?\d*)\s*kg/i) ||
+                      payload.message?.match(/âm\s+(-?\d+\.?\d*)\s*kg/i);
       const co2Amount = co2Match ? `${co2Match[1]} kg` : '0 kg';
       
       console.log('🎉 Return Completed notification detected!');
@@ -1031,7 +1033,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 export function useNotifications() {
   const context = useContext(NotificationContext);
   if (!context) {
-    throw new Error('useNotifications must be used within NotificationProvider');
+    // Return default values instead of throwing error
+    // This prevents crashes when context is not ready yet
+    console.log('useNotifications: Context not available, returning defaults');
+    return {
+      notifications: [],
+      unreadCount: 0,
+      loading: false,
+      refreshNotifications: async () => {},
+      markAsRead: async () => {},
+      markAllAsRead: async () => {},
+      deleteNotification: async () => {},
+      deleteAllNotifications: async () => {},
+    };
   }
   return context;
 }

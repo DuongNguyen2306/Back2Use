@@ -196,23 +196,23 @@ export default function QRScannerScreen() {
             <View style={[styles.scanningFrame, { borderColor: frameBorderColor }]}>
               {/* Top Left Corner */}
               <View style={[styles.cornerBracket, styles.topLeftCorner, { borderColor: frameColor }]}>
-                <View style={[styles.cornerBracketHorizontal, { backgroundColor: frameColor }]} />
-                <View style={[styles.cornerBracketVertical, { backgroundColor: frameColor }]} />
+                <View style={[styles.cornerBracketHorizontal, { backgroundColor: frameColor, top: 0, left: 0 }]} />
+                <View style={[styles.cornerBracketVertical, { backgroundColor: frameColor, top: 0, left: 0 }]} />
               </View>
               {/* Top Right Corner */}
               <View style={[styles.cornerBracket, styles.topRightCorner, { borderColor: frameColor }]}>
-                <View style={[styles.cornerBracketHorizontal, { backgroundColor: frameColor }]} />
-                <View style={[styles.cornerBracketVertical, { backgroundColor: frameColor }]} />
+                <View style={[styles.cornerBracketHorizontal, { backgroundColor: frameColor, top: 0, right: 0 }]} />
+                <View style={[styles.cornerBracketVertical, { backgroundColor: frameColor, top: 0, right: 0 }]} />
               </View>
               {/* Bottom Left Corner */}
               <View style={[styles.cornerBracket, styles.bottomLeftCorner, { borderColor: frameColor }]}>
-                <View style={[styles.cornerBracketHorizontal, { backgroundColor: frameColor }]} />
-                <View style={[styles.cornerBracketVertical, { backgroundColor: frameColor }]} />
+                <View style={[styles.cornerBracketHorizontal, { backgroundColor: frameColor, bottom: 0, left: 0 }]} />
+                <View style={[styles.cornerBracketVertical, { backgroundColor: frameColor, bottom: 0, left: 0 }]} />
               </View>
               {/* Bottom Right Corner */}
               <View style={[styles.cornerBracket, styles.bottomRightCorner, { borderColor: frameColor }]}>
-                <View style={[styles.cornerBracketHorizontal, { backgroundColor: frameColor }]} />
-                <View style={[styles.cornerBracketVertical, { backgroundColor: frameColor }]} />
+                <View style={[styles.cornerBracketHorizontal, { backgroundColor: frameColor, bottom: 0, right: 0 }]} />
+                <View style={[styles.cornerBracketVertical, { backgroundColor: frameColor, bottom: 0, right: 0 }]} />
               </View>
               
               {/* Laser Scanning Line */}

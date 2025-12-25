@@ -2,17 +2,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Modal,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Modal,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useAuth } from '../../../../context/AuthProvider';
 import { borrowTransactionsApi } from '../../../../src/services/api/borrowTransactionService';
@@ -360,13 +360,11 @@ export default function ProductGroupScreen() {
 
     console.log('✅ Balance sufficient, proceeding to confirm...');
 
-    // Confirm borrow
+    // Confirm borrow - CHỈ HIỂN THỊ BORROW DURATION
+    // Logic tính toán vẫn giữ nguyên, chỉ ẩn khỏi UI
     Alert.alert(
       'Confirm Borrow Request',
       `Are you sure you want to borrow this product?\n\n` +
-      `Deposit: ${depositValue.toLocaleString('en-US')} VND\n` +
-      `Current balance: ${walletBalance.toLocaleString('en-US')} VND\n` +
-      `Balance after deduction: ${(walletBalance - depositValue).toLocaleString('en-US')} VND\n` +
       `Borrow duration: ${days} days`,
       [
         {

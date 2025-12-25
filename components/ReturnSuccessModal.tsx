@@ -23,6 +23,11 @@ export default function ReturnSuccessModal({
   co2Amount,
   onClose,
 }: ReturnSuccessModalProps) {
+  // Parse CO2 amount to check if negative
+  const co2Value = parseFloat(co2Amount.replace(/[^-\d.]/g, '')) || 0;
+  const isNegative = co2Value < 0;
+  const displayCo2Amount = isNegative ? Math.abs(co2Value).toFixed(3) + ' kg' : co2Amount;
+  
   // Animation values
   const overlayOpacity = React.useRef(new Animated.Value(0)).current;
   const cardScale = React.useRef(new Animated.Value(0)).current;
@@ -205,13 +210,26 @@ export default function ReturnSuccessModal({
               },
             ]}
           >
-            <View style={styles.iconBackground}>
+            <View style={[
+              styles.iconBackground,
+              isNegative && { backgroundColor: '#F59E0B' }
+            ]}>
               {/* Checkmark Circle */}
               <Ionicons name="checkmark-circle" size={90} color="#FFFFFF" />
             </View>
-            {/* Leaf Decoration - Overlapping */}
-            <View style={styles.leafDecoration}>
-              <Ionicons name="leaf" size={32} color="#4CAF50" />
+            {/* Leaf/Warning Decoration - Overlapping */}
+            <View style={[
+              styles.leafDecoration,
+              isNegative && { 
+                backgroundColor: '#FEF3C7',
+                borderColor: '#F59E0B'
+              }
+            ]}>
+              <Ionicons 
+                name={isNegative ? "warning" : "leaf"} 
+                size={32} 
+                color={isNegative ? "#F59E0B" : "#4CAF50"} 
+              />
             </View>
           </Animated.View>
 
@@ -222,19 +240,36 @@ export default function ReturnSuccessModal({
           <Animated.View
             style={[
               styles.co2Container,
+              isNegative && {
+                backgroundColor: '#FEF3C7',
+                borderColor: '#F59E0B',
+              },
               {
                 transform: [{ scale: co2Scale }],
                 opacity: co2Scale,
               },
             ]}
           >
-            <Text style={styles.co2Amount}>{co2Amount}</Text>
-            <Text style={styles.co2Label}>CO₂ SAVED</Text>
+            <Text style={[
+              styles.co2Amount,
+              isNegative && { color: '#F59E0B' }
+            ]}>
+              {isNegative ? '-' : ''}{displayCo2Amount}
+            </Text>
+            <Text style={[
+              styles.co2Label,
+              isNegative && { color: '#D97706' }
+            ]}>
+              {isNegative ? 'CO₂ IMPACT' : 'CO₂ SAVED'}
+            </Text>
           </Animated.View>
 
           {/* Subtitle */}
           <Text style={styles.message}>
-            You have helped reduce waste. Keep it up! 🌱
+            {isNegative 
+              ? 'Product was damaged. Please handle items with care next time. ⚠️'
+              : 'You have helped reduce waste. Keep it up! 🌱'
+            }
           </Text>
 
           {/* Action Button - Full Width, Pill Shape */}
@@ -246,11 +281,16 @@ export default function ReturnSuccessModal({
             }}
           >
             <TouchableOpacity
-              style={styles.actionButton}
+              style={[
+                styles.actionButton,
+                isNegative && { backgroundColor: '#F59E0B' }
+              ]}
               onPress={handleClose}
               activeOpacity={0.9}
             >
-              <Text style={styles.actionButtonText}>Awesome! ✨</Text>
+              <Text style={styles.actionButtonText}>
+                {isNegative ? 'Understood' : 'Awesome! ✨'}
+              </Text>
             </TouchableOpacity>
           </Animated.View>
         </Animated.View>

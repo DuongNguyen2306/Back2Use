@@ -3419,11 +3419,19 @@ export default function TransactionProcessingScreen() {
                 ]}>
                   <View style={[
                     styles.cornerBracketHorizontal,
-                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                    { 
+                      backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316',
+                      top: 0,
+                      left: 0
+                    }
                   ]} />
                   <View style={[
                     styles.cornerBracketVertical,
-                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                    { 
+                      backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316',
+                      top: 0,
+                      left: 0
+                    }
                   ]} />
                 </View>
                 <View style={[
@@ -3433,11 +3441,19 @@ export default function TransactionProcessingScreen() {
                 ]}>
                   <View style={[
                     styles.cornerBracketHorizontal,
-                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                    { 
+                      backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316',
+                      top: 0,
+                      right: 0
+                    }
                   ]} />
                   <View style={[
                     styles.cornerBracketVertical,
-                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                    { 
+                      backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316',
+                      top: 0,
+                      right: 0
+                    }
                   ]} />
                 </View>
                 <View style={[
@@ -3447,11 +3463,19 @@ export default function TransactionProcessingScreen() {
                 ]}>
                   <View style={[
                     styles.cornerBracketHorizontal,
-                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                    { 
+                      backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316',
+                      bottom: 0,
+                      left: 0
+                    }
                   ]} />
                   <View style={[
                     styles.cornerBracketVertical,
-                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                    { 
+                      backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316',
+                      bottom: 0,
+                      left: 0
+                    }
                   ]} />
                 </View>
                 <View style={[
@@ -3461,13 +3485,21 @@ export default function TransactionProcessingScreen() {
                 ]}>
                   <View style={[
                     styles.cornerBracketHorizontal,
-                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                    { 
+                      backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316',
+                      bottom: 0,
+                      right: 0
+                    }
                   ]} />
                   <View style={[
                     styles.cornerBracketVertical,
-                    { backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316' }
+                    { 
+                      backgroundColor: unifiedScannerMode === 'borrow' ? '#00FF88' : '#F97316',
+                      bottom: 0,
+                      right: 0
+                    }
                   ]} />
-              </View>
+                </View>
               
                 <View 
                   style={[

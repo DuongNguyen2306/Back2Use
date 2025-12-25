@@ -261,13 +261,11 @@ export default function CustomerProductDetailScreen() {
 
     console.log('✅ Balance sufficient, proceeding to confirm...');
     
-    // Confirm borrow
+    // Confirm borrow - CHỈ HIỂN THỊ BORROW DURATION
+    // Logic tính toán vẫn giữ nguyên, chỉ ẩn khỏi UI
     Alert.alert(
       'Confirm Borrow',
       `Are you sure you want to borrow this product?\n\n` +
-      `Deposit: ${depositValue.toLocaleString('vi-VN')} VNĐ\n` +
-      `Current balance: ${walletBalance.toLocaleString('vi-VN')} VNĐ\n` +
-      `Balance after deduction: ${(walletBalance - depositValue).toLocaleString('vi-VN')} VNĐ\n` +
       `Borrowing duration: ${days} days`,
       [
         {
