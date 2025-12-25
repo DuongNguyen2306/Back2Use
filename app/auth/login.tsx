@@ -35,7 +35,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(true); // Set to true by default to show form immediately
   const { actions } = useAuth();
 
   // --- CẤU HÌNH GOOGLE LOGIN (EXPO GO) ---
@@ -334,46 +334,47 @@ const styles = StyleSheet.create({
   logo: { width: 120, height: 120, borderRadius: 20, marginRight: 0 },
   brandText: { fontSize: 30, fontWeight: "bold", color: "#FFFFFF", textShadowColor: "rgba(0,0,0,0.3)", textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3, includeFontPadding: false, marginLeft: -32, marginTop: 14},
   formCard: { 
-    backgroundColor: "rgba(255,255,255,0.7)", 
+    backgroundColor: "rgba(255,255,255,0.95)", // Tăng opacity để rõ hơn
     borderRadius: 20, 
     padding: 24, 
     borderWidth: 1, 
     borderColor: "#E5E7EB", 
     shadowColor: "#000", 
-    shadowOpacity: 0.08, 
+    shadowOpacity: 0.15, // Tăng shadow để nổi bật hơn
     shadowRadius: 12, 
     shadowOffset: { width: 0, height: 6 }, 
-    elevation: 6, 
+    elevation: 8, // Tăng elevation
     marginTop: 8,
     width: '100%',
     maxWidth: '100%',
     alignSelf: 'stretch',
     zIndex: 10,
+    minHeight: 400, // Đảm bảo có chiều cao tối thiểu
   },
   title: { fontSize: 24, fontWeight: "bold", color: "#111827", textAlign: "center", marginBottom: 32 },
   fieldContainer: { marginBottom: 20 },
   label: { fontSize: 16, fontWeight: "600", color: "#374151", marginBottom: 8 },
   input: {
     height: 48,
-    backgroundColor: "rgba(255,255,255,0.55)",
+    backgroundColor: "#FFFFFF", // Đổi thành màu trắng solid để rõ hơn
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderWidth: 1.5, // Tăng border width
+    borderColor: "#D1D5DB", // Border rõ hơn
     paddingHorizontal: 14,
     fontSize: 16,
-    color: "#374151",
+    color: "#111827", // Màu chữ đậm hơn
   },
   passwordContainer: { position: "relative" },
   passwordInput: {
     height: 48,
-    backgroundColor: "rgba(255,255,255,0.55)",
+    backgroundColor: "#FFFFFF", // Đổi thành màu trắng solid để rõ hơn
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderWidth: 1.5, // Tăng border width
+    borderColor: "#D1D5DB", // Border rõ hơn
     paddingHorizontal: 14,
     paddingRight: 50,
     fontSize: 16,
-    color: "#374151",
+    color: "#111827", // Màu chữ đậm hơn
   },
   dividerText2: { fontSize: 14, color: "#6B7280", textAlign: "center", marginBottom: 20 },
   socialContainer2: { flexDirection: "row", justifyContent: "center", gap: 16, marginBottom: 32 },
