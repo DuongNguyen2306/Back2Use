@@ -4,27 +4,27 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    FlatList,
-    Image,
-    Modal,
-    Platform,
-    RefreshControl,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    Vibration,
-    View
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  FlatList,
+  Image,
+  Modal,
+  Platform,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Vibration,
+  View
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
 import { borrowTransactionsApi } from '../../../src/services/api/borrowTransactionService';
-import { businessesApi } from '../../../src/services/api/businessService';
+import { businessesApi, SingleUseProduct, singleUseProductsApi, SingleUseProductUsage, singleUseProductUsageApi } from '../../../src/services/api/businessService';
 import { Feedback, feedbackApi } from '../../../src/services/api/feedbackService';
 import { BusinessProfile } from '../../../src/types/business.types';
 
@@ -156,6 +156,20 @@ export default function TransactionProcessingScreen() {
   const [transactionFeedback, setTransactionFeedback] = useState<Feedback | null>(null);
   const [loadingFeedback, setLoadingFeedback] = useState(false);
   const [loadingScannedBorrowDetail, setLoadingScannedBorrowDetail] = useState(false);
+  
+  // Single Use Product Usage states
+  const [singleUseProductUsages, setSingleUseProductUsages] = useState<SingleUseProductUsage[]>([]);
+  const [loadingUsages, setLoadingUsages] = useState(false);
+  const [showAddUsageModal, setShowAddUsageModal] = useState(false);
+  const [availableSingleUseProducts, setAvailableSingleUseProducts] = useState<SingleUseProduct[]>([]);
+  const [loadingSingleUseProducts, setLoadingSingleUseProducts] = useState(false);
+  const [selectedUsageProduct, setSelectedUsageProduct] = useState<SingleUseProduct | null>(null);
+  const [usageNote, setUsageNote] = useState('');
+  const [submittingUsage, setSubmittingUsage] = useState(false);
+  
+  // Single-use product for return flow
+  const [returnSingleUseProduct, setReturnSingleUseProduct] = useState<SingleUseProduct | null>(null);
+  const [returnSingleUseNote, setReturnSingleUseNote] = useState('');
 
   const [transactions, setTransactions] = useState<BusinessTransaction[]>([]);
 
@@ -165,6 +179,18 @@ export default function TransactionProcessingScreen() {
       loadDamagePolicy();
     }
   }, [showReturnModal]);
+
+  // Load single-use products when confirm return modal opens
+  useEffect(() => {
+    if (showConfirmModal && availableSingleUseProducts.length === 0 && !loadingSingleUseProducts) {
+      loadAvailableSingleUseProducts();
+    }
+  }, [showConfirmModal]);
+
+  // Debug: Log when showAddUsageModal changes
+  useEffect(() => {
+    console.log('📦 [SINGLE-USE] showAddUsageModal changed:', showAddUsageModal);
+  }, [showAddUsageModal]);
 
   // Debug: Log when returnSerialNumber changes
   useEffect(() => {
@@ -518,6 +544,12 @@ export default function TransactionProcessingScreen() {
     if (showDetailsModal && selectedTransaction?._id) {
       loadTransactionDetail(selectedTransaction._id);
       loadTransactionFeedback(selectedTransaction._id);
+      
+      // Load available single-use products if this is a borrow transaction
+      // This helps match products when displaying usages
+      if (selectedTransaction?.borrowTransactionType === 'borrow' && availableSingleUseProducts.length === 0) {
+        loadAvailableSingleUseProducts();
+      }
     } else {
       setTransactionDetail(null);
       setTransactionFeedback(null);
@@ -606,6 +638,10 @@ export default function TransactionProcessingScreen() {
       
       if (response.statusCode === 200 && response.data) {
         setTransactionDetail(response.data);
+        // Load single-use product usages if this is a borrow transaction
+        if (selectedTransaction?.borrowTransactionType === 'borrow') {
+          await loadSingleUseProductUsages(transactionId);
+        }
       } else {
         console.warn('Failed to load transaction detail:', response);
         setTransactionDetail(null);
@@ -616,6 +652,140 @@ export default function TransactionProcessingScreen() {
       setTransactionDetail(null);
     } finally {
       setLoadingTransactionDetail(false);
+    }
+  };
+
+  // Load single-use product usages for a borrow transaction
+  const loadSingleUseProductUsages = async (borrowTransactionId: string) => {
+    try {
+      setLoadingUsages(true);
+      const response = await singleUseProductUsageApi.getByBorrowTransaction(borrowTransactionId);
+      
+      // Enhanced parsing to handle multiple response structures
+      console.log('📦 [SINGLE-USE] Raw response:', JSON.stringify(response, null, 2));
+      
+      let responseData = (response as any)?.data || response;
+      console.log('📦 [SINGLE-USE] Response data:', responseData);
+      console.log('📦 [SINGLE-USE] Is array?', Array.isArray(responseData));
+      
+      // Parse response structure
+      let usagesArray: any[] = [];
+      if (Array.isArray(responseData)) {
+        // Case 1: Direct array
+        usagesArray = responseData;
+        console.log('📦 [SINGLE-USE] Using: Direct array');
+      } else if (responseData?.data && Array.isArray(responseData.data)) {
+        // Case 2: Nested data.data
+        usagesArray = responseData.data;
+        console.log('📦 [SINGLE-USE] Using: responseData.data');
+      } else if (responseData?.usages && Array.isArray(responseData.usages)) {
+        // Case 3: responseData.usages
+        usagesArray = responseData.usages;
+        console.log('📦 [SINGLE-USE] Using: responseData.usages');
+      } else if (responseData?.items && Array.isArray(responseData.items)) {
+        // Case 4: responseData.items
+        usagesArray = responseData.items;
+        console.log('📦 [SINGLE-USE] Using: responseData.items');
+      } else {
+        console.warn('📦 [SINGLE-USE] ⚠️ Could not parse response structure!');
+        usagesArray = [];
+      }
+      
+      console.log('📦 [SINGLE-USE] Parsed usages:', usagesArray.length);
+      if (usagesArray.length > 0) {
+        console.log('📦 [SINGLE-USE] First usage:', JSON.stringify(usagesArray[0], null, 2));
+        // Check if product is populated
+        const firstUsage = usagesArray[0];
+        if (firstUsage.singleUseProductId) {
+          const productId = firstUsage.singleUseProductId;
+          console.log('📦 [SINGLE-USE] Product ID type:', typeof productId);
+          console.log('📦 [SINGLE-USE] Product ID is object?', typeof productId === 'object');
+          if (typeof productId === 'object' && productId !== null) {
+            console.log('📦 [SINGLE-USE] Product data:', JSON.stringify(productId, null, 2));
+          }
+        }
+      }
+      
+      setSingleUseProductUsages(usagesArray);
+    } catch (error: any) {
+      console.error('📦 [SINGLE-USE] Error loading single-use product usages:', error);
+      console.error('📦 [SINGLE-USE] Error details:', {
+        message: error?.message,
+        response: error?.response?.data,
+        status: error?.response?.status,
+      });
+      setSingleUseProductUsages([]);
+    } finally {
+      setLoadingUsages(false);
+    }
+  };
+
+  // Load available single-use products
+  const loadAvailableSingleUseProducts = async () => {
+    try {
+      setLoadingSingleUseProducts(true);
+      const response = await singleUseProductsApi.getMy({ isActive: true, page: 1, limit: 100 });
+      const responseData = (response as any)?.data || response;
+      const productsArray = Array.isArray(responseData) 
+        ? responseData 
+        : (responseData?.singleUseProducts || responseData?.data || []);
+      
+      // Log to check if productSizeId is populated
+      if (productsArray.length > 0) {
+        console.log('📦 [SINGLE-USE] First product structure:', JSON.stringify(productsArray[0], null, 2));
+        console.log('📦 [SINGLE-USE] productSizeId type:', typeof productsArray[0].productSizeId);
+        if (typeof productsArray[0].productSizeId === 'object') {
+          console.log('📦 [SINGLE-USE] productSizeId object:', JSON.stringify(productsArray[0].productSizeId, null, 2));
+        }
+      }
+      
+      setAvailableSingleUseProducts(productsArray);
+    } catch (error: any) {
+      console.error('Error loading single-use products:', error);
+      Alert.alert('Error', 'Failed to load single-use products');
+      setAvailableSingleUseProducts([]);
+    } finally {
+      setLoadingSingleUseProducts(false);
+    }
+  };
+
+  // Handle add single-use product usage
+  const handleAddUsage = async () => {
+    if (!selectedTransaction || !selectedUsageProduct) {
+      Alert.alert('Error', 'Please select a single-use product');
+      return;
+    }
+
+    try {
+      setSubmittingUsage(true);
+      await singleUseProductUsageApi.create(selectedTransaction._id, {
+        singleUseProductId: selectedUsageProduct._id,
+        note: usageNote.trim() || undefined,
+      });
+      
+      Alert.alert('Success', 'Single-use product added to transaction');
+      
+      // Close add usage modal
+      setShowAddUsageModal(false);
+      setSelectedUsageProduct(null);
+      setUsageNote('');
+      
+      // Reload usages
+      await loadSingleUseProductUsages(selectedTransaction._id);
+      
+      // Reload transaction detail to update CO2
+      await loadTransactionDetail(selectedTransaction._id);
+      
+      // Reopen transaction detail modal after a short delay
+      setTimeout(() => {
+        setShowDetailsModal(true);
+      }, 300);
+    } catch (error: any) {
+      console.error('Error adding usage:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to add single-use product';
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setSubmittingUsage(false);
     }
   };
 
@@ -739,8 +909,24 @@ export default function TransactionProcessingScreen() {
           try {
             const response = await borrowTransactionsApi.getBusinessDetail(serialNumber);
             if (response.statusCode === 200 && response.data) {
-              foundTransaction = response.data as BusinessTransaction;
-              console.log('✅ Found transaction by ID:', foundTransaction._id);
+              const transaction = response.data as BusinessTransaction;
+              // Check if transaction is borrow type and can be confirmed
+              const canConfirm = transaction.borrowTransactionType === 'borrow' &&
+                                (transaction.status === 'pending' || transaction.status === 'waiting' || transaction.status === 'pending_pickup');
+              
+              if (canConfirm) {
+                foundTransaction = transaction;
+                console.log('✅ Found transaction by ID:', foundTransaction._id);
+              } else {
+                console.log('⚠️ Transaction found but cannot be confirmed. Status:', transaction.status);
+                Alert.alert(
+                  'Transaction Already Processed',
+                  `This transaction has already been ${transaction.status === 'borrowing' ? 'confirmed' : 'processed'}. Status: ${transaction.status}`,
+                  [{ text: 'OK' }]
+                );
+                unifiedScanLock.current = false;
+                return;
+              }
             }
           } catch (error) {
             console.log('❌ Transaction not found by ID:', error);
@@ -828,6 +1014,21 @@ export default function TransactionProcessingScreen() {
             if (detailResponse.statusCode === 200 && detailResponse.data) {
               console.log('✅ Transaction detail loaded successfully');
               transactionDetail = detailResponse.data;
+              
+              // Check status again from detail response - prevent confirming already confirmed transactions
+              const currentStatus = transactionDetail.status || foundTransaction.status;
+              const canConfirm = currentStatus === 'pending' || currentStatus === 'waiting' || currentStatus === 'pending_pickup';
+              
+              if (!canConfirm) {
+                console.log('⚠️ Transaction already confirmed or cannot be confirmed. Status:', currentStatus);
+                Alert.alert(
+                  'Transaction Already Processed',
+                  `This transaction has already been ${currentStatus === 'borrowing' ? 'confirmed' : 'processed'}. Status: ${currentStatus}`,
+                  [{ text: 'OK' }]
+                );
+                unifiedScanLock.current = false;
+                return;
+              }
             } else {
               console.log('⚠️ Transaction detail response status:', detailResponse.statusCode);
             }
@@ -842,6 +1043,21 @@ export default function TransactionProcessingScreen() {
             transactionDetail = null;
           } finally {
             setLoadingScannedBorrowDetail(false);
+          }
+          
+          // Double-check status before showing modal
+          const finalStatus = transactionDetail?.status || foundTransaction.status;
+          const canConfirm = finalStatus === 'pending' || finalStatus === 'waiting' || finalStatus === 'pending_pickup';
+          
+          if (!canConfirm) {
+            console.log('⚠️ Transaction cannot be confirmed. Status:', finalStatus);
+            Alert.alert(
+              'Transaction Already Processed',
+              `This transaction has already been ${finalStatus === 'borrowing' ? 'confirmed' : 'processed'}. Status: ${finalStatus}`,
+              [{ text: 'OK' }]
+            );
+            unifiedScanLock.current = false;
+            return;
           }
           
           // Set both states together
@@ -1067,7 +1283,23 @@ export default function TransactionProcessingScreen() {
         try {
           const response = await borrowTransactionsApi.getBusinessDetail(serialNumber);
           if (response.statusCode === 200 && response.data) {
-            foundTransaction = response.data;
+            const transaction = response.data;
+            // Check if transaction is borrow type and can be confirmed
+            const canConfirm = transaction.borrowTransactionType === 'borrow' &&
+                              (transaction.status === 'pending' || transaction.status === 'waiting' || transaction.status === 'pending_pickup');
+            
+            if (canConfirm) {
+              foundTransaction = transaction;
+            } else {
+              console.log('⚠️ Transaction found but cannot be confirmed. Status:', transaction.status);
+              Alert.alert(
+                'Transaction Already Processed',
+                `This transaction has already been ${transaction.status === 'borrowing' ? 'confirmed' : 'processed'}. Status: ${transaction.status}`,
+                [{ text: 'OK' }]
+              );
+              borrowScanLock.current = false;
+              return;
+            }
           }
         } catch (error) {
           console.log('Transaction not found by ID');
@@ -1093,21 +1325,76 @@ export default function TransactionProcessingScreen() {
       if (foundTransaction) {
         console.log('✅ Found transaction:', foundTransaction._id);
         setScannedBorrowTransaction(foundTransaction);
-        // Load full transaction detail
+        
+        // Load full transaction detail and check status
+        let transactionDetail: any = null;
+        let canConfirm = false;
+        
         try {
           setLoadingScannedBorrowDetail(true);
           const detailResponse = await borrowTransactionsApi.getBusinessDetail(foundTransaction._id);
           if (detailResponse.statusCode === 200 && detailResponse.data) {
-            setScannedBorrowTransactionDetail(detailResponse.data);
+            transactionDetail = detailResponse.data;
+            setScannedBorrowTransactionDetail(transactionDetail);
+            
+            // Check status again from detail response - prevent confirming already confirmed transactions
+            const currentStatus = transactionDetail.status || foundTransaction.status;
+            canConfirm = currentStatus === 'pending' || currentStatus === 'waiting' || currentStatus === 'pending_pickup';
+            
+            if (!canConfirm) {
+              console.log('⚠️ Transaction already confirmed or cannot be confirmed. Status:', currentStatus);
+              Alert.alert(
+                'Transaction Already Processed',
+                `This transaction has already been ${currentStatus === 'borrowing' ? 'confirmed' : 'processed'}. Status: ${currentStatus}`,
+                [{ text: 'OK' }]
+              );
+              borrowScanLock.current = false;
+              return;
+            }
+          } else {
+            // If detail load fails, use transaction from history and check its status
+            transactionDetail = null;
+            const currentStatus = foundTransaction.status;
+            canConfirm = currentStatus === 'pending' || currentStatus === 'waiting' || currentStatus === 'pending_pickup';
+            
+            if (!canConfirm) {
+              console.log('⚠️ Transaction cannot be confirmed. Status:', currentStatus);
+              Alert.alert(
+                'Transaction Already Processed',
+                `This transaction has already been ${currentStatus === 'borrowing' ? 'confirmed' : 'processed'}. Status: ${currentStatus}`,
+                [{ text: 'OK' }]
+              );
+              borrowScanLock.current = false;
+              return;
+            }
           }
         } catch (error: any) {
           console.error('Error loading transaction detail:', error);
           // Use basic transaction data if detail fails
           setScannedBorrowTransactionDetail(null);
+          
+          // Check status from foundTransaction
+          const currentStatus = foundTransaction.status;
+          canConfirm = currentStatus === 'pending' || currentStatus === 'waiting' || currentStatus === 'pending_pickup';
+          
+          if (!canConfirm) {
+            console.log('⚠️ Transaction cannot be confirmed. Status:', currentStatus);
+            Alert.alert(
+              'Transaction Already Processed',
+              `This transaction has already been ${currentStatus === 'borrowing' ? 'confirmed' : 'processed'}. Status: ${currentStatus}`,
+              [{ text: 'OK' }]
+            );
+            borrowScanLock.current = false;
+            return;
+          }
         } finally {
           setLoadingScannedBorrowDetail(false);
         }
-        setShowBorrowConfirmModal(true);
+        
+        // Only show modal if transaction can be confirmed
+        if (canConfirm) {
+          setShowBorrowConfirmModal(true);
+        }
       } else {
         Alert.alert(
           'No Borrow Request',
@@ -1982,6 +2269,142 @@ export default function TransactionProcessingScreen() {
                       </>
                     )}
 
+                    {/* Single Use Product Usages */}
+                    {selectedTransaction.borrowTransactionType === 'borrow' && (
+                      <>
+                        <View style={styles.sectionHeader}>
+                          <Text style={styles.sectionTitle}>Single-Use Products Used</Text>
+                          {selectedTransaction.status === 'borrowing' && (
+                            <TouchableOpacity
+                              style={styles.addUsageButton}
+                              onPress={async () => {
+                                console.log('📦 [SINGLE-USE] Add button pressed');
+                                
+                                // Close transaction detail modal first
+                                setShowDetailsModal(false);
+                                
+                                // Small delay to ensure modal closes before opening new one
+                                await new Promise(resolve => setTimeout(resolve, 300));
+                                
+                                // Open add usage modal immediately (don't wait for products to load)
+                                setShowAddUsageModal(true);
+                                console.log('📦 [SINGLE-USE] Modal opened, showAddUsageModal:', true);
+                                
+                                // Load available products in background (non-blocking)
+                                loadAvailableSingleUseProducts().catch((error) => {
+                                  console.error('📦 [SINGLE-USE] Error loading products:', error);
+                                  // Don't show alert here, just log - user can still see the modal
+                                });
+                              }}
+                            >
+                              <Ionicons name="add-circle" size={20} color="#059669" />
+                              <Text style={styles.addUsageButtonText}>Add</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        {loadingUsages ? (
+                          <ActivityIndicator size="small" color="#059669" style={{ marginVertical: 16 }} />
+                        ) : singleUseProductUsages.length === 0 ? (
+                          <Text style={styles.emptyText}>No single-use products used yet</Text>
+                        ) : (
+                          singleUseProductUsages.map((usage) => {
+                            // Enhanced product data extraction - handle multiple response structures
+                            let product: any = null;
+                            let productName = 'N/A';
+                            let sizeName = 'N/A';
+                            
+                            // Log usage structure for debugging
+                            console.log('📦 [SINGLE-USE] Rendering usage:', JSON.stringify(usage, null, 2));
+                            
+                            // Try multiple ways to get product data
+                            // Case 1: Check if usage has a 'product' field (web app structure)
+                            if ((usage as any).product && typeof (usage as any).product === 'object') {
+                              product = (usage as any).product;
+                              console.log('📦 [SINGLE-USE] Found product in usage.product');
+                            }
+                            // Case 2: Check if singleUseProductId is populated (object)
+                            else if (usage.singleUseProductId && typeof usage.singleUseProductId === 'object' && usage.singleUseProductId !== null) {
+                              product = usage.singleUseProductId;
+                              console.log('📦 [SINGLE-USE] Found product in usage.singleUseProductId (populated)');
+                            }
+                            // Case 3: singleUseProductId is string ID, find in available products
+                            else if (typeof usage.singleUseProductId === 'string') {
+                              product = availableSingleUseProducts.find(p => p._id === usage.singleUseProductId);
+                              if (product) {
+                                console.log('📦 [SINGLE-USE] Found product in availableSingleUseProducts');
+                              } else {
+                                console.warn('📦 [SINGLE-USE] Product not found in available list:', usage.singleUseProductId);
+                              }
+                            }
+                            
+                            // Extract product name and size
+                            if (product) {
+                              // Product name - try multiple fields
+                              productName = product.name || product.productName || product.typeName || 'N/A';
+                              
+                              // Size name - prioritize direct 'size' field (from logs, response has product.size)
+                              if (product.size) {
+                                sizeName = product.size;
+                              } else if (product.productSizeId) {
+                                if (typeof product.productSizeId === 'object' && product.productSizeId !== null) {
+                                  sizeName = product.productSizeId.name || product.productSizeId.sizeName || 'N/A';
+                                } else if (typeof product.productSizeId === 'string') {
+                                  // Size ID is string, try to find in available products
+                                  const foundProduct = availableSingleUseProducts.find(p => p._id === product._id || p._id === product.id);
+                                  if (foundProduct?.productSizeId && typeof foundProduct.productSizeId === 'object') {
+                                    sizeName = foundProduct.productSizeId.name || foundProduct.productSizeId.sizeName || 'N/A';
+                                  }
+                                }
+                              }
+                              
+                              console.log('📦 [SINGLE-USE] Extracted:', { productName, sizeName, hasImage: !!product.imageUrl });
+                            } else {
+                              console.warn('📦 [SINGLE-USE] No product data found for usage:', usage._id);
+                            }
+                            
+                            // Get product image
+                            const productImage = product?.imageUrl || product?.image || null;
+                            
+                            return (
+                              <View key={usage._id} style={styles.usageCard}>
+                                {productImage && (
+                                  <Image 
+                                    source={{ uri: productImage }} 
+                                    style={styles.usageProductImage}
+                                    resizeMode="cover"
+                                  />
+                                )}
+                                <View style={styles.usageCardContent}>
+                                  <View style={styles.detailRow}>
+                                    <Text style={styles.detailLabel}>Product:</Text>
+                                    <Text style={styles.detailValue}>{productName}</Text>
+                                  </View>
+                                  <View style={styles.detailRow}>
+                                    <Text style={styles.detailLabel}>Size:</Text>
+                                    <Text style={styles.detailValue}>{sizeName}</Text>
+                                  </View>
+                                  {usage.note && (
+                                    <View style={styles.detailRow}>
+                                      <Text style={styles.detailLabel}>Note:</Text>
+                                      <Text style={styles.detailValue}>{usage.note}</Text>
+                                    </View>
+                                  )}
+                                  {usage.createdAt && (
+                                    <View style={styles.detailRow}>
+                                      <Text style={styles.detailLabel}>Time:</Text>
+                                      <Text style={styles.detailValue}>
+                                        {new Date(usage.createdAt).toLocaleString('vi-VN')}
+                                      </Text>
+                                    </View>
+                                  )}
+                                </View>
+                              </View>
+                            );
+                          })
+                        )}
+                      </>
+                    )}
+
                     {/* Points and Changes */}
                     {(transactionDetail.co2Changed !== undefined || transactionDetail.ecoPointChanged !== undefined || 
                       transactionDetail.rankingPointChanged !== undefined || transactionDetail.rewardPointChanged !== undefined) && (
@@ -2208,6 +2631,129 @@ export default function TransactionProcessingScreen() {
         </SafeAreaView>
       </Modal>
 
+      {/* Add Single Use Product Usage Modal */}
+      <Modal
+        visible={showAddUsageModal}
+        transparent={true}
+        animationType="slide"
+        presentationStyle="overFullScreen"
+        onShow={() => {
+          console.log('📦 [SINGLE-USE] Modal onShow triggered, showAddUsageModal:', showAddUsageModal);
+        }}
+        onRequestClose={() => {
+          console.log('📦 [SINGLE-USE] Modal onRequestClose triggered');
+          setShowAddUsageModal(false);
+          setSelectedUsageProduct(null);
+          setUsageNote('');
+          // Reopen transaction detail modal if it was open
+          if (selectedTransaction?._id) {
+            setTimeout(() => {
+              setShowDetailsModal(true);
+            }, 300);
+          }
+        }}
+      >
+        <SafeAreaView style={styles.returnModalOverlay}>
+          <View style={styles.returnModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Single-Use Product</Text>
+              <TouchableOpacity onPress={() => {
+                setShowAddUsageModal(false);
+                setSelectedUsageProduct(null);
+                setUsageNote('');
+                // Reopen transaction detail modal if it was open
+                if (selectedTransaction?._id) {
+                  setTimeout(() => {
+                    setShowDetailsModal(true);
+                  }, 300);
+                }
+              }}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.modalBody}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Select single-use product *</Text>
+                {loadingSingleUseProducts ? (
+                  <ActivityIndicator size="small" color="#059669" style={{ marginVertical: 16 }} />
+                ) : (
+                  <ScrollView style={{ maxHeight: 300 }}>
+                    {availableSingleUseProducts.map((product) => {
+                      // Extract size name - handle multiple structures
+                      // Check for direct 'size' field first (from API response)
+                      let sizeName = (product as any).size || 'N/A';
+                      
+                      // If no direct size field, check productSizeId
+                      if (sizeName === 'N/A' && product.productSizeId) {
+                        if (typeof product.productSizeId === 'object' && product.productSizeId !== null) {
+                          sizeName = product.productSizeId.name || product.productSizeId.sizeName || 'N/A';
+                        } else if (typeof product.productSizeId === 'string') {
+                          // If it's just an ID, we can't get the name without additional API call
+                          // For now, show N/A
+                          sizeName = 'N/A';
+                        }
+                      }
+                      
+                      const isSelected = selectedUsageProduct?._id === product._id;
+                      return (
+                        <TouchableOpacity
+                          key={product._id}
+                          style={[
+                            styles.productOption,
+                            isSelected && styles.productOptionSelected
+                          ]}
+                          onPress={() => setSelectedUsageProduct(product)}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.productOptionName}>{product.name}</Text>
+                            <Text style={styles.productOptionSize}>Size: {sizeName}</Text>
+                            {product.weight && (
+                              <Text style={styles.productOptionWeight}>Weight: {product.weight}g</Text>
+                            )}
+                          </View>
+                          {isSelected && (
+                            <Ionicons name="checkmark-circle" size={24} color="#059669" />
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                )}
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Note (Optional)</Text>
+                <TextInput
+                  style={[styles.formInput, styles.textArea]}
+                  placeholder="Enter note..."
+                  value={usageNote}
+                  onChangeText={setUsageNote}
+                  multiline
+                  numberOfLines={3}
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.processReturnButton, !selectedUsageProduct && { opacity: 0.5 }]}
+                onPress={handleAddUsage}
+                disabled={!selectedUsageProduct || submittingUsage}
+              >
+                {submittingUsage ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons name="add-circle" size={20} color="#FFFFFF" />
+                    <Text style={styles.processReturnButtonText}>Add</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
       {/* User Details Modal */}
       <Modal
         visible={showUserModal}
@@ -2366,7 +2912,7 @@ export default function TransactionProcessingScreen() {
                               mediaTypes: ImagePicker.MediaTypeOptions.Images,
                               allowsEditing: true,
                               aspect: [4, 3],
-                              quality: 0.8,
+                              quality: 0.5, // Reduced from 0.8 to 0.5 for smaller file size (50% smaller)
                             });
 
                             if (!result.canceled && result.assets[0]) {
@@ -2521,6 +3067,8 @@ export default function TransactionProcessingScreen() {
               <TouchableOpacity onPress={() => {
                 setShowConfirmModal(false);
                 setReturnNote('');
+                setReturnSingleUseProduct(null);
+                setReturnSingleUseNote('');
               }}>
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
@@ -2625,6 +3173,56 @@ export default function TransactionProcessingScreen() {
                 })()}
               </View>
 
+              {/* Single Use Product Selection */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Single-use product used (Optional)</Text>
+                {loadingSingleUseProducts ? (
+                  <ActivityIndicator size="small" color="#059669" style={{ marginVertical: 8 }} />
+                ) : (
+                  <ScrollView style={{ maxHeight: 200 }}>
+                    {availableSingleUseProducts.map((product) => {
+                      const sizeName = (product.productSizeId as any)?.name || 'N/A';
+                      const isSelected = returnSingleUseProduct?._id === product._id;
+                      return (
+                        <TouchableOpacity
+                          key={product._id}
+                          style={[
+                            styles.productOption,
+                            isSelected && styles.productOptionSelected
+                          ]}
+                          onPress={() => setReturnSingleUseProduct(isSelected ? null : product)}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.productOptionName}>{product.name}</Text>
+                            <Text style={styles.productOptionSize}>Size: {sizeName}</Text>
+                            {product.weight && (
+                              <Text style={styles.productOptionWeight}>Trọng lượng: {product.weight}g</Text>
+                            )}
+                          </View>
+                          {isSelected && (
+                            <Ionicons name="checkmark-circle" size={24} color="#059669" />
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                )}
+                {returnSingleUseProduct && (
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Note for single-use product (Optional)</Text>
+                    <TextInput
+                      style={[styles.formInput, styles.textArea]}
+                      value={returnSingleUseNote}
+                      onChangeText={setReturnSingleUseNote}
+                      placeholder="Enter note..."
+                      multiline
+                      numberOfLines={2}
+                      textAlignVertical="top"
+                    />
+                  </View>
+                )}
+              </View>
+
               <View style={styles.formGroup}>
                 <Text style={styles.formLabel}>Note</Text>
                 <TextInput
@@ -2643,6 +3241,12 @@ export default function TransactionProcessingScreen() {
                 onPress={async () => {
                   if (!returnSerialNumber.trim()) {
                     Alert.alert('Error', 'Serial number is required');
+                    return;
+                  }
+
+                  // Validate note - must be filled in
+                  if (!returnNote || !returnNote.trim()) {
+                    Alert.alert('Validation Error', 'You must fill in the note');
                     return;
                   }
 
@@ -2707,8 +3311,11 @@ export default function TransactionProcessingScreen() {
                       }
                     }
                     
+                    // Ensure note is always a string (not undefined) as required by backend
+                    const noteValue = returnNote?.trim() || '';
+                    
                     console.log('📤 Confirm Return - Final data to send:', {
-                      note: returnNote || undefined,
+                      note: noteValue,
                       damageFaces,
                       tempImages,
                       totalDamagePoints,
@@ -2716,7 +3323,7 @@ export default function TransactionProcessingScreen() {
                     });
 
                     console.log('📤 Confirm Return - Sending data:', {
-                      note: returnNote || undefined,
+                      note: noteValue,
                       damageFaces,
                       tempImages,
                       totalDamagePoints,
@@ -2724,12 +3331,52 @@ export default function TransactionProcessingScreen() {
                     });
 
                     const confirmResponse = await borrowTransactionsApi.confirmReturn(returnSerialNumber, {
-                      note: returnNote || undefined,
+                      note: noteValue,
                       damageFaces,
                       tempImages,
                       totalDamagePoints,
                       finalCondition,
                     });
+
+                    // If single-use product is selected, add usage to borrow transaction
+                    if (returnSingleUseProduct) {
+                      try {
+                        // Find borrow transaction from serial number
+                        const allTransactions = await borrowTransactionsApi.getBusinessHistory({
+                          page: 1,
+                          limit: 1000,
+                        });
+                        const transactionsList = allTransactions.data?.items || (Array.isArray(allTransactions.data) ? allTransactions.data : []);
+                        
+                        // Find the borrow transaction with this serial number that is still borrowing
+                        const borrowTransaction = transactionsList.find((t: BusinessTransaction) => 
+                          t.productId?.serialNumber === returnSerialNumber &&
+                          t.borrowTransactionType === 'borrow' &&
+                          (t.status === 'borrowing' || t.status === 'completed')
+                        );
+                        
+                        if (borrowTransaction) {
+                          // Add single-use product usage
+                          await singleUseProductUsageApi.create(borrowTransaction._id, {
+                            singleUseProductId: returnSingleUseProduct._id,
+                            note: returnSingleUseNote.trim() || undefined,
+                          });
+                          console.log('✅ Single-use product usage added successfully');
+                        } else {
+                          console.warn('⚠️ Could not find borrow transaction for serial number:', returnSerialNumber);
+                        }
+                      } catch (error: any) {
+                        console.error('❌ Error adding single-use product usage:', error);
+                        // Don't show error to user - return is already successful
+                      }
+                    }
+
+                    // ✅ OPTIMIZED: Show success immediately after confirmReturn succeeds
+                    Alert.alert(
+                      'Success', 
+                      'Return confirmed successfully!',
+                      [{ text: 'OK' }]
+                    );
 
                     // Close all modals and scanner
                     setShowConfirmModal(false);
@@ -2738,10 +3385,12 @@ export default function TransactionProcessingScreen() {
                     stopUnifiedScanning();
                     
                     // Reset form
-                    const savedSerialNumber = returnSerialNumber; // Save for finding transaction
+                    const savedSerialNumber = returnSerialNumber;
                     setReturnSerialNumber('');
                     setReturnNote('');
-                    setCheckReturnResponse(null); // Reset check response
+                    setReturnSingleUseProduct(null);
+                    setReturnSingleUseNote('');
+                    setCheckReturnResponse(null);
                     setCheckData({
                       frontImage: null,
                       frontIssue: '',
@@ -2757,60 +3406,80 @@ export default function TransactionProcessingScreen() {
                       bottomIssue: '',
                     });
 
-                    // Reload transactions immediately
-                    await loadTransactions();
-                    await loadBusinessData();
+                    // ✅ OPTIMIZED: Reload data in background (non-blocking) để không làm chậm UI
+                    // User đã thấy success message rồi, reload data sau cũng được
+                    Promise.all([
+                      loadTransactions(),
+                      loadBusinessData(),
+                    ]).then(() => {
+                      console.log('✅ Data reloaded in background');
+                    }).catch((error) => {
+                      console.error('Error reloading data in background:', error);
+                    });
 
-                    // Find and show transaction detail
-                    try {
-                      // Try to find the transaction by serial number
-                      const updatedTransactions = await borrowTransactionsApi.getBusinessHistory({
-                        page: 1,
-                        limit: 1000,
-                      });
-                      const allTransactions = updatedTransactions.data?.items || (Array.isArray(updatedTransactions.data) ? updatedTransactions.data : []);
-                      
-                      // Find the return transaction that was just confirmed
-                      // Find all return transactions with this serial number, then get the most recent one
-                      const returnTransactions = allTransactions.filter((t: BusinessTransaction) => 
-                        t.productId?.serialNumber === savedSerialNumber &&
-                        t.borrowTransactionType === 'return'
-                      );
-                      
-                      // Sort by date (most recent first) and get the first one
-                      const returnedTransaction = returnTransactions.length > 0
-                        ? returnTransactions.sort((a: BusinessTransaction, b: BusinessTransaction) => {
-                            const dateA = new Date(a.borrowDate || a.createdAt || 0).getTime();
-                            const dateB = new Date(b.borrowDate || b.createdAt || 0).getTime();
-                            return dateB - dateA; // Most recent first
-                          })[0]
-                        : null;
+                    // ✅ OPTIMIZED: Load transaction detail in background (optional, không bắt buộc)
+                    // Chỉ load nếu user cần xem detail, không block UI
+                    setTimeout(async () => {
+                      try {
+                        const updatedTransactions = await borrowTransactionsApi.getBusinessHistory({
+                          page: 1,
+                          limit: 1000,
+                        });
+                        const allTransactions = updatedTransactions.data?.items || (Array.isArray(updatedTransactions.data) ? updatedTransactions.data : []);
+                        
+                        const returnTransactions = allTransactions.filter((t: BusinessTransaction) => 
+                          t.productId?.serialNumber === savedSerialNumber &&
+                          t.borrowTransactionType === 'return'
+                        );
+                        
+                        const returnedTransaction = returnTransactions.length > 0
+                          ? returnTransactions.sort((a: BusinessTransaction, b: BusinessTransaction) => {
+                              const dateA = new Date(a.borrowDate || a.createdAt || 0).getTime();
+                              const dateB = new Date(b.borrowDate || b.createdAt || 0).getTime();
+                              return dateB - dateA;
+                            })[0]
+                          : null;
 
-                      if (returnedTransaction) {
-                        console.log('✅ Found returned transaction:', returnedTransaction._id);
-                        // Load full transaction detail
-                        const detailResponse = await borrowTransactionsApi.getBusinessDetail(returnedTransaction._id);
-                        if (detailResponse.statusCode === 200 && detailResponse.data) {
-                          setTransactionDetail(detailResponse.data);
-                          setSelectedTransaction(returnedTransaction);
-                          setShowDetailsModal(true);
+                        if (returnedTransaction) {
+                          const detailResponse = await borrowTransactionsApi.getBusinessDetail(returnedTransaction._id);
+                          if (detailResponse.statusCode === 200 && detailResponse.data) {
+                            setTransactionDetail(detailResponse.data);
+                            setSelectedTransaction(returnedTransaction);
+                            // Không tự động mở detail modal, user có thể mở sau nếu cần
+                            // setShowDetailsModal(true);
+                          }
                         }
-                      } else {
-                        console.log('⚠️ Could not find returned transaction for serial number:', savedSerialNumber);
+                      } catch (error) {
+                        console.error('Error loading returned transaction detail in background:', error);
                       }
-                    } catch (error) {
-                      console.error('Error loading returned transaction detail:', error);
-                    }
-
-                    // Show success alert
-                    Alert.alert(
-                      'Success', 
-                      'Return confirmed successfully!',
-                      [{ text: 'OK' }]
-                    );
+                    }, 1000); // Delay 1s để không ảnh hưởng đến UX
                   } catch (error: any) {
                     console.error('Error confirming return:', error);
-                    Alert.alert('Error', error.message || 'Failed to confirm return');
+                    
+                    // Check if error is about note requirement
+                    const errorMessage = error?.message || '';
+                    const responseMessage = error?.response?.data?.message || '';
+                    const isNoteError = 
+                      errorMessage.toLowerCase().includes('note must be a string') ||
+                      errorMessage.toLowerCase().includes('note must be') ||
+                      responseMessage.toLowerCase().includes('note must be a string') ||
+                      responseMessage.toLowerCase().includes('note must be') ||
+                      (error?.response?.status === 400 && (
+                        errorMessage.toLowerCase().includes('note') ||
+                        responseMessage.toLowerCase().includes('note')
+                      ));
+                    
+                    if (isNoteError) {
+                      Alert.alert('Validation Error', 'You must fill in the note');
+                    } else {
+                      // Don't show error message on UI, only log to console
+                      // Alert.alert('Error', error.message || 'Failed to confirm return');
+                      console.log('Error details:', {
+                        message: errorMessage,
+                        responseMessage: responseMessage,
+                        status: error?.response?.status
+                      });
+                    }
                   } finally {
                     setConfirmingReturn(false);
                   }
@@ -4829,5 +5498,84 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 8,
     textAlign: 'center',
+  },
+  addUsageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  addUsageButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#059669',
+  },
+  usageCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    flexDirection: 'row',
+    gap: 12,
+  },
+  usageProductImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: '#E5E7EB',
+  },
+  usageCardContent: {
+    flex: 1,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontStyle: 'italic',
+    marginVertical: 16,
+  },
+  productOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+  },
+  productOptionSelected: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#059669',
+    borderWidth: 2,
+  },
+  productOptionName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  productOptionSize: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  productOptionWeight: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 8,
   },
 });

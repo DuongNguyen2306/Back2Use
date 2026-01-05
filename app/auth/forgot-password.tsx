@@ -1,21 +1,21 @@
+import { authApi } from "@/services/api/authService";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    ImageBackground,
-    KeyboardAvoidingView,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { authApi } from "@/services/api/authService";
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState("");
@@ -42,9 +42,7 @@ export default function ForgotPasswordScreen() {
       
       // Check for success - handle different response formats
       const isSuccess = response.success || 
-                       (response.message && response.message.toLowerCase().includes("sent")) ||
-                       (response.statusCode && response.statusCode === 200) ||
-                       (response.statusCode && response.statusCode === 201);
+                       (response.message && response.message.toLowerCase().includes("sent"));
       
       // Special case: if message contains "OTP" and "sent", treat as success even if success=false
       const isOtpSent = response.message && 

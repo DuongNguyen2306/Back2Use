@@ -64,6 +64,7 @@ export interface CreateBorrowTransactionRequest {
   depositValue: number;
   durationInDays: number;
   type?: 'online' | 'at_store'; // Optional: 'online' = mượn online (quét QR trước), 'at_store' = mượn trực tiếp tại cửa hàng
+  singleUseProductId?: string; // Optional: ID của single-use product để tính CO2
 }
 
 export interface BorrowTransaction {

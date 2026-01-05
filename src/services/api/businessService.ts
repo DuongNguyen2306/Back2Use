@@ -603,6 +603,193 @@ export const businessesApi = {
   },
 };
 
+// Single Use Products
+export interface SingleUseProduct {
+  _id: string;
+  name: string;
+  description?: string;
+  productTypeId: string | any;
+  productSizeId: string | any;
+  materialId: string | any;
+  weight: number;
+  image?: string;
+  businessId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateSingleUseProductRequest {
+  name: string;
+  description?: string;
+  productTypeId: string;
+  productSizeId: string;
+  materialId: string;
+  weight: number;
+  image?: any; // File for FormData
+}
+
+export interface SingleUseProductsResponse {
+  statusCode: number;
+  message: string;
+  data: SingleUseProduct[] | {
+    singleUseProducts?: SingleUseProduct[];
+    total?: number;
+    page?: number;
+    limit?: number;
+  };
+}
+
+export interface UpdateSingleUseProductRequest {
+  name?: string;
+  description?: string;
+  weight?: number;
+  image?: any;
+  isActive?: boolean;
+}
+
+export interface ProductType {
+  _id: string;
+  name: string;
+  description?: string;
+}
+
+export interface ProductSizeForSingleUse {
+  _id: string;
+  name: string;
+  description?: string;
+}
+
+export const singleUseProductsApi = {
+  // Get all single-use products of current business
+  getMy: async (params?: { isActive?: boolean; page?: number; limit?: number }): Promise<SingleUseProductsResponse> => {
+    const { isActive, page = 1, limit = 100 } = params || {};
+    const queryParams: any = { page, limit };
+    if (isActive !== undefined) {
+      queryParams.isActive = isActive;
+    }
+    return apiCall<SingleUseProductsResponse>(API_ENDPOINTS.SINGLE_USE_PRODUCTS.GET_MY, {
+      method: 'GET',
+      params: queryParams,
+    });
+  },
+  // Get available product types
+  getTypes: async (): Promise<{ statusCode: number; message: string; data: ProductType[] }> => {
+    return apiCall<{ statusCode: number; message: string; data: ProductType[] }>(
+      API_ENDPOINTS.SINGLE_USE_PRODUCTS.GET_TYPES,
+      { method: 'GET' }
+    );
+  },
+  // Get sizes by product type
+  getSizes: async (productTypeId: string): Promise<{ statusCode: number; message: string; data: ProductSizeForSingleUse[] }> => {
+    return apiCall<{ statusCode: number; message: string; data: ProductSizeForSingleUse[] }>(
+      API_ENDPOINTS.SINGLE_USE_PRODUCTS.GET_SIZES,
+      {
+        method: 'GET',
+        params: { productTypeId },
+      }
+    );
+  },
+  create: async (data: CreateSingleUseProductRequest): Promise<any> => {
+    const formData = new FormData();
+    formData.append('name', data.name);
+    if (data.description) {
+      formData.append('description', data.description);
+    }
+    formData.append('productTypeId', data.productTypeId);
+    formData.append('productSizeId', data.productSizeId);
+    formData.append('materialId', data.materialId);
+    formData.append('weight', String(data.weight));
+    if (data.image) {
+      formData.append('image', data.image as any);
+    }
+    
+    return apiCall<any>(API_ENDPOINTS.SINGLE_USE_PRODUCTS.CREATE, {
+      method: 'POST',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  update: async (productId: string, data: UpdateSingleUseProductRequest): Promise<any> => {
+    const formData = new FormData();
+    if (data.name) {
+      formData.append('name', data.name);
+    }
+    if (data.description !== undefined) {
+      formData.append('description', data.description || '');
+    }
+    if (data.weight !== undefined) {
+      formData.append('weight', String(data.weight));
+    }
+    if (data.isActive !== undefined) {
+      formData.append('isActive', String(data.isActive));
+    }
+    if (data.image) {
+      formData.append('image', data.image as any);
+    }
+    
+    return apiCall<any>(`${API_ENDPOINTS.SINGLE_USE_PRODUCTS.UPDATE}/${productId}`, {
+      method: 'PATCH',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  getById: async (id: string): Promise<any> => {
+    return apiCall<any>(`${API_ENDPOINTS.SINGLE_USE_PRODUCTS.GET_BY_ID}/${id}`, {
+      method: 'GET',
+    });
+  },
+};
+
+// Single Use Product Usage
+export interface SingleUseProductUsage {
+  _id: string;
+  borrowTransactionId: string;
+  singleUseProductId: string | any;
+  note?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateSingleUseProductUsageRequest {
+  singleUseProductId: string;
+  note?: string;
+}
+
+export interface SingleUseProductUsageResponse {
+  statusCode: number;
+  message: string;
+  data: SingleUseProductUsage[] | {
+    usages?: SingleUseProductUsage[];
+    total?: number;
+    page?: number;
+    limit?: number;
+  };
+}
+
+export const singleUseProductUsageApi = {
+  // Get usage by borrow transaction ID
+  getByBorrowTransaction: async (borrowTransactionId: string, params?: { page?: number; limit?: number }): Promise<SingleUseProductUsageResponse> => {
+    const { page = 1, limit = 100 } = params || {};
+    return apiCall<SingleUseProductUsageResponse>(
+      `${API_ENDPOINTS.SINGLE_USE_PRODUCT_USAGE.GET}/${borrowTransactionId}`,
+      {
+        method: 'GET',
+        params: { page, limit },
+      }
+    );
+  },
+  // Create usage for a borrow transaction
+  create: async (borrowTransactionId: string, data: CreateSingleUseProductUsageRequest): Promise<any> => {
+    return apiCall<any>(
+      `${API_ENDPOINTS.SINGLE_USE_PRODUCT_USAGE.CREATE}/${borrowTransactionId}`,
+      {
+        method: 'POST',
+        data,
+      }
+    );
+  },
+};
+
 export default {
   businessApi,
   materialsApi,
@@ -611,4 +798,6 @@ export default {
   productGroupsApi,
   productSizesApi,
   productsApi,
+  singleUseProductsApi,
+  singleUseProductUsageApi,
 };

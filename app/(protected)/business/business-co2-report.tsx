@@ -3,22 +3,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    FlatList,
-    Modal,
-    RefreshControl,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
-/* -------------------------------------------------------------------------- */
-/*                               TYPES                                        */
-/* -------------------------------------------------------------------------- */
+
 
 interface TransactionItem {
   _id: string;
@@ -41,9 +39,7 @@ interface TransactionItem {
   depositAmount?: number;
 }
 
-/* -------------------------------------------------------------------------- */
-/*                               COMPONENT                                    */
-/* -------------------------------------------------------------------------- */
+
 
 export default function BusinessCo2ReportScreen() {
   
@@ -73,9 +69,7 @@ export default function BusinessCo2ReportScreen() {
   const [tempStartDate, setTempStartDate] = useState<string | null>(null);
   const [tempEndDate, setTempEndDate] = useState<string | null>(null);
 
-  /* -------------------------------------------------------------------------- */
-  /*                               Helper Functions                             */
-  /* -------------------------------------------------------------------------- */
+ 
 
   const formatDateToString = (date: Date): string => {
     const year = date.getFullYear();
@@ -254,9 +248,7 @@ export default function BusinessCo2ReportScreen() {
     }
   }, [statusFilter, fromDate, toDate, productName, customerFilter, limit]);
 
-  /* -------------------------------------------------------------------------- */
-  /*                               Effects                                      */
-  /* -------------------------------------------------------------------------- */
+ 
 
   useEffect(() => {
     setPage(1);
@@ -281,9 +273,7 @@ export default function BusinessCo2ReportScreen() {
     }
   };
 
-  /* -------------------------------------------------------------------------- */
-  /*                               Calculate Total CO2                           */
-  /* -------------------------------------------------------------------------- */
+  
 
   const totalCO2 = useMemo(() => {
     if (!summaryData || summaryData.length === 0) {
@@ -305,9 +295,7 @@ export default function BusinessCo2ReportScreen() {
     return total;
   }, [summaryData]);
 
-  /* -------------------------------------------------------------------------- */
-  /*                               Get Unique Customers                         */
-  /* -------------------------------------------------------------------------- */
+  
 
   const uniqueCustomers = useMemo(() => {
     const customerMap = new Map<string, { id: string; name: string }>();
@@ -329,9 +317,7 @@ export default function BusinessCo2ReportScreen() {
     );
   }, [summaryData]);
 
-  /* -------------------------------------------------------------------------- */
-  /*                               Render Transaction Card                       */
-  /* -------------------------------------------------------------------------- */
+  
 
   const renderTransactionCard = ({ item }: { item: TransactionItem }) => {
     const productName = item.productId?.productGroupId?.name || 'Unknown Product';
@@ -411,9 +397,7 @@ export default function BusinessCo2ReportScreen() {
     );
   };
 
-  /* -------------------------------------------------------------------------- */
-  /*                               Calendar Functions                           */
-  /* -------------------------------------------------------------------------- */
+  
 
   const getDaysInMonth = (date: Date): number => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();

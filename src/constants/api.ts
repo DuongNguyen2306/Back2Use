@@ -90,6 +90,18 @@ export const API_ENDPOINTS = {
     GET_ALL: '/product-sizes', // GET /product-sizes?productGroupId=
     CREATE: '/product-sizes', // POST /product-sizes
   },
+  SINGLE_USE_PRODUCTS: {
+    CREATE: '/business/single-use-product', // POST /business/single-use-product
+    GET_MY: '/business/single-use-product/my', // GET /business/single-use-product/my?isActive=&page=&limit=
+    GET_SIZES: '/business/single-use-product/sizes', // GET /business/single-use-product/sizes?productTypeId=
+    GET_TYPES: '/business/single-use-product/types', // GET /business/single-use-product/types
+    UPDATE: '/business/single-use-product', // PATCH /business/single-use-product/{productId}
+    GET_BY_ID: '/business/single-use-product', // GET /business/single-use-product/{id}
+  },
+  SINGLE_USE_PRODUCT_USAGE: {
+    GET: '/single-use-product-usage', // GET /single-use-product-usage/{borrowTransactionId}?page=&limit=
+    CREATE: '/business/single-use-product-usage', // POST /business/single-use-product-usage/{borrowTransactionId}
+  },
   BORROW_TRANSACTIONS: {
     CREATE: '/borrow-transactions', // POST /borrow-transactions
     GET_MY: '/borrow-transactions/my', // GET /borrow-transactions/my

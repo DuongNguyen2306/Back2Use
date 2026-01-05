@@ -16,8 +16,8 @@ import {
     View,
 } from 'react-native';
 import { useAuth } from '../../../context/AuthProvider';
-import type { CreateProductGroupRequest, CreateProductSizeRequest, CreateProductsRequest, ProductSize } from '../../../src/services/api/businessService';
-import { materialsApi, productGroupsApi, productSizesApi, productsApi } from '../../../src/services/api/businessService';
+import type { CreateProductGroupRequest, CreateProductSizeRequest, CreateProductsRequest, CreateSingleUseProductRequest, ProductSize, ProductSizeForSingleUse, ProductType, SingleUseProduct } from '../../../src/services/api/businessService';
+import { materialsApi, productGroupsApi, productSizesApi, productsApi, singleUseProductsApi } from '../../../src/services/api/businessService';
 
 interface ProductGroup {
   id: string;
@@ -48,6 +48,18 @@ export default function InventoryManagementScreen() {
   const [showProductListModal, setShowProductListModal] = useState(false);
   const [showMaterialPicker, setShowMaterialPicker] = useState(false);
   const [showCreateMaterialRequestModal, setShowCreateMaterialRequestModal] = useState(false);
+  
+  // Single Use Products states
+  const [showSingleUseProductsSection, setShowSingleUseProductsSection] = useState(false);
+  const [singleUseProducts, setSingleUseProducts] = useState<SingleUseProduct[]>([]);
+  const [loadingSingleUse, setLoadingSingleUse] = useState(false);
+  const [showCreateSingleUseModal, setShowCreateSingleUseModal] = useState(false);
+  const [showEditSingleUseModal, setShowEditSingleUseModal] = useState(false);
+  const [selectedSingleUseProduct, setSelectedSingleUseProduct] = useState<SingleUseProduct | null>(null);
+  const [productTypes, setProductTypes] = useState<ProductType[]>([]);
+  const [productSizesForSingleUse, setProductSizesForSingleUse] = useState<ProductSizeForSingleUse[]>([]);
+  const [loadingTypes, setLoadingTypes] = useState(false);
+  const [loadingSingleUseSizes, setLoadingSingleUseSizes] = useState(false);
   
   // Selected group for detail view
   const [selectedGroup, setSelectedGroup] = useState<ProductGroup | null>(null);
@@ -83,6 +95,18 @@ export default function InventoryManagementScreen() {
     description: '',
   });
   
+  // Single Use Product form
+  const [singleUseForm, setSingleUseForm] = useState({
+    name: '',
+    description: '',
+    productTypeId: '',
+    productSizeId: '',
+    materialId: '',
+    weight: '',
+    image: null as any,
+    isActive: true,
+  });
+  
   const [submitting, setSubmitting] = useState(false);
 
   // Load product groups and materials on mount
@@ -92,6 +116,144 @@ export default function InventoryManagementScreen() {
 
   const loadData = async () => {
     await Promise.all([loadProductGroups(), loadMaterials()]);
+  };
+
+  // Load single-use products
+  const loadSingleUseProducts = async () => {
+    try {
+      setLoadingSingleUse(true);
+      const response = await singleUseProductsApi.getMy({ isActive: true, page: 1, limit: 100 });
+      const responseData = (response as any)?.data || response;
+      const productsArray = Array.isArray(responseData) 
+        ? responseData 
+        : (responseData?.singleUseProducts || responseData?.data || []);
+      setSingleUseProducts(productsArray);
+      console.log('✅ Single-use products loaded:', productsArray.length);
+    } catch (error: any) {
+      console.error('❌ Error loading single-use products:', error);
+      Alert.alert('Error', error?.response?.data?.message || error?.message || 'Failed to load single-use products');
+      setSingleUseProducts([]);
+    } finally {
+      setLoadingSingleUse(false);
+    }
+  };
+
+  // Load product types
+  const loadProductTypes = async () => {
+    try {
+      setLoadingTypes(true);
+      const response = await singleUseProductsApi.getTypes();
+      const typesArray = (response as any)?.data || [];
+      setProductTypes(typesArray);
+      console.log('✅ Product types loaded:', typesArray.length);
+    } catch (error: any) {
+      console.error('❌ Error loading product types:', error);
+      Alert.alert('Error', error?.response?.data?.message || error?.message || 'Failed to load product types');
+      setProductTypes([]);
+    } finally {
+      setLoadingTypes(false);
+    }
+  };
+
+  // Load product sizes by type
+  const loadProductSizesByType = async (productTypeId: string) => {
+    if (!productTypeId) {
+      setProductSizesForSingleUse([]);
+      return;
+    }
+    try {
+      setLoadingSingleUseSizes(true);
+      const response = await singleUseProductsApi.getSizes(productTypeId);
+      const sizesArray = (response as any)?.data || [];
+      setProductSizesForSingleUse(sizesArray);
+      console.log('✅ Product sizes loaded:', sizesArray.length);
+    } catch (error: any) {
+      console.error('❌ Error loading product sizes:', error);
+      Alert.alert('Error', error?.response?.data?.message || error?.message || 'Failed to load product sizes');
+      setProductSizesForSingleUse([]);
+    } finally {
+      setLoadingSingleUseSizes(false);
+    }
+  };
+
+  // Handle create single-use product
+  const handleCreateSingleUseProduct = async () => {
+    if (!singleUseForm.name.trim() || !singleUseForm.productTypeId || !singleUseForm.productSizeId || !singleUseForm.materialId || !singleUseForm.weight.trim()) {
+      Alert.alert('Error', 'Vui lòng điền đầy đủ các trường bắt buộc');
+      return;
+    }
+
+    const weight = parseFloat(singleUseForm.weight);
+    if (isNaN(weight) || weight <= 0) {
+      Alert.alert('Error', 'Trọng lượng phải là số dương');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const request: CreateSingleUseProductRequest = {
+        name: singleUseForm.name,
+        description: singleUseForm.description || undefined,
+        productTypeId: singleUseForm.productTypeId,
+        productSizeId: singleUseForm.productSizeId,
+        materialId: singleUseForm.materialId,
+        weight: weight,
+        image: singleUseForm.image || undefined,
+      };
+      
+      const response = await singleUseProductsApi.create(request);
+      Alert.alert('Success', 'Tạo sản phẩm dùng một lần thành công');
+      setShowCreateSingleUseModal(false);
+      setSingleUseForm({
+        name: '',
+        description: '',
+        productTypeId: '',
+        productSizeId: '',
+        materialId: '',
+        weight: '',
+        image: null,
+        isActive: true,
+      });
+      await loadSingleUseProducts();
+    } catch (error: any) {
+      console.error('❌ Error creating single-use product:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to create single-use product';
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Handle update single-use product
+  const handleUpdateSingleUseProduct = async () => {
+    if (!selectedSingleUseProduct) return;
+
+    try {
+      setSubmitting(true);
+      const updates: any = {};
+      if (singleUseForm.name.trim()) updates.name = singleUseForm.name;
+      if (singleUseForm.description !== undefined) updates.description = singleUseForm.description;
+      if (singleUseForm.weight.trim()) {
+        const weight = parseFloat(singleUseForm.weight);
+        if (!isNaN(weight) && weight > 0) {
+          updates.weight = weight;
+        }
+      }
+      if (singleUseForm.image) updates.image = singleUseForm.image;
+      if (singleUseForm.isActive !== undefined) updates.isActive = singleUseForm.isActive;
+      
+      await singleUseProductsApi.update(selectedSingleUseProduct._id, updates);
+      Alert.alert('Success', 'Cập nhật sản phẩm dùng một lần thành công');
+      setShowEditSingleUseModal(false);
+      setSelectedSingleUseProduct(null);
+      await loadSingleUseProducts();
+    } catch (error: any) {
+      console.error('❌ Error updating single-use product:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to update single-use product';
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const loadMaterials = async () => {
@@ -493,9 +655,30 @@ export default function InventoryManagementScreen() {
             <Ionicons name="add-circle-outline" size={16} color="white" />
             <Text style={styles.headerButtonText}>Request</Text>
           </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.headerButton, showSingleUseProductsSection && { backgroundColor: 'rgba(255,255,255,0.3)' }]}
+            onPress={async () => {
+              const newValue = !showSingleUseProductsSection;
+              setShowSingleUseProductsSection(newValue);
+              if (newValue) {
+                await loadSingleUseProducts();
+                await loadProductTypes();
+              }
+            }}
+          >
+            <Ionicons name="cube" size={16} color="white" />
+            <Text style={styles.headerButtonText}>Single Use</Text>
+          </TouchableOpacity>
         <TouchableOpacity 
           style={styles.addButton}
-          onPress={() => setShowCreateGroupModal(true)}
+          onPress={() => {
+            if (showSingleUseProductsSection) {
+              setShowCreateSingleUseModal(true);
+              loadProductTypes();
+            } else {
+              setShowCreateGroupModal(true);
+            }
+          }}
         >
             <Ionicons name="add" size={20} color="white" />
         </TouchableOpacity>
@@ -521,14 +704,82 @@ export default function InventoryManagementScreen() {
         </View>
       </View>
 
+      {/* Single Use Products Section */}
+      {showSingleUseProductsSection && (
+        <View style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
+          <ScrollView 
+            style={styles.inventoryList} 
+            contentContainerStyle={styles.inventoryListContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {loadingSingleUse ? (
+              <View style={styles.emptyContainer}>
+                <ActivityIndicator size="large" color="#059669" />
+                <Text style={styles.emptySubtitle}>Đang tải...</Text>
+              </View>
+            ) : singleUseProducts.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="cube-outline" size={64} color="#D1D5DB" />
+                <Text style={styles.emptyTitle}>Chưa có sản phẩm dùng một lần</Text>
+                <Text style={styles.emptySubtitle}>Tạo sản phẩm dùng một lần đầu tiên</Text>
+              </View>
+            ) : (
+              singleUseProducts.map((product) => {
+                const typeName = (product.productTypeId as any)?.name || 'N/A';
+                const sizeName = (product.productSizeId as any)?.name || 'N/A';
+                const materialName = (product.materialId as any)?.materialName || 'N/A';
+                return (
+                  <TouchableOpacity
+                    key={product._id}
+                    style={styles.groupCard}
+                    onPress={() => {
+                      setSelectedSingleUseProduct(product);
+                      setSingleUseForm({
+                        name: product.name,
+                        description: product.description || '',
+                        productTypeId: typeof product.productTypeId === 'object' ? product.productTypeId._id : product.productTypeId,
+                        productSizeId: typeof product.productSizeId === 'object' ? product.productSizeId._id : product.productSizeId,
+                        materialId: typeof product.materialId === 'object' ? product.materialId._id : product.materialId,
+                        weight: String(product.weight || ''),
+                        image: null,
+                        isActive: (product as any).isActive !== false,
+                      });
+                      setShowEditSingleUseModal(true);
+                    }}
+                  >
+                    {product.image && (
+                      <Image source={{ uri: product.image }} style={styles.groupImage} />
+                    )}
+                    <View style={styles.groupInfo}>
+                      <Text style={styles.groupName}>{product.name}</Text>
+                      {product.description && (
+                        <Text style={styles.groupDescription} numberOfLines={2}>{product.description}</Text>
+                      )}
+                      <View style={styles.groupDetails}>
+                        <Text style={styles.groupDetailText}>Type: {typeName}</Text>
+                        <Text style={styles.groupDetailText}>Size: {sizeName}</Text>
+                        <Text style={styles.groupDetailText}>Material: {materialName}</Text>
+                        <Text style={styles.groupDetailText}>Weight: {product.weight}g</Text>
+                      </View>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </ScrollView>
+        </View>
+      )}
+
       {/* Product Groups List */}
-      <View style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
-        <ScrollView 
-          style={styles.inventoryList} 
-          contentContainerStyle={styles.inventoryListContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {filteredProductGroups.length === 0 ? (
+      {!showSingleUseProductsSection && (
+        <View style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
+          <ScrollView 
+            style={styles.inventoryList} 
+            contentContainerStyle={styles.inventoryListContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {filteredProductGroups.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Ionicons name="cube-outline" size={64} color="#D1D5DB" />
               <Text style={styles.emptyTitle}>No inventory found</Text>
@@ -574,6 +825,7 @@ export default function InventoryManagementScreen() {
           )}
         </ScrollView>
       </View>
+      )}
 
       {/* Create Product Group Modal */}
       <Modal
@@ -1232,6 +1484,311 @@ export default function InventoryManagementScreen() {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* Create Single Use Product Modal */}
+      <Modal
+        visible={showCreateSingleUseModal}
+        animationType="slide"
+        presentationStyle="overFullScreen"
+      >
+        <View style={styles.modalContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#059669" />
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => {
+              setShowCreateSingleUseModal(false);
+              setSingleUseForm({
+                name: '',
+                description: '',
+                productTypeId: '',
+                productSizeId: '',
+                materialId: '',
+                weight: '',
+                image: null,
+                isActive: true,
+              });
+            }}>
+              <Text style={styles.cancelButton}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Tạo sản phẩm dùng một lần</Text>
+            <TouchableOpacity 
+              onPress={handleCreateSingleUseProduct}
+              disabled={submitting}
+              style={{ opacity: submitting ? 0.6 : 1 }}
+            >
+              <Text style={styles.saveButton}>
+                {submitting ? 'Đang tạo...' : 'Tạo'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.formContainer}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Tên sản phẩm *</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Nhập tên sản phẩm"
+                value={singleUseForm.name}
+                onChangeText={(text) => setSingleUseForm(prev => ({ ...prev, name: text }))}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Mô tả (Tùy chọn)</Text>
+              <TextInput
+                style={[styles.textInput, styles.textArea]}
+                placeholder="Nhập mô tả"
+                value={singleUseForm.description}
+                onChangeText={(text) => setSingleUseForm(prev => ({ ...prev, description: text }))}
+                multiline
+                numberOfLines={4}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Loại sản phẩm (Type) *</Text>
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={async () => {
+                  if (productTypes.length === 0) {
+                    await loadProductTypes();
+                  }
+                  Alert.alert(
+                    'Chọn loại sản phẩm',
+                    '',
+                    [
+                      ...productTypes.map((type) => ({
+                        text: type.name,
+                        onPress: () => {
+                          setSingleUseForm(prev => ({ ...prev, productTypeId: type._id, productSizeId: '' }));
+                          loadProductSizesByType(type._id);
+                        },
+                      })),
+                      { text: 'Hủy', style: 'cancel' },
+                    ],
+                    { cancelable: true }
+                  );
+                }}
+              >
+                <Text style={[styles.pickerButtonText, !singleUseForm.productTypeId && { color: '#9CA3AF' }]}>
+                  {singleUseForm.productTypeId 
+                    ? productTypes.find(t => t._id === singleUseForm.productTypeId)?.name || 'Đã chọn'
+                    : 'Chọn loại sản phẩm'}
+                </Text>
+                <Ionicons name="chevron-down" size={20} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Kích cỡ (Size) *</Text>
+              <TouchableOpacity
+                style={[styles.pickerButton, !singleUseForm.productTypeId && { opacity: 0.5 }]}
+                disabled={!singleUseForm.productTypeId}
+                onPress={() => {
+                  if (productSizesForSingleUse.length === 0 && singleUseForm.productTypeId) {
+                    loadProductSizesByType(singleUseForm.productTypeId);
+                  }
+                  Alert.alert(
+                    'Chọn kích cỡ',
+                    '',
+                    [
+                      ...productSizesForSingleUse.map((size) => ({
+                        text: size.name,
+                        onPress: () => {
+                          setSingleUseForm(prev => ({ ...prev, productSizeId: size._id }));
+                        },
+                      })),
+                      { text: 'Hủy', style: 'cancel' },
+                    ],
+                    { cancelable: true }
+                  );
+                }}
+              >
+                <Text style={[styles.pickerButtonText, !singleUseForm.productSizeId && { color: '#9CA3AF' }]}>
+                  {singleUseForm.productSizeId 
+                    ? productSizesForSingleUse.find(s => s._id === singleUseForm.productSizeId)?.name || 'Đã chọn'
+                    : 'Chọn kích cỡ'}
+                </Text>
+                <Ionicons name="chevron-down" size={20} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Chất liệu (Material) *</Text>
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={() => {
+                  Alert.alert(
+                    'Chọn chất liệu',
+                    '',
+                    [
+                      ...materials.map((material) => ({
+                        text: material.materialName,
+                        onPress: () => {
+                          setSingleUseForm(prev => ({ ...prev, materialId: material._id }));
+                        },
+                      })),
+                      { text: 'Hủy', style: 'cancel' },
+                    ],
+                    { cancelable: true }
+                  );
+                }}
+              >
+                <Text style={[styles.pickerButtonText, !singleUseForm.materialId && { color: '#9CA3AF' }]}>
+                  {singleUseForm.materialId 
+                    ? materials.find(m => m._id === singleUseForm.materialId)?.materialName || 'Đã chọn'
+                    : 'Chọn chất liệu'}
+                </Text>
+                <Ionicons name="chevron-down" size={20} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Trọng lượng (gram) *</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Nhập trọng lượng"
+                value={singleUseForm.weight}
+                onChangeText={(text) => setSingleUseForm(prev => ({ ...prev, weight: text.replace(/[^0-9.]/g, '') }))}
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Hình ảnh (Tùy chọn)</Text>
+              <TouchableOpacity
+                style={styles.imagePickerButton}
+                onPress={async () => {
+                  const result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                    allowsEditing: true,
+                    aspect: [1, 1],
+                    quality: 0.8,
+                  });
+
+                  if (!result.canceled && result.assets[0]) {
+                    const asset = result.assets[0];
+                    const file = {
+                      uri: asset.uri,
+                      type: 'image/jpeg',
+                      name: 'single-use-product-image.jpg',
+                    };
+                    setSingleUseForm(prev => ({ ...prev, image: file }));
+                  }
+                }}
+              >
+                {singleUseForm.image ? (
+                  <Image source={{ uri: singleUseForm.image.uri }} style={styles.imagePreview} />
+                ) : (
+                  <>
+                    <Ionicons name="image-outline" size={24} color="#6B7280" />
+                    <Text style={styles.imagePickerText}>Chọn hình ảnh</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Edit Single Use Product Modal */}
+      <Modal
+        visible={showEditSingleUseModal}
+        animationType="slide"
+        presentationStyle="overFullScreen"
+      >
+        <View style={styles.modalContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#059669" />
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => {
+              setShowEditSingleUseModal(false);
+              setSelectedSingleUseProduct(null);
+            }}>
+              <Text style={styles.cancelButton}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Chỉnh sửa sản phẩm</Text>
+            <TouchableOpacity 
+              onPress={handleUpdateSingleUseProduct}
+              disabled={submitting}
+              style={{ opacity: submitting ? 0.6 : 1 }}
+            >
+              <Text style={styles.saveButton}>
+                {submitting ? 'Đang cập nhật...' : 'Lưu'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.formContainer}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Tên sản phẩm *</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Nhập tên sản phẩm"
+                value={singleUseForm.name}
+                onChangeText={(text) => setSingleUseForm(prev => ({ ...prev, name: text }))}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Mô tả (Tùy chọn)</Text>
+              <TextInput
+                style={[styles.textInput, styles.textArea]}
+                placeholder="Nhập mô tả"
+                value={singleUseForm.description}
+                onChangeText={(text) => setSingleUseForm(prev => ({ ...prev, description: text }))}
+                multiline
+                numberOfLines={4}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Trọng lượng (gram) *</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Nhập trọng lượng"
+                value={singleUseForm.weight}
+                onChangeText={(text) => setSingleUseForm(prev => ({ ...prev, weight: text.replace(/[^0-9.]/g, '') }))}
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Hình ảnh (Tùy chọn)</Text>
+              <TouchableOpacity
+                style={styles.imagePickerButton}
+                onPress={async () => {
+                  const result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                    allowsEditing: true,
+                    aspect: [1, 1],
+                    quality: 0.8,
+                  });
+
+                  if (!result.canceled && result.assets[0]) {
+                    const asset = result.assets[0];
+                    const file = {
+                      uri: asset.uri,
+                      type: 'image/jpeg',
+                      name: 'single-use-product-image.jpg',
+                    };
+                    setSingleUseForm(prev => ({ ...prev, image: file }));
+                  }
+                }}
+              >
+                {singleUseForm.image ? (
+                  <Image source={{ uri: singleUseForm.image.uri }} style={styles.imagePreview} />
+                ) : selectedSingleUseProduct?.image ? (
+                  <Image source={{ uri: selectedSingleUseProduct.image }} style={styles.imagePreview} />
+                ) : (
+                  <>
+                    <Ionicons name="image-outline" size={24} color="#6B7280" />
+                    <Text style={styles.imagePickerText}>Chọn hình ảnh</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1655,5 +2212,90 @@ const styles = StyleSheet.create({
   },
   statusFilterTextActive: {
     color: '#FFFFFF',
+  },
+  groupCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  groupImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  groupInfo: {
+    flex: 1,
+  },
+  groupName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  groupDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  groupDetails: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  groupDetailText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  pickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  pickerButtonText: {
+    fontSize: 16,
+    color: '#111827',
+    flex: 1,
+  },
+  imagePickerButton: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    minHeight: 120,
+  },
+  imagePickerText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 8,
+  },
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+    resizeMode: 'cover',
   },
 });

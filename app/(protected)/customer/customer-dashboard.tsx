@@ -1,5 +1,5 @@
 import { borrowTransactionsApi } from "@/services/api/borrowTransactionService";
-import { productsApi } from "@/services/api/businessService";
+import { productsApi, SingleUseProduct, singleUseProductsApi } from "@/services/api/businessService";
 import { getCurrentUserProfileWithAutoRefresh, leaderboardApi } from "@/services/api/userService";
 import { mockTransactions } from "@/utils/mockData";
 import { Ionicons } from "@expo/vector-icons";
@@ -43,10 +43,14 @@ export default function CustomerDashboard() {
   const [scannedItem, setScannedItem] = useState<any>(null);
   const [borrowing, setBorrowing] = useState(false);
   const [showBalance, setShowBalance] = useState(false); // Mặc định ẩn số tiền
-  const [durationInDays, setDurationInDays] = useState<string>('30'); // Số ngày mượn, mặc định 30
+  const [durationInDays, setDurationInDays] = useState<string>('10'); // Số ngày mượn, mặc định 30
   const [userRank, setUserRank] = useState<number | null>(null);
   const [flashEnabled, setFlashEnabled] = useState(false);
   const [laserLinePosition, setLaserLinePosition] = useState(0);
+  const [showSingleUseModal, setShowSingleUseModal] = useState(false);
+  const [singleUseProducts, setSingleUseProducts] = useState<SingleUseProduct[]>([]);
+  const [selectedSingleUseProduct, setSelectedSingleUseProduct] = useState<SingleUseProduct | null>(null);
+  const [loadingSingleUse, setLoadingSingleUse] = useState(false);
   // use layout navigation; no local tab state here
   const scanLock = useRef(false);
   const laserAnimationRef = useRef<any>(null);
@@ -483,7 +487,7 @@ export default function CustomerDashboard() {
         console.log('📱 Scanned item created:', scannedItem);
         console.log('🔄 reuseCount in scannedItem:', scannedItem.product.reuseCount);
         setScannedItem(scannedItem);
-        setDurationInDays('30'); // Reset về mặc định khi mở modal mới
+        setDurationInDays('10'); // Reset về mặc định khi mở modal mới
         setShowProductModal(true);
       } else {
         console.error('❌ No product data in response');
@@ -781,6 +785,7 @@ export default function CustomerDashboard() {
                 businessId,
                 depositValue: backendDepositValue, // Dùng giá trị cố định từ product, không tính toán
                 durationInDays: realtimeDays,
+                ...(selectedSingleUseProduct && { singleUseProductId: selectedSingleUseProduct._id }),
               };
 
               console.log('📦 FINAL borrowDto gửi đi:', {
@@ -1589,6 +1594,53 @@ export default function CustomerDashboard() {
                    </View>
                  )}
 
+                 {/* Single Use Product Selection */}
+                 <View style={styles.singleUseSection}>
+                   <Text style={styles.singleUseLabel}>Mượn thay sản phẩm ly nào?</Text>
+                   <Text style={styles.singleUseHint}>
+                     Chọn ly dùng một lần để tính CO2 giảm được
+                   </Text>
+                   <TouchableOpacity
+                     style={styles.singleUseButton}
+                     onPress={async () => {
+                       if (singleUseProducts.length === 0) {
+                         try {
+                           setLoadingSingleUse(true);
+                           const response = await singleUseProductsApi.getMy({ page: 1, limit: 100 });
+                           const products = Array.isArray(response.data) 
+                             ? response.data 
+                             : (response.data as any)?.singleUseProducts || [];
+                           setSingleUseProducts(products);
+                         } catch (error: any) {
+                           console.error('Error loading single-use products:', error);
+                           Alert.alert('Lỗi', 'Không thể tải danh sách sản phẩm dùng một lần. Vui lòng thử lại.');
+                           return;
+                         } finally {
+                           setLoadingSingleUse(false);
+                         }
+                       }
+                       setShowSingleUseModal(true);
+                     }}
+                   >
+                     <Ionicons name="cube-outline" size={20} color="#00704A" />
+                     <Text style={styles.singleUseButtonText}>
+                       {selectedSingleUseProduct 
+                         ? `${selectedSingleUseProduct.name} (${(selectedSingleUseProduct.productSizeId as any)?.name || 'N/A'})`
+                         : 'Chọn ly dùng một lần'}
+                     </Text>
+                     <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+                   </TouchableOpacity>
+                   {selectedSingleUseProduct && (
+                     <TouchableOpacity
+                       style={styles.removeSingleUseButton}
+                       onPress={() => setSelectedSingleUseProduct(null)}
+                     >
+                       <Ionicons name="close-circle" size={20} color="#EF4444" />
+                       <Text style={styles.removeSingleUseText}>Bỏ chọn</Text>
+                     </TouchableOpacity>
+                   )}
+                 </View>
+
                  {/* Duration Input */}
                  <View style={styles.durationInputContainer}>
                    <Text style={styles.durationLabel}>Borrow Duration (days) *</Text>
@@ -1668,9 +1720,75 @@ export default function CustomerDashboard() {
            </View>
          </View>
        )}
+
+       {/* Single Use Product Selection Modal */}
+       {showSingleUseModal && (
+         <Modal
+           visible={showSingleUseModal}
+           transparent={true}
+           animationType="slide"
+           onRequestClose={() => setShowSingleUseModal(false)}
+         >
+           <View style={styles.singleUseModalOverlay}>
+             <View style={styles.singleUseModalContent}>
+               <View style={styles.singleUseModalHeader}>
+                 <Text style={styles.singleUseModalTitle}>Chọn ly dùng một lần</Text>
+                 <TouchableOpacity
+                   onPress={() => setShowSingleUseModal(false)}
+                 >
+                   <Ionicons name="close" size={24} color="#111827" />
+                 </TouchableOpacity>
+               </View>
+
+               {loadingSingleUse ? (
+                 <View style={styles.singleUseModalLoading}>
+                   <ActivityIndicator size="large" color="#00704A" />
+                   <Text style={styles.singleUseModalLoadingText}>Đang tải danh sách...</Text>
+                 </View>
+               ) : singleUseProducts.length === 0 ? (
+                 <View style={styles.singleUseModalEmpty}>
+                   <Ionicons name="cube-outline" size={64} color="#9CA3AF" />
+                   <Text style={styles.singleUseModalEmptyText}>Chưa có sản phẩm dùng một lần</Text>
+                 </View>
+               ) : (
+                 <ScrollView style={styles.singleUseModalList}>
+                   {singleUseProducts.map((item) => {
+                     const isSelected = selectedSingleUseProduct?._id === item._id;
+                     const sizeName = (item.productSizeId as any)?.name || 'N/A';
+                     return (
+                       <TouchableOpacity
+                         key={item._id}
+                         style={[
+                           styles.singleUseModalItem,
+                           isSelected && styles.singleUseModalItemSelected
+                         ]}
+                         onPress={() => {
+                           setSelectedSingleUseProduct(item);
+                           setShowSingleUseModal(false);
+                         }}
+                       >
+                         <View style={styles.singleUseModalItemContent}>
+                           <Text style={styles.singleUseModalItemName}>{item.name}</Text>
+                           <Text style={styles.singleUseModalItemSize}>Size: {sizeName}</Text>
+                           {item.weight && (
+                             <Text style={styles.singleUseModalItemWeight}>Trọng lượng: {item.weight}g</Text>
+                           )}
+                         </View>
+                         {isSelected && (
+                           <Ionicons name="checkmark-circle" size={24} color="#00704A" />
+                         )}
+                       </TouchableOpacity>
+                     );
+                   })}
+                 </ScrollView>
+               )}
+             </View>
+           </View>
+         </Modal>
+       )}
      </View>
    );
-}
+ }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#00704A' },
@@ -2465,5 +2583,124 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#9CA3AF',
     fontStyle: 'italic',
+  },
+  singleUseSection: {
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  singleUseLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  singleUseHint: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  singleUseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  singleUseButtonText: {
+    flex: 1,
+    fontSize: 16,
+    color: '#111827',
+  },
+  removeSingleUseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 4,
+  },
+  removeSingleUseText: {
+    fontSize: 14,
+    color: '#EF4444',
+  },
+  singleUseModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  singleUseModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    width: '90%',
+    maxHeight: '80%',
+    overflow: 'hidden',
+  },
+  singleUseModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  singleUseModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  singleUseModalLoading: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  singleUseModalLoadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  singleUseModalEmpty: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  singleUseModalEmptyText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  singleUseModalList: {
+    maxHeight: 400,
+  },
+  singleUseModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  singleUseModalItemSelected: {
+    backgroundColor: '#F0FDF4',
+  },
+  singleUseModalItemContent: {
+    flex: 1,
+  },
+  singleUseModalItemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  singleUseModalItemSize: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  singleUseModalItemWeight: {
+    fontSize: 13,
+    color: '#9CA3AF',
   },
 });

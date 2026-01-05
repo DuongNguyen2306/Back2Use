@@ -1,4 +1,5 @@
 import { borrowTransactionsApi } from "@/services/api/borrowTransactionService";
+import { singleUseProductUsageApi } from "@/services/api/businessService";
 import { Feedback, feedbackApi } from "@/services/api/feedbackService";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
@@ -130,6 +131,8 @@ export default function TransactionDetailScreen() {
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [existingFeedback, setExistingFeedback] = useState<Feedback | null>(null);
   const [loadingFeedback, setLoadingFeedback] = useState(false);
+  const [singleUseProductUsages, setSingleUseProductUsages] = useState<any[]>([]);
+  const [loadingUsages, setLoadingUsages] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -146,6 +149,8 @@ export default function TransactionDetailScreen() {
         setTransaction(response.data);
         // Check if feedback exists for this transaction
         await checkExistingFeedback();
+        // Load single-use product usages
+        await loadSingleUseProductUsages(id);
       } else {
         Alert.alert('Error', 'Failed to load transaction detail');
         router.back();
@@ -179,6 +184,33 @@ export default function TransactionDetailScreen() {
       // Silently fail - user can still create feedback
     } finally {
       setLoadingFeedback(false);
+    }
+  };
+
+  const loadSingleUseProductUsages = async (borrowTransactionId: string) => {
+    try {
+      setLoadingUsages(true);
+      const response = await singleUseProductUsageApi.getByBorrowTransaction(borrowTransactionId);
+      
+      let responseData = (response as any)?.data || response;
+      let usagesArray: any[] = [];
+      
+      if (Array.isArray(responseData)) {
+        usagesArray = responseData;
+      } else if (responseData?.data && Array.isArray(responseData.data)) {
+        usagesArray = responseData.data;
+      } else if (responseData?.usages && Array.isArray(responseData.usages)) {
+        usagesArray = responseData.usages;
+      } else if (responseData?.items && Array.isArray(responseData.items)) {
+        usagesArray = responseData.items;
+      }
+      
+      setSingleUseProductUsages(usagesArray);
+    } catch (error: any) {
+      console.error('Error loading single-use product usages:', error);
+      setSingleUseProductUsages([]);
+    } finally {
+      setLoadingUsages(false);
     }
   };
 
@@ -517,6 +549,71 @@ export default function TransactionDetailScreen() {
                   +{transaction.rewardPointChanged}
                 </Text>
               </View>
+            )}
+          </View>
+        )}
+
+        {/* Single-Use Products Card */}
+        {singleUseProductUsages.length > 0 && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="leaf-outline" size={24} color="#0F4D3A" />
+              <Text style={styles.cardTitle}>Single-Use Products Used</Text>
+            </View>
+            
+            {loadingUsages ? (
+              <ActivityIndicator size="small" color="#0F4D3A" style={{ marginVertical: 16 }} />
+            ) : (
+              singleUseProductUsages.map((usage) => {
+                // Extract product data
+                let product: any = null;
+                let productName = 'N/A';
+                let sizeName = 'N/A';
+                let productImage: string | null = null;
+                let co2PerUnit = 0;
+
+                // Check for populated product in usage
+                if (usage.product) {
+                  product = usage.product;
+                } else if (usage.singleUseProductId && typeof usage.singleUseProductId === 'object') {
+                  product = usage.singleUseProductId;
+                }
+
+                if (product) {
+                  productName = product.name || product.productName || 'N/A';
+                  sizeName = product.size || (product.productSizeId?.name || product.productSizeId?.sizeName) || 'N/A';
+                  productImage = product.imageUrl || product.image || null;
+                  co2PerUnit = usage.co2PerUnit || product.co2Emission || 0;
+                }
+
+                return (
+                  <View key={usage._id} style={styles.usageCard}>
+                    <View style={styles.usageCardContent}>
+                      {productImage && (
+                        <Image source={{ uri: productImage }} style={styles.usageProductImage} />
+                      )}
+                      <View style={{ flex: 1, marginLeft: productImage ? 12 : 0 }}>
+                        <Text style={styles.usageProductName}>{productName}</Text>
+                        <Text style={styles.usageProductSize}>Size: {sizeName}</Text>
+                        {usage.note && (
+                          <Text style={styles.usageNote}>Note: {usage.note}</Text>
+                        )}
+                        <View style={styles.co2Row}>
+                          <Ionicons name="leaf" size={16} color="#10B981" />
+                          <Text style={styles.co2Text}>
+                            CO₂ Saved: {co2PerUnit.toFixed(3)} kg
+                          </Text>
+                        </View>
+                        {usage.createdAt && (
+                          <Text style={styles.usageDate}>
+                            {new Date(usage.createdAt).toLocaleString('en-US')}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                );
+              })
             )}
           </View>
         )}
@@ -1327,6 +1424,56 @@ const styles = StyleSheet.create({
   },
   hasDamage: {
     color: '#ef4444',
+  },
+  // Single-Use Product Usage Styles
+  usageCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  usageCardContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  usageProductImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: '#E5E7EB',
+  },
+  usageProductName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  usageProductSize: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  usageNote: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  co2Row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  co2Text: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#10B981',
+    marginLeft: 6,
+  },
+  usageDate: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 4,
   },
 });
 

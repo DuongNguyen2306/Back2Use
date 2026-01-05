@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../../../../context/AuthProvider';
 import { borrowTransactionsApi } from '../../../../src/services/api/borrowTransactionService';
+import { SingleUseProduct, singleUseProductsApi } from '../../../../src/services/api/businessService';
 import { productsApi } from '../../../../src/services/api/productService';
 import { getCurrentUserProfileWithAutoRefresh } from '../../../../src/services/api/userService';
 import { Product } from '../../../../src/types/product.types';
@@ -29,6 +30,10 @@ export default function CustomerProductDetailScreen() {
   const [borrowing, setBorrowing] = useState(false);
   const [durationInDays, setDurationInDays] = useState<string>('30');
   const [userData, setUserData] = useState<any>(null);
+  const [showSingleUseModal, setShowSingleUseModal] = useState(false);
+  const [singleUseProducts, setSingleUseProducts] = useState<SingleUseProduct[]>([]);
+  const [selectedSingleUseProduct, setSelectedSingleUseProduct] = useState<SingleUseProduct | null>(null);
+  const [loadingSingleUse, setLoadingSingleUse] = useState(false);
 
   // Fetch product details - dùng scan API để lấy đầy đủ thông tin (giống customer dashboard)
   useEffect(() => {
@@ -130,6 +135,28 @@ export default function CustomerProductDetailScreen() {
     };
     loadUserData();
   }, [state.accessToken, state.isAuthenticated]);
+
+  // Load single-use products when modal opens
+  useEffect(() => {
+    const loadSingleUseProducts = async () => {
+      if (showSingleUseModal && singleUseProducts.length === 0) {
+        try {
+          setLoadingSingleUse(true);
+          const response = await singleUseProductsApi.getMy({ page: 1, limit: 100 });
+          const products = Array.isArray(response.data) 
+            ? response.data 
+            : (response.data as any)?.singleUseProducts || [];
+          setSingleUseProducts(products);
+        } catch (error: any) {
+          console.error('Error loading single-use products:', error);
+          Alert.alert('Lỗi', 'Không thể tải danh sách sản phẩm dùng một lần. Vui lòng thử lại.');
+        } finally {
+          setLoadingSingleUse(false);
+        }
+      }
+    };
+    loadSingleUseProducts();
+  }, [showSingleUseModal]);
 
   // Handle borrow button press
   const handleBorrow = async () => {
@@ -367,6 +394,7 @@ export default function CustomerProductDetailScreen() {
                 depositValue: backendDepositValue, // Dùng giá trị cố định từ backend
                 durationInDays: days,
                 type: "online" as const, // ← CỨ ĐỂ CỨNG THẾ NÀY LÀ CHẮC ĂN NHẤT
+                ...(selectedSingleUseProduct && { singleUseProductId: selectedSingleUseProduct._id }),
               };
 
               console.log('📦 FINAL borrowDto gửi đi:', {
@@ -706,6 +734,35 @@ export default function CustomerProductDetailScreen() {
                             Số ngày bạn muốn mượn sản phẩm này
                           </Text>
                         </View>
+
+                        {/* Single Use Product Selection */}
+                        <View style={styles.singleUseSection}>
+                          <Text style={styles.singleUseLabel}>Mượn thay sản phẩm ly nào?</Text>
+                          <Text style={styles.singleUseHint}>
+                            Chọn ly dùng một lần để tính CO2 giảm được
+                          </Text>
+                          <TouchableOpacity
+                            style={styles.singleUseButton}
+                            onPress={() => setShowSingleUseModal(true)}
+                          >
+                            <Ionicons name="cube-outline" size={20} color="#00704A" />
+                            <Text style={styles.singleUseButtonText}>
+                              {selectedSingleUseProduct 
+                                ? `${selectedSingleUseProduct.name} (${(selectedSingleUseProduct.productSizeId as any)?.name || 'N/A'})`
+                                : 'Chọn ly dùng một lần'}
+                            </Text>
+                            <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+                          </TouchableOpacity>
+                          {selectedSingleUseProduct && (
+                            <TouchableOpacity
+                              style={styles.removeSingleUseButton}
+                              onPress={() => setSelectedSingleUseProduct(null)}
+                            >
+                              <Ionicons name="close-circle" size={20} color="#EF4444" />
+                              <Text style={styles.removeSingleUseText}>Bỏ chọn</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       </View>
                     )}
                   </View>
@@ -755,6 +812,67 @@ export default function CustomerProductDetailScreen() {
           >
             <Text style={styles.backButtonText}>Quay lại</Text>
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Single Use Product Selection Modal */}
+      {showSingleUseModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Chọn ly dùng một lần</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowSingleUseModal(false);
+                }}
+              >
+                <Ionicons name="close" size={24} color="#111827" />
+              </TouchableOpacity>
+            </View>
+
+            {loadingSingleUse ? (
+              <View style={styles.modalLoading}>
+                <ActivityIndicator size="large" color="#00704A" />
+                <Text style={styles.modalLoadingText}>Đang tải danh sách...</Text>
+              </View>
+            ) : singleUseProducts.length === 0 ? (
+              <View style={styles.modalEmpty}>
+                <Ionicons name="cube-outline" size={64} color="#9CA3AF" />
+                <Text style={styles.modalEmptyText}>Chưa có sản phẩm dùng một lần</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.modalList}>
+                {singleUseProducts.map((item) => {
+                  const isSelected = selectedSingleUseProduct?._id === item._id;
+                  const sizeName = (item.productSizeId as any)?.name || 'N/A';
+                  return (
+                    <TouchableOpacity
+                      key={item._id}
+                      style={[
+                        styles.modalItem,
+                        isSelected && styles.modalItemSelected
+                      ]}
+                      onPress={() => {
+                        setSelectedSingleUseProduct(item);
+                        setShowSingleUseModal(false);
+                      }}
+                    >
+                      <View style={styles.modalItemContent}>
+                        <Text style={styles.modalItemName}>{item.name}</Text>
+                        <Text style={styles.modalItemSize}>Size: {sizeName}</Text>
+                        {item.weight && (
+                          <Text style={styles.modalItemWeight}>Trọng lượng: {item.weight}g</Text>
+                        )}
+                      </View>
+                      {isSelected && (
+                        <Ionicons name="checkmark-circle" size={24} color="#00704A" />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
         </View>
       )}
     </View>
@@ -1017,6 +1135,129 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '700',
+  },
+  singleUseSection: {
+    marginTop: 16,
+  },
+  singleUseLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  singleUseHint: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  singleUseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  singleUseButtonText: {
+    flex: 1,
+    fontSize: 16,
+    color: '#111827',
+  },
+  removeSingleUseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 4,
+  },
+  removeSingleUseText: {
+    fontSize: 14,
+    color: '#EF4444',
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    width: '90%',
+    maxHeight: '80%',
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  modalLoading: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalLoadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  modalEmpty: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalEmptyText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  modalList: {
+    maxHeight: 400,
+  },
+  modalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalItemSelected: {
+    backgroundColor: '#F0FDF4',
+  },
+  modalItemContent: {
+    flex: 1,
+  },
+  modalItemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  modalItemSize: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  modalItemWeight: {
+    fontSize: 13,
+    color: '#9CA3AF',
   },
 });
 

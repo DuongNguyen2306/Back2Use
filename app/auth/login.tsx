@@ -1,7 +1,6 @@
-import { googleAuthService } from "@/services/auth/googleAuthService";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -19,13 +18,6 @@ import {
 } from "react-native";
 import { useAuth } from "../../context/AuthProvider";
 
-// --- THÊM CÁC IMPORT MỚI ---
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
-
-// Bắt buộc dòng này để trình duyệt tự đóng sau khi login xong
-WebBrowser.maybeCompleteAuthSession();
-
 type Role = "customer" | "business" | "admin";
 
 
@@ -37,45 +29,6 @@ export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(true); // Set to true by default to show form immediately
   const { actions } = useAuth();
-
-  // --- CẤU HÌNH GOOGLE LOGIN (EXPO GO) ---
-  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    // Client ID Web của bạn
-    clientId: '315932864975-im13bn584s55frdq3gp86ocqup2uqbdd.apps.googleusercontent.com',
-    // ✅ QUAN TRỌNG: Điền cứng link này để khớp với Google Console
-    // Dù app.json scheme là "com.back2use", ta vẫn dùng link này để Google không báo lỗi 400
-    redirectUri: 'https://auth.expo.io/@duong2306/com.back2use',
-  });
-
-  // --- HÀM GỬI TOKEN VỀ SERVER BACKEND ---
-  const handleBackendLogin = useCallback(async (idToken: string) => {
-    setIsLoading(true);
-    try {
-      console.log("🔐 Token Google nhận được:", idToken.substring(0, 20) + '...');
-      
-      // Gọi service để xử lý logic backend
-      await googleAuthService.loginWithBackend(idToken);
-      
-    } catch (error) {
-      // Lỗi đã được xử lý alert bên trong service rồi
-      console.error('Google login error:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  // --- LẮNG NGHE PHẢN HỒI TỪ GOOGLE ---
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const { id_token } = response.params;
-      if (id_token) {
-        handleBackendLogin(id_token);
-      }
-    } else if (response?.type === 'error') {
-      console.error('Google Login Error:', response.error);
-      Alert.alert('Lỗi', 'Đăng nhập Google thất bại');
-    }
-  }, [response, handleBackendLogin]);
 
   const handleSignIn = async () => {
     if (!username.trim() || !password.trim()) {
@@ -267,27 +220,6 @@ export default function LoginScreen() {
                 <Text style={styles.signInButtonText}>Sign in</Text>
               )}
             </TouchableOpacity>
-            <Text style={styles.dividerText2}>other way to sign in</Text>
-
-            <View style={styles.socialContainer2}>
-              {/* NÚT GOOGLE ĐÃ ĐƯỢC CẬP NHẬT LOGIC */}
-              <TouchableOpacity 
-                style={styles.socialButton2} 
-                onPress={() => {
-                  if (request) {
-                    promptAsync(); // Gọi hook Expo Auth Session
-                  } else {
-                    Alert.alert('Lỗi', 'Dịch vụ Google chưa sẵn sàng');
-                  }
-                }}
-                disabled={!request || isLoading}
-              >
-                <Ionicons name="logo-google" size={24} color="#4285F4" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.socialButton2} onPress={() => Alert.alert("Facebook Sign-In", "Facebook login will be available soon!")}>
-                <Ionicons name="logo-facebook" size={24} color="#1877F2" />
-              </TouchableOpacity>
-            </View>
 
             <View style={styles.footer}>
               <Text style={styles.footerText}>Don't have an account? </Text>
@@ -376,9 +308,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#111827", // Màu chữ đậm hơn
   },
-  dividerText2: { fontSize: 14, color: "#6B7280", textAlign: "center", marginBottom: 20 },
-  socialContainer2: { flexDirection: "row", justifyContent: "center", gap: 16, marginBottom: 32 },
-  socialButton2: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.7)" },
   eyeButton: { position: "absolute", right: 14, top: 14, padding: 4 },
   forgotPassword: { alignSelf: "flex-end", marginBottom: 24 },
   forgotPasswordText: { fontSize: 14, color: "#0F4D3A", fontWeight: "500" },

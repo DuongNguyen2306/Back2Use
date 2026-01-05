@@ -1,16 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    FlatList,
-    RefreshControl,
-    SafeAreaView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { MaterialItem, materialsApi } from '../../../lib/api';
 
@@ -74,7 +74,7 @@ export default function ApprovedMaterialsScreen() {
 
   const filteredMaterials = materials.filter(material =>
     material.materialName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    material.description.toLowerCase().includes(searchQuery.toLowerCase())
+    (material.description || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const getStatusColor = (status: string) => {
@@ -99,12 +99,12 @@ export default function ApprovedMaterialsScreen() {
     <View style={styles.materialCard}>
       <View style={styles.materialHeader}>
         <Text style={styles.materialName}>{item.materialName}</Text>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-          <Text style={styles.statusText}>{getStatusText(item.status)}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status || 'approved') }]}>
+          <Text style={styles.statusText}>{getStatusText(item.status || 'approved')}</Text>
         </View>
       </View>
       
-      <Text style={styles.materialDescription}>{item.description}</Text>
+      <Text style={styles.materialDescription}>{item.description || ''}</Text>
       
       <View style={styles.materialDetails}>
         <View style={styles.detailItem}>
