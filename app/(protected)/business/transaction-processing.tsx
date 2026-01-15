@@ -2358,12 +2358,12 @@ export default function TransactionProcessingScreen() {
                                 sizeName = product.size;
                               } else if (product.productSizeId) {
                                 if (typeof product.productSizeId === 'object' && product.productSizeId !== null) {
-                                  sizeName = product.productSizeId.name || product.productSizeId.sizeName || 'N/A';
+                                  sizeName = product.productSizeId.sizeName || (product.productSizeId as any).name || 'N/A';
                                 } else if (typeof product.productSizeId === 'string') {
                                   // Size ID is string, try to find in available products
                                   const foundProduct = availableSingleUseProducts.find(p => p._id === product._id || p._id === product.id);
                                   if (foundProduct?.productSizeId && typeof foundProduct.productSizeId === 'object') {
-                                    sizeName = foundProduct.productSizeId.name || foundProduct.productSizeId.sizeName || 'N/A';
+                                    sizeName = foundProduct.productSizeId.sizeName || (foundProduct.productSizeId as any).name || 'N/A';
                                   }
                                 }
                               }
@@ -2711,7 +2711,7 @@ export default function TransactionProcessingScreen() {
                       // If no direct size field, check productSizeId
                       if (sizeName === 'N/A' && product.productSizeId) {
                         if (typeof product.productSizeId === 'object' && product.productSizeId !== null) {
-                          sizeName = product.productSizeId.name || product.productSizeId.sizeName || 'N/A';
+                          sizeName = product.productSizeId.sizeName || (product.productSizeId as any).name || 'N/A';
                         } else if (typeof product.productSizeId === 'string') {
                           // If it's just an ID, we can't get the name without additional API call
                           // For now, show N/A

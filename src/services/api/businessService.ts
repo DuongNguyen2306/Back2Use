@@ -608,11 +608,27 @@ export interface SingleUseProduct {
   _id: string;
   name: string;
   description?: string;
-  productTypeId: string | any;
-  productSizeId: string | any;
-  materialId: string | any;
+  productTypeId: string | {
+    _id: string;
+    name: string;
+  };
+  productSizeId: string | {
+    _id: string;
+    sizeName: string;
+    minWeight?: number;
+    maxWeight?: number;
+  };
+  materialId: string | {
+    _id: string;
+    materialName: string;
+    description?: string;
+  };
   weight: number;
   image?: string;
+  imageUrl?: string;
+  co2EmissionPerKg?: number;
+  co2Emission?: number;
+  isActive?: boolean;
   businessId?: string;
   createdAt?: string;
   updatedAt?: string;

@@ -491,6 +491,13 @@ export default function BusinessMenu() {
       color: '#F59E0B',
       onPress: () => router.push('/(protected)/business/top-businesses'),
     },
+    {
+      id: 'create-single-use',
+      icon: 'add-circle-outline',
+      label: 'Create Single-Use Product',
+      color: '#3B82F6',
+      onPress: () => router.push('/(protected)/business/create-single-use-product'),
+    },
   ];
 
   // Filter shortcuts based on role
