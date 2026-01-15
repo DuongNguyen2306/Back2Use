@@ -325,6 +325,13 @@ export default function MyProfile() {
       onPress: () => router.push('/(protected)/customer/transaction-history'),
     },
     {
+      id: 'single-use-history',
+      icon: 'document-text-outline',
+      label: 'Single-use Usage History',
+      color: '#10B981',
+      onPress: () => router.push('/(protected)/customer/single-use-usage-history'),
+    },
+    {
       id: 'feedbacks',
       title: 'My Feedbacks',
       subtitle: 'View and manage your feedbacks',

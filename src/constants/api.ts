@@ -47,6 +47,7 @@ export const API_ENDPOINTS = {
     USERS: '/admin/users',
     BUSINESSES: '/admin/businesses',
     ANALYTICS: '/admin/analytics',
+    TOP_BUSINESSES: '/admin/dashboard/business', // GET /admin/dashboard/business?top=5&sortBy=co2Reduced&order=desc
   },
   PAYMENTS: {
     VNPAY_CREATE: '/vnpay/create',
@@ -100,6 +101,7 @@ export const API_ENDPOINTS = {
   },
   SINGLE_USE_PRODUCT_USAGE: {
     GET: '/single-use-product-usage', // GET /single-use-product-usage/{borrowTransactionId}?page=&limit=
+    GET_MY: '/single-use-product-usage/my', // GET /single-use-product-usage/my?page=&limit=
     CREATE: '/business/single-use-product-usage', // POST /business/single-use-product-usage/{borrowTransactionId}
   },
   BORROW_TRANSACTIONS: {

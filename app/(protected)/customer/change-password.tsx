@@ -4,15 +4,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-    Alert,
-    Dimensions,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Alert,
+  Dimensions,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 import { authApi, ChangePasswordRequest } from "../../../lib/api";
 
@@ -66,7 +66,7 @@ export default function ChangePasswordPage() {
       console.log('🔐 Full response:', response);
       
       // Kiểm tra nhiều format response có thể
-      if (response.success === true || response.success === 'true' || 
+      if (response.success === true || 
           response.message?.includes('success') || 
           response.message?.includes('thành công') ||
           response.message?.includes('đã được thay đổi')) {

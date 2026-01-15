@@ -2,6 +2,7 @@ import { borrowTransactionsApi } from "@/services/api/borrowTransactionService";
 import { singleUseProductUsageApi } from "@/services/api/businessService";
 import { Feedback, feedbackApi } from "@/services/api/feedbackService";
 import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from 'expo-clipboard';
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -252,6 +253,16 @@ export default function TransactionDetailScreen() {
     }
   };
 
+  const handleCopyTxHash = async (txHash: string) => {
+    try {
+      await Clipboard.setStringAsync(txHash);
+      Alert.alert("Đã sao chép", "Blockchain transaction hash đã được sao chép vào clipboard");
+    } catch (error) {
+      console.error('Error copying to clipboard:', error);
+      Alert.alert("Lỗi", "Không thể sao chép");
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "completed":
@@ -391,6 +402,23 @@ export default function TransactionDetailScreen() {
             <Text style={styles.infoLabel}>Serial Number:</Text>
             <Text style={styles.infoValue}>{transaction.productId?.serialNumber || 'N/A'}</Text>
           </View>
+          
+          {/* Blockchain Transaction Hash - Hiển thị từ single-use usages nếu có */}
+          {singleUseProductUsages.length > 0 && singleUseProductUsages[0]?.blockchainTxHash && (
+            <TouchableOpacity 
+              style={styles.infoRow}
+              onPress={() => handleCopyTxHash(singleUseProductUsages[0].blockchainTxHash)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.infoLabel}>Blockchain Tx Hash:</Text>
+              <View style={styles.txHashContainer}>
+                <Text style={[styles.infoValue, styles.txHashValue]} numberOfLines={1}>
+                  {singleUseProductUsages[0].blockchainTxHash}
+                </Text>
+                <Ionicons name="copy-outline" size={16} color="#6B7280" style={styles.copyIcon} />
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Business Info Card */}
@@ -604,6 +632,19 @@ export default function TransactionDetailScreen() {
                             CO₂ Saved: {co2PerUnit.toFixed(3)} kg
                           </Text>
                         </View>
+                        {usage.blockchainTxHash && (
+                          <TouchableOpacity 
+                            style={styles.txHashRow}
+                            onPress={() => handleCopyTxHash(usage.blockchainTxHash)}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="link" size={14} color="#6B7280" />
+                            <Text style={styles.txHashText} numberOfLines={1}>
+                              {usage.blockchainTxHash}
+                            </Text>
+                            <Ionicons name="copy-outline" size={14} color="#6B7280" style={styles.copyIcon} />
+                          </TouchableOpacity>
+                        )}
                         {usage.createdAt && (
                           <Text style={styles.usageDate}>
                             {new Date(usage.createdAt).toLocaleString('en-US')}
@@ -1474,6 +1515,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9CA3AF',
     marginTop: 4,
+  },
+  txHashValue: {
+    fontFamily: 'monospace',
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  txHashRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 4,
+  },
+  txHashText: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontFamily: 'monospace',
+    flex: 1,
+  },
+  txHashContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 6,
+  },
+  copyIcon: {
+    marginLeft: 4,
   },
 });
 

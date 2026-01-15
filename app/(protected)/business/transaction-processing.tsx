@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
@@ -750,6 +751,16 @@ export default function TransactionProcessingScreen() {
   };
 
   // Handle add single-use product usage
+  const handleCopyTxHash = async (txHash: string) => {
+    try {
+      await Clipboard.setStringAsync(txHash);
+      Alert.alert("Đã sao chép", "Blockchain transaction hash đã được sao chép vào clipboard");
+    } catch (error) {
+      console.error('Error copying to clipboard:', error);
+      Alert.alert("Lỗi", "Không thể sao chép");
+    }
+  };
+
   const handleAddUsage = async () => {
     if (!selectedTransaction || !selectedUsageProduct) {
       Alert.alert('Error', 'Please select a single-use product');
@@ -2396,6 +2407,19 @@ export default function TransactionProcessingScreen() {
                                         {new Date(usage.createdAt).toLocaleString('vi-VN')}
                                       </Text>
                                     </View>
+                                  )}
+                                  {(usage as any).blockchainTxHash && (
+                                    <TouchableOpacity 
+                                      style={styles.txHashRow}
+                                      onPress={() => handleCopyTxHash((usage as any).blockchainTxHash)}
+                                      activeOpacity={0.7}
+                                    >
+                                      <Ionicons name="link" size={14} color="#6B7280" />
+                                      <Text style={styles.txHashText} numberOfLines={1}>
+                                        {(usage as any).blockchainTxHash}
+                                      </Text>
+                                      <Ionicons name="copy-outline" size={14} color="#6B7280" style={styles.copyIcon} />
+                                    </TouchableOpacity>
                                   )}
                                 </View>
                               </View>
@@ -5577,5 +5601,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111827',
     marginBottom: 8,
+  },
+  txHashRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 4,
+  },
+  txHashText: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontFamily: 'monospace',
+    flex: 1,
+  },
+  copyIcon: {
+    marginLeft: 4,
   },
 });

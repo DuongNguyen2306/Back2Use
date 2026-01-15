@@ -778,6 +778,17 @@ export const singleUseProductUsageApi = {
       }
     );
   },
+  // Get my usage history (for customer)
+  getMy: async (params?: { page?: number; limit?: number }): Promise<SingleUseProductUsageResponse> => {
+    const { page = 1, limit = 100 } = params || {};
+    return apiCall<SingleUseProductUsageResponse>(
+      API_ENDPOINTS.SINGLE_USE_PRODUCT_USAGE.GET_MY,
+      {
+        method: 'GET',
+        params: { page, limit },
+      }
+    );
+  },
   // Create usage for a borrow transaction
   create: async (borrowTransactionId: string, data: CreateSingleUseProductUsageRequest): Promise<any> => {
     return apiCall<any>(
@@ -787,6 +798,47 @@ export const singleUseProductUsageApi = {
         data,
       }
     );
+  },
+};
+
+// Top Businesses
+export interface TopBusiness {
+  _id: string;
+  businessName: string;
+  businessAddress: string;
+  businessPhone: string;
+  businessType: string;
+  businessLogoUrl?: string;
+  co2Reduced: number;
+  ecoPoints: number;
+  averageRating: number;
+  totalReviews: number;
+  rewardPoints?: number;
+  maxRewardPoints?: number;
+  location?: {
+    type: string;
+    coordinates: number[];
+  };
+}
+
+export interface TopBusinessesResponse {
+  status: number;
+  message: string;
+  top: number;
+  data: TopBusiness[];
+}
+
+export const topBusinessesApi = {
+  getTop: async (params?: { 
+    top?: number; 
+    sortBy?: string; 
+    order?: 'asc' | 'desc' 
+  }): Promise<TopBusinessesResponse> => {
+    const { top = 5, sortBy = 'co2Reduced', order = 'desc' } = params || {};
+    return apiCall<TopBusinessesResponse>(API_ENDPOINTS.ADMIN.TOP_BUSINESSES, {
+      method: 'GET',
+      params: { top, sortBy, order },
+    });
   },
 };
 
@@ -800,4 +852,5 @@ export default {
   productsApi,
   singleUseProductsApi,
   singleUseProductUsageApi,
+  topBusinessesApi,
 };

@@ -477,6 +477,20 @@ export default function BusinessMenu() {
       color: '#06B6D4',
       onPress: () => router.push('/(protected)/business/notifications'),
     },
+    {
+      id: 'single-use-history',
+      icon: 'document-text-outline',
+      label: 'Single-use Usage History',
+      color: '#10B981',
+      onPress: () => router.push('/(protected)/business/single-use-usage-history'),
+    },
+    {
+      id: 'top-businesses',
+      icon: 'trophy-outline',
+      label: 'Top Businesses',
+      color: '#F59E0B',
+      onPress: () => router.push('/(protected)/business/top-businesses'),
+    },
   ];
 
   // Filter shortcuts based on role
